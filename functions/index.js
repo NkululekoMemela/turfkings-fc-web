@@ -5995,3 +5995,6 @@ exports.closeFriendlyTeamChats=onDocumentWritten({document:"clubs/{clubId}/state
 
 exports.fieldChatPreferences = require("./memberWorkspaceHttp.cjs").fieldChatPreferences;
 exports.companyClubs = require("./companyClubsHttp.cjs").companyClubs;
+
+exports.facebookReview = require("./facebookReviewHttp.cjs").facebookReview;
+Object.assign(exports, require("./facebookReviewTriggers.cjs"));

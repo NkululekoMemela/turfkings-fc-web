@@ -39,7 +39,7 @@ export default function FirebaseEnvironmentControl({ user }) {
   }
 
   return (
-    <section style={{ ...panelStyle, margin: "24px 0" }}
+    <section className="fanm-environment-control" style={{ ...panelStyle, margin: "24px 0" }}
       aria-label="Superadmin database environment">
       <small style={{ color: "#c4b5fd", fontWeight: 800 }}>SUPERADMIN</small>
       <h3 style={{ margin: "8px 0" }}>Database environment</h3>

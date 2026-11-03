@@ -113,7 +113,7 @@
  body .fanm-marketing-split.fanm-advert-row,
  body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split,
  body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split{
-  display:grid!important;grid-template-columns:minmax(0,300px) minmax(0,1fr)!important;gap:28px!important;align-items:center!important;padding:24px!important;box-sizing:border-box;
+  display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:28px!important;align-items:center!important;padding:24px!important;box-sizing:border-box;
  }
  body .fanm-advert-copy{display:block;min-width:0;color:#eef6ff;}
  body .fanm-advert-copy h3{font-size:clamp(24px,2.6vw,34px);line-height:1.15;margin:12px 0;}
@@ -122,8 +122,15 @@
  body .fanm-marketing-split.fanm-advert-row>.field-marketing-carousel,
  body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split>.hub-footer-logo-stage,
  body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split>.hub-footer-logo-stage{
-  width:100%!important;max-width:300px!important;height:auto!important;aspect-ratio:5/3!important;margin:0!important;min-width:0;overflow:hidden;border-radius:18px;
+  width:100%!important;max-width:none!important;height:auto!important;aspect-ratio:5/3!important;margin:0!important;min-width:0;overflow:hidden;border-radius:18px;
  }
+ body .fanm-marketing-split.fanm-advert-row>.field-marketing-carousel,
+ body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split>.hub-footer-logo-stage,
+ body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split>.hub-footer-logo-stage{grid-column:2!important;grid-row:1!important;align-self:center!important;}
+ body .fanm-marketing-split.fanm-advert-row>.fanm-advert-copy,
+ body footer.fanm-marketing-split>section{grid-column:1!important;grid-row:1!important;align-self:center!important;}
+ body .fanm-marketing-split .hub-footer-logo-stage img,
+ body .fanm-marketing-split .field-marketing-carousel>img{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:cover!important;inset:0!important;border-radius:0!important;}
  body footer.fanm-marketing-split>section{margin:0!important;padding:0!important;min-width:0;}
  body footer.fanm-marketing-split :is(h1,h2){font-size:clamp(25px,2.8vw,36px)!important;line-height:1.15!important;margin:12px 0!important;}
  body footer.fanm-marketing-split p{font-size:15px!important;line-height:1.6!important;max-width:58ch;}
@@ -148,3 +155,41 @@ body .company-request-card{border-color:#d9bd7859!important;background:radial-gr
 
 body .hub-choice-grid .hub-company-choice{border:1px solid #b8975570;background:radial-gradient(ellipse at top left,#b58a2922,transparent 65%),linear-gradient(145deg,#0a2730,#111d31);}
 body .hub-choice-grid .hub-company-choice strong{color:#ffe6b0;}
+
+
+/* Consistent carousel edges and alternating marketing cards. */
+.homepage-hub-shell .hub-clubs-section .club-category-switch{
+  width:calc(100% + 32px);margin-inline:-16px;box-sizing:border-box;
+}
+.club-category-switch>button{min-width:0;}
+
+@media(min-width:721px){
+ body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split>.hub-footer-logo-stage,
+ body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split>.hub-footer-logo-stage{
+  grid-column:1!important;grid-row:1!important;position:relative!important;
+ }
+ body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split>section,
+ body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split>section{
+  grid-column:2!important;grid-row:1!important;
+ }
+ body .homepage-hub-shell footer.hub-footer-brand.club-marketing-footer.fanm-marketing-split>.hub-footer-logo-stage>img.hub-footer-logo-static,
+ body .fanm-venues.fanm-venues--live footer.fanm-venues__marketing-footer.fanm-marketing-split>.hub-footer-logo-stage>img.hub-footer-logo-static,
+ body .homepage-hub-shell .fanm-marketing-split.fanm-advert-row>.field-marketing-carousel>img,
+ body .fanm-venues.fanm-venues--live .fanm-marketing-split.fanm-advert-row>.field-marketing-carousel>img{
+  position:absolute!important;inset:0!important;
+  width:100%!important;height:100%!important;
+  max-width:none!important;max-height:none!important;
+  margin:0!important;padding:0!important;
+  object-fit:cover!important;object-position:center!important;
+  transform:none!important;display:block!important;
+ }
+}
+
+/* One content column for all desktop Hub cards. */
+body .homepage-hub-shell>.fanm-environment-control,
+body .homepage-hub-shell>.fanm-marketing-split.fanm-advert-row{
+ width:min(1180px,100%)!important;max-width:1180px!important;min-width:0!important;
+ margin-inline:auto!important;box-sizing:border-box!important;
+}
+
+.company-setup-steps{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0;}.company-setup-steps span{padding:7px 10px;border-radius:20px;background:#ffffff08;color:#94a9bc;font-size:12px;}.company-setup-steps [aria-current=step]{background:#1d493c;color:#b3f1cf;}.company-setup-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}.company-setup-review{padding:16px;border:1px solid #adc4da33;border-radius:16px;background:#091724;}

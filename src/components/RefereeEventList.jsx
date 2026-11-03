@@ -1,0 +1,6 @@
+import React from 'react';
+import MatchEventCard from './MatchEventCard.jsx';
+const descriptions={goal:['⚽','Goal'],yellow_card:['🟨','Yellow card'],red_card:['🟥','Dismissed'],injury_knock:['🩹','Playing with a knock'],injury_sitting_out:['🤕','Sitting out'],injury_recovered:['✅','Recovered']};
+export default function RefereeEventList({events=[],getTeam,getTeamAbbrev,getTeamTheme,displayPlayer,formatClock,canEdit,onEdit,onDelete}){
+ return <ul>{events.map((event,index)=>{if(!descriptions[event.type])return null;const team=getTeam?.(event.teamId)||{},[icon,label]=descriptions[event.type]||['•',String(event.type||'Event')];return <MatchEventCard key={event.id||`${event.type}-${index}`} event={event} teamLabel={getTeamAbbrev?.(team)||team.abbrev||team.label||''} teamName={team.name||team.clubName||''} logo={team.logoUrl||team.branding?.logoUrl||''} theme={getTeamTheme?.(team)||{}} playerLabel={displayPlayer?.(event.type==='goal'?event.scorer:event.playerName,event.teamId)||'Player'} assistLabel={event.assist?displayPlayer?.(event.assist,event.teamId):''} label={label} icon={icon} clock={formatClock?.(event.timeSeconds)} canEdit={canEdit} onEdit={()=>onEdit?.(index)} onDelete={()=>onDelete?.(index)}/>;})}</ul>;
+}

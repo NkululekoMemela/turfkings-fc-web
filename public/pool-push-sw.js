@@ -5,7 +5,8 @@ function store(mode,work){return new Promise((resolve,reject)=>{const open=index
 self.addEventListener('message',event=>{if(event.data?.type==='pool-account')event.waitUntil(store('readwrite',table=>table.put(String(event.data.uid||''),self.registration.scope)));});
 self.addEventListener('push',event=>event.waitUntil((async()=>{
  let data;try{data=event.data.json();}catch{return;}
- if(data?.type!=='pool_alert'||!/^[A-F0-9]{10}$/.test(data.code||''))return;
+ const facebook=data?.type==='facebook_highlight_ready'&&/^[a-f0-9]{64}$/.test(data.draftId||'');
+ if(!facebook&&(data?.type!=='pool_alert'||!/^[A-F0-9]{10}$/.test(data.code||'')))return;
  const uid=await store('readonly',table=>table.get(self.registration.scope));if(!uid||uid!==data.recipientUid)return;
  const url=new URL(data.url||'/',self.location.origin);if(url.origin!==self.location.origin)return;
  const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const client of clients)client.postMessage({type:'pool-push-received',code:data.code,tab:data.tab});

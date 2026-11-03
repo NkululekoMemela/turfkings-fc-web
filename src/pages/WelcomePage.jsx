@@ -1,3 +1,4 @@
+import FacebookHighlightReview from "../components/FacebookHighlightReview.jsx";
 import PoolTablePage from "./PoolTablePage.jsx";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import FiveAsideLoadingPitch from "../components/FiveAsideLoadingPitch.jsx";
@@ -224,15 +225,16 @@ export default function WelcomePage({
             <span>5 Asides Near Me</span>
           </div>
           <span className="fanm-hero__edition">FOOTBALL. TOGETHER.</span>
-        <button type="button" onClick={() => setPoolOpen(true)} aria-label="Open Pool Table" title="Pool Table"
+        <div className="fanm-hero__owner-tools"><button type="button" onClick={() => setPoolOpen(true)} aria-label="Open Pool Table" title="Pool Table"
             style={{flexShrink:0,border:0,background:"transparent",padding:0,cursor:"pointer",display:"flex",alignItems:"center",gap:7,color:"#fff",fontWeight:800}}>
             <span className="pool-ball" style={{width:36,height:36}} aria-hidden="true"><i style={{width:19,height:19,fontSize:15}}>8</i></span>
             <span style={{fontSize:11}}>Pool Table</span>
           </button>
-        </header>
+        </div></header>
 
         <div className="fanm-hero__main">
           <section className="fanm-hero__story">
+            <div className="fanm-hero__facebook-corner"><FacebookHighlightReview /></div>
             <span className="fanm-hero__eyebrow">
               A home for the five-a-side game
             </span>

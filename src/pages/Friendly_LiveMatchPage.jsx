@@ -1,3 +1,9 @@
+import RefereeEventList from "../components/RefereeEventList.jsx";
+import RefereeReplacementAlert from "../components/RefereeReplacementAlert.jsx";
+import RefereePlayerLabel from "../components/RefereePlayerLabel.jsx";
+import {confirmsRefereeAction} from "../core/refereeActions.mjs";
+import DigitalRefereeCard from "../components/DigitalRefereeCard.jsx";
+import {futsalCardDecision} from "../core/fieldFutsalDiscipline.mjs";
 import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
 import {splitNumberDisplay} from "../core/playerNumberDisplay.mjs";
 import {usePlayerNumberLabel,InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
@@ -54,7 +60,6 @@ import {
   FANM_PRO_CLUBS,
 } from "../data/fanm/fanmTeamLibrary.js";
 
-const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 
 function resolveLiveMatchDoc(
@@ -3650,31 +3655,16 @@ export function FriendlyLiveMatchPage({
     persistDisciplineLineups(nextSnapshots);
   };
 
+  const [digitalCard,setDigitalCard]=useState(null);
   const issueDisciplineCard = (cardType, player) => {
     if (!canControlMatch || !player?.name || !player?.teamId) {
       return;
     }
 
-    const normalizedType =
-      cardType === "red_card"
-        ? "red_card"
-        : "yellow_card";
-
     const status = getDisciplineStatus(player);
-
-    if (
-      normalizedType === "yellow_card" &&
-      status.yellowEvents.length > 0
-    ) {
-      return;
-    }
-
-    if (
-      normalizedType === "red_card" &&
-      status.redEvents.length > 0
-    ) {
-      return;
-    }
+    const decision=futsalCardDecision(cardType,status.yellowEvents.length,status.redEvents.length>0);
+    if(!decision)return;
+    const normalizedType=decision.type;
 
     const cardTeam =
       player.teamId === teamAId
@@ -3696,6 +3686,8 @@ export function FriendlyLiveMatchPage({
         .toString(36)
         .slice(2, 8)}`,
       type: normalizedType,
+      secondCaution: decision.secondCaution,
+      cautionNumber: decision.secondCaution ? 2 : normalizedType === "yellow_card" ? 1 : null,
       teamId: player.teamId,
       teamLabel: getTeamDisplayName(
         cardTeam,
@@ -3717,11 +3709,7 @@ export function FriendlyLiveMatchPage({
         dismissalDetails.removedPositionId || null,
       wasSubstitute:
         dismissalDetails.wasSubstitute,
-      timeSeconds: Math.max(
-        Number(matchSeconds || 0) -
-          Number(displaySeconds || 0),
-        0
-      ),
+      timeSeconds: getActualElapsedFootballSeconds(),
       issuedBy:
         getIdentityDisplayName(identity),
       issuedById:
@@ -3738,6 +3726,7 @@ export function FriendlyLiveMatchPage({
     };
 
     onAddEvent?.(event);
+    setDigitalCard({type:event.type,name:displayCompactPlayerName(player.name,player.teamId),secondCaution:event.secondCaution});
     setSelectedDisciplinePlayer(null);
   };
 
@@ -3750,6 +3739,7 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
+    if(cardEvent.type==="yellow_card" && getDisciplineStatus({name:cardEvent.playerName,teamId:cardEvent.teamId}).redEvents.some(event=>event.secondCaution)){window.alert("Undo the second-yellow dismissal first.");return;}
     if (cardEvent?.type === "red_card") {
       restoreDismissedPlayerToLineup(cardEvent);
     }
@@ -3801,11 +3791,7 @@ export function FriendlyLiveMatchPage({
   const dismissedPlayersB =
     dismissedPlayersForTeam(teamBId);
 
-  const currentDisciplineMatchSeconds = Math.max(
-    Number(matchSeconds || 0) -
-      Number(displaySeconds || 0),
-    0
-  );
+  const currentDisciplineMatchSeconds = getActualElapsedFootballSeconds();
 
   const protectedVacanciesForTeam = (teamId) => {
     const vacancies = {};
@@ -4431,7 +4417,7 @@ export function FriendlyLiveMatchPage({
 
     const confirmationTimeSeconds =
       friendlyLineupTimeline.length === 0 &&
-      !isRunning &&
+      !running &&
       !additionalTimeRunning
         ? 0
         : getActualElapsedFootballSeconds();
@@ -5153,9 +5139,8 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    const password = deletePassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setDeleteError("Invalid captain password.");
+    if (!confirmsRefereeAction(deletePassword, "DELETE")) {
+      setDeleteError("Type DELETE to confirm.");
       return;
     }
 
@@ -5168,7 +5153,9 @@ export function FriendlyLiveMatchPage({
         newEvents,
         basicSummary,
         displaySeconds,
-        matchSeconds
+        matchSeconds,
+        dataScope,
+        activeClubId
       );
     }
 
@@ -5198,9 +5185,8 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    const password = backPassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setBackError("Invalid captain password.");
+    if (!confirmsRefereeAction(backPassword, "CANCEL")) {
+      setBackError("Type CANCEL to confirm.");
       return;
     }
 
@@ -5247,9 +5233,8 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    const password = undoPassword.trim();
-    if (!CAPTAIN_PASSWORDS.includes(password)) {
-      setUndoError("Invalid captain password.");
+    if (!confirmsRefereeAction(undoPassword, "CONFIRM")) {
+      setUndoError("Type CONFIRM to confirm.");
       return;
     }
 
@@ -5453,6 +5438,12 @@ export function FriendlyLiveMatchPage({
         transition: "opacity 0.8s ease",
       }}
     >
+      <RefereeReplacementAlert enabled={canControlMatch} teams={[
+        {teamId:teamAId,label:teamA?.name||teamA?.label||"Team A",positions:verifiedLineupA?.positions||{},vacancies:protectedVacanciesA},
+        {teamId:teamBId,label:teamB?.name||teamB?.label||"Team B",positions:verifiedLineupB?.positions||{},vacancies:protectedVacanciesB}
+      ]} onOpenLineups={()=>{openLiveLineupEditor()}}/>
+      <DigitalRefereeCard card={digitalCard} onClose={()=>setDigitalCard(null)}/>
+
       {showRotationModal && (
         <div
           className="fanm-finish-time-backdrop fanm-rotation-backdrop"
@@ -5918,130 +5909,7 @@ export function FriendlyLiveMatchPage({
             <p className="muted">No live events yet.</p>
           )}
 
-          <ul>
-            {currentEvents.map((e, idx) => {
-              if (
-                e.type === "yellow_card" ||
-                e.type === "red_card"
-              ) {
-                const isRed =
-                  e.type === "red_card";
-
-                return (
-                  <li
-                    key={e.id || idx}
-                    className={`event-item fanm-discipline-event ${
-                      isRed
-                        ? "is-red"
-                        : "is-yellow"
-                    }`}
-                  >
-                    <span
-                      className="fanm-discipline-event-card"
-                      aria-hidden="true"
-                    >
-                      {isRed ? "🟥" : "🟨"}
-                    </span>
-
-                    <span className="fanm-discipline-event-copy">
-                      <strong>
-                        {e.playerName ||
-                          "Unknown player"}
-                      </strong>
-
-                      <small>
-                        {formatSeconds(
-                          Number(e.timeSeconds || 0)
-                        )}{" "}
-                        · {e.teamLabel || "TEAM"}
-                      </small>
-                    </span>
-
-                    {canControlMatch ? (
-                      <button
-                        type="button"
-                        className="fanm-discipline-event-undo"
-                        onClick={() =>
-                          reverseDisciplineCard({
-                            ...e,
-                            eventIndex: idx,
-                          })
-                        }
-                      >
-                        Undo
-                      </button>
-                    ) : null}
-                  </li>
-                );
-              }
-
-              if (e.type === "goal") {
-                const teamForEvent =
-                  e.teamId === teamAId
-                    ? effectiveTeamA
-                    : e.teamId === teamBId
-                    ? effectiveTeamB
-                    : null;
-                const label = eventLabel(e.teamId, teamAId, teamBId, teamA, teamB);
-                const teamAbbrev =
-                  teamForEvent?.teamIdentity?.abbr || teamForEvent?.abbrev || label;
-                const goalTheme = getTeamAccent(teamForEvent || {});
-                return (
-                  <li
-                    key={e.id || idx}
-                    className="event-item premium-goal-event"
-                    style={{
-                      "--goal-team-soft": goalTheme.soft,
-                      "--goal-team-border": goalTheme.border,
-                      "--goal-team-dot": goalTheme.dot,
-                    }}
-                  >
-                    <div className="premium-goal-main">
-                      <span className="premium-goal-icon">⚽</span>
-                      <div className="premium-goal-text">
-                        <div className="premium-goal-topline">
-                          <span className="premium-goal-clock">
-                            {formatEventClock(matchSeconds, displaySeconds, e.timeSeconds)}
-                          </span>
-                        </div>
-                        <div className="premium-goal-scorer">
-                          {displayCompactPlayerName(e.scorer)} <span className="premium-goal-abbrev">({teamAbbrev})</span>
-                        </div>
-                        {e.assist ? (
-                          <div className="premium-goal-assist">
-                            Assist: {displayCompactPlayerName(e.assist)}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {canControlMatch && (
-                      <div className="event-actions premium-goal-actions">
-                        <button
-                          className="link-btn premium-goal-edit"
-                          type="button"
-                          onClick={() => handleEditGoal(idx)}
-                          title="Edit goal"
-                        >
-                          ✎
-                        </button>
-                        <button
-                          className="link-btn premium-goal-delete"
-                          type="button"
-                          onClick={() => handleRequestDelete(idx)}
-                          title="Delete goal"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                );
-              }
-
-              return null;
-            })}
-          </ul>
+          <RefereeEventList events={currentEvents} getTeam={id=>id===teamAId?effectiveTeamA:id===teamBId?effectiveTeamB:null} getTeamAbbrev={team=>team.teamIdentity?.abbr||team.abbrev||team.label||""} getTeamTheme={getTeamAccent} displayPlayer={displayCompactPlayerName} formatClock={formatSeconds} canEdit={canControlMatch} onEdit={index=>{const event=currentEvents[index];if(event?.type==="goal")handleEditGoal(index);else{setSelectedDisciplinePlayer({name:event.playerName,teamId:event.teamId,positionId:event.positionId,isSubstitute:event.wasSubstitute});setShowCardRecorder(true);}}} onDelete={handleRequestDelete}/>
         </div>
 
         <div className="actions-row">
@@ -6107,7 +5975,8 @@ export function FriendlyLiveMatchPage({
               </div>
             </div>
 
-            <section className="fanm-discipline-rules">
+            <details className="fanm-discipline-rules field-futsal-rules">
+              <summary>Competition rules · cards &amp; replacements</summary>
               <div className="fanm-discipline-rules-heading">
                 <span aria-hidden="true">⚖️</span>
                 <div>
@@ -6174,7 +6043,7 @@ export function FriendlyLiveMatchPage({
               <p className="fanm-discipline-rules-default">
                 Permanent dismissal is the default unless changed.
               </p>
-            </section>
+            </details>
 
             <div className="fanm-discipline-teams">
               {[
@@ -6299,7 +6168,7 @@ export function FriendlyLiveMatchPage({
                                   </span>
 
                                   <span className="fanm-discipline-player-copy">
-                                    <strong>{player.name}</strong>
+                                    <RefereePlayerLabel player={player} peers={[...disciplinePlayersA.onField,...disciplinePlayersA.substitutes,...disciplinePlayersB.onField,...disciplinePlayersB.substitutes].filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>
                                     <small>{player.roleLabel}</small>
                                   </span>
 
@@ -6351,7 +6220,8 @@ export function FriendlyLiveMatchPage({
 
                                 {selected ? (
                                   <div className="fanm-discipline-actions">
-                                    {!yellowEvent && !redEvent ? (
+                                      <p className="field-referee-full-name" style={{gridColumn:"1 / -1"}}>{player.name}</p>
+                                    {!redEvent ? (
                                       <button
                                         type="button"
                                         className="fanm-discipline-yellow"
@@ -6364,7 +6234,7 @@ export function FriendlyLiveMatchPage({
                                         }}
                                       >
                                         <span aria-hidden="true">🟨</span>
-                                        Yellow card
+                                        {yellowEvent ? "Second yellow → red" : "Yellow card"}
                                       </button>
                                     ) : null}
 
@@ -6475,7 +6345,7 @@ export function FriendlyLiveMatchPage({
                       className="fanm-dismissed-lineup-lock"
                     >
                       <span aria-hidden="true">🟥</span>
-                      <strong>{player.name}</strong>
+                      <RefereePlayerLabel player={player} peers={[...disciplinePlayersA.onField,...disciplinePlayersA.substitutes,...disciplinePlayersB.onField,...disciplinePlayersB.substitutes].filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>
                       <small>{player.teamLabel} · Sent off</small>
                     </span>
                   ))}
@@ -6975,18 +6845,18 @@ export function FriendlyLiveMatchPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Delete Event</h3>
-            <p>To delete an event, enter any team captain&apos;s password.</p>
+            <p>Type DELETE to delete this event.</p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type DELETE to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={deletePassword}
                 onChange={(e) => {
                   setDeletePassword(e.target.value);
                   setDeleteError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {deleteError && <p className="error-text">{deleteError}</p>}
             </div>
@@ -7020,16 +6890,16 @@ export function FriendlyLiveMatchPage({
               Only leave if you intend to discard this game.
             </p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type CANCEL to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={backPassword}
                 onChange={(e) => {
                   setBackPassword(e.target.value);
                   setBackError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {backError && <p className="error-text">{backError}</p>}
             </div>
@@ -7057,18 +6927,18 @@ export function FriendlyLiveMatchPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Undo last event?</h3>
-            <p>To undo the last event, enter any team captain&apos;s password.</p>
+            <p>Type CONFIRM to undo the last event.</p>
             <div className="field-row">
-              <label>Captain password</label>
+              <label>Type CONFIRM to confirm</label>
               <input
-                type="password"
+                type="text"
                 className="text-input"
                 value={undoPassword}
                 onChange={(e) => {
                   setUndoPassword(e.target.value);
                   setUndoError("");
                 }}
-                maxLength={4}
+                maxLength={7}
               />
               {undoError && <p className="error-text">{undoError}</p>}
             </div>

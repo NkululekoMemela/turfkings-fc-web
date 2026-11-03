@@ -1,10 +1,11 @@
+const {companyClubSetup,emptyCompanyFootballState}=require("./companyClubSetup.cjs");
 const {createHash}=require('node:crypto');
 const valid=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,150}$/.test(x);
 const text=(x,n=160)=>String(x||'').trim().slice(0,n);
 const operator=user=>String(user.email||'').toLowerCase()==='nkululekolerato@gmail.com';
 function signed(user){if(!user?.uid||!user.email_verified||user.cameraSession||user.cameraSessionId||user.cameraHandoffId||user.firebase?.sign_in_provider==='anonymous')throw Error('Sign in with your verified Google account.');}
 const grantId=scope=>[scope.venueId,scope.seasonId,scope.clubId].join('~');
-function publicApplication(row,id){return {id,companyName:row.companyName,city:row.city,contactName:row.contactName,contactEmail:row.contactEmail,phone:row.phone,logoUrl:row.logoUrl,status:row.status,reason:row.reason||'',companyId:row.companyId||'',clubId:row.clubId||''};}
+function publicApplication(row,id){return {id,setup:row.setup||null,companyName:row.companyName,city:row.city,contactName:row.contactName,contactEmail:row.contactEmail,phone:row.phone,logoUrl:row.logoUrl,status:row.status,reason:row.reason||'',companyId:row.companyId||'',clubId:row.clubId||''};}
 async function companyContext({db,tx,user,companyId}){
  if(!valid(companyId))throw Error('Choose your company.');
  const [orgSnap,accountSnap]=await tx.getAll(db.doc(`companyOrganizations/${companyId}`),db.doc(`companyFundingAccounts/${companyId}`));
@@ -34,12 +35,13 @@ async function handle({db,user,body,uploadLogo=async()=>{throw Error('Company lo
   return {isOperator:operator(user),companies,applications:apps.docs.map(s=>publicApplication(s.data(),s.id))};
  }
  if(action==='apply'){
+  const setup=companyClubSetup(body.setup);
   if(!valid(body.requestId))throw Error('Refresh the company registration form.');
   const companyName=text(body.companyName,100),contactName=text(body.contactName,100),city=text(body.city,100),phone=text(body.phone,40);
   if(!companyName||!city||!contactName||!/^\+?[\d ()-]{7,40}$/.test(phone))throw Error('Add the company name, city, your contact name and phone.');
   const dataUrl=String(body.logoDataUrl||''),match=/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl),bytes=match?Buffer.from(match[1],'base64'):null;
   if(!bytes||bytes.length>4*1024*1024||!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw Error('Upload your company logo as PNG, JPG or WebP.');
-  const id=createHash('sha256').update(`${user.uid}:${body.requestId}`).digest('hex'),ref=db.doc(`companyApplications/${id}`),hash=createHash('sha256').update(JSON.stringify([companyName,city,contactName,phone,dataUrl])).digest('hex');
+  const id=createHash('sha256').update(`${user.uid}:${body.requestId}`).digest('hex'),ref=db.doc(`companyApplications/${id}`),hash=createHash('sha256').update(JSON.stringify([companyName,city,contactName,phone,dataUrl,setup])).digest('hex');
   const old=(await ref.get()).data();if(old){if(old.requestHash!==hash)throw Error('This registration changed. Start a new request.');return {application:publicApplication(old,id)};}
   const indexRef=db.doc(`companyUserAccounts/${user.uid}`);
   if(((await indexRef.get()).data()?.pendingApplications||[]).length>=3)throw Error('FANM is already reviewing your requests. Wait before sending another.');
@@ -47,7 +49,7 @@ async function handle({db,user,body,uploadLogo=async()=>{throw Error('Company lo
   try{const result=await db.runTransaction(async tx=>{
    const existing=(await tx.get(ref)).data();if(existing){if(existing.requestHash!==hash)throw Error('Registration changed. Refresh.');return {application:publicApplication(existing,id)};}
    const index=(await tx.get(indexRef)).data()||{};if((index.pendingApplications||[]).length>=3)throw Error('FANM is already reviewing your requests.');
-   const row={companyName,city,contactName,phone,contactEmail:String(user.email||'').toLowerCase(),applicantUid:user.uid,logoUrl:upload.url,status:'pending',requestHash:hash,createdAtMs:Date.now()};tx.set(ref,row);tx.set(indexRef,{...index,pendingApplications:[...(index.pendingApplications||[]),id]});return {application:publicApplication(row,id)};
+   const row={setup,companyName,city,contactName,phone,contactEmail:String(user.email||'').toLowerCase(),applicantUid:user.uid,logoUrl:upload.url,status:'pending',requestHash:hash,createdAtMs:Date.now()};tx.set(ref,row);tx.set(indexRef,{...index,pendingApplications:[...(index.pendingApplications||[]),id]});return {application:publicApplication(row,id)};
   });used=result.application.logoUrl===upload.url;return result;}finally{if(!used)await upload.remove?.();}
  }
  if(action==='reject'){
@@ -61,9 +63,11 @@ async function handle({db,user,body,uploadLogo=async()=>{throw Error('Company lo
    const companyId=`co_${body.applicationId.slice(0,24)}`,clubId=`company-${body.applicationId.slice(0,24)}`;
    const refs=[db.doc(`companyOrganizations/${companyId}`),db.doc(`clubs/${clubId}`),db.doc(`companyUserAccounts/${app.applicantUid}`)],existing=await tx.getAll(...refs);
    if(existing[0].exists||existing[1].exists)throw Error('Company identity already exists. Refresh.');
+   const setup=companyClubSetup(app.setup);
    const now=Date.now();
    tx.set(refs[0],{name:app.companyName,logoUrl:app.logoUrl,status:'active',clubIds:[clubId],participantUids:[app.applicantUid],roles:{[app.applicantUid]:['company_admin','coordinator']},contactEmail:app.contactEmail,contactName:app.contactName,phone:app.phone,createdAtMs:now,approvedByUid:user.uid});
-   tx.set(refs[1],{name:app.companyName,clubType:'company',companyId,billingModel:'company',companyStatus:'active',ownerType:'company',ownerCompanyId:companyId,ownerUid:user.uid,createdByUid:user.uid,adminUids:[app.applicantUid],logoUrl:app.logoUrl,image:app.logoUrl,branding:{logoUrl:app.logoUrl},city:app.city,locationDetails:{city:app.city,displayLocation:app.city},status:'active',createdAtMs:now});
+   tx.set(refs[1],{...setup,id:clubId,name:setup.clubName,clubType:'company',companyId,billingModel:'company',companyStatus:'active',ownerType:'company',ownerCompanyId:companyId,ownerUid:user.uid,createdByUid:user.uid,adminUids:[app.applicantUid],logoUrl:app.logoUrl,image:app.logoUrl,branding:{logoUrl:app.logoUrl},city:setup.city,locationDetails:setup.locationDetails,schedule:setup.schedule,status:'active',createdAtMs:now});
+   tx.set(db.doc(`clubs/${clubId}/state/main`),{state:emptyCompanyFootballState(clubId),clubId,updatedAtMs:now});
    tx.set(db.doc(`clubs/${clubId}/members/${app.applicantUid}`),{uid:app.applicantUid,email:app.contactEmail,fullName:app.contactName,status:'active',role:'captain',companyRole:'coordinator',isPlayer:false,createdAtMs:now});
    tx.set(db.doc(`companyFundingAccounts/${companyId}`),{companyId,status:'pending_terms',currency:'ZAR',limitMinor:0,reservedMinor:0,revision:1});
    tx.set(refs[2],{...(existing[2].data()||{}),pendingApplications:(existing[2].data()?.pendingApplications||[]).filter(id=>id!==body.applicationId),companyIds:[...new Set([...(existing[2].data()?.companyIds||[]),companyId])]});tx.set(ref,{...app,status:'active',companyId,clubId,approvedAtMs:now,approvedByUid:user.uid});return {companyId,clubId};

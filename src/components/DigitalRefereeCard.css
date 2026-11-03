@@ -1,0 +1,4 @@
+.digital-referee-card {position:fixed;inset:0;z-index:1000000;display:grid;place-items:center;color:#101010;text-align:center;padding:30px;}
+.digital-referee-card strong {font-size:clamp(36px,10vw,100px);font-weight:950;line-height:1;}
+.digital-referee-card p {font-size:clamp(20px,5vw,40px);font-weight:750;}
+.digital-referee-card button {position:absolute;bottom:max(18px,env(safe-area-inset-bottom));right:18px;width:40px;height:40px;border-radius:50%;border:1px solid #0006;background:#ffffff44;color:#111;font-size:26px;}

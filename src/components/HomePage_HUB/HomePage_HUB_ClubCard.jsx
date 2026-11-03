@@ -1,3 +1,4 @@
+import { clubFounderName } from "../../core/clubFounderCredit.mjs";
 import HubClubLogo from "./HubClubLogo.jsx";
 // src/components/HomePage_HUB/HomePage_HUB_ClubCard.jsx
 
@@ -31,24 +32,7 @@ function getClubVideoUrl(club) {
 
 
 function getClubLeaderFirstName(club = {}) {
-  const adminNames = Array.isArray(club?.adminNames)
-    ? club.adminNames
-        .map((value) => String(value || "").trim())
-        .filter(Boolean)
-    : [];
-
-  const leaderName =
-    club?.displayLeaderName ||
-    club?.delegatedAdminName ||
-    club?.mainAdminName ||
-    club?.ownerName ||
-    club?.owner?.name ||
-    club?.captain?.name ||
-    club?.captainName ||
-    club?.captainFirstName ||
-    club?.contactName ||
-    adminNames[0] ||
-    "";
+  const leaderName = club?.displayLeaderName || clubFounderName(club);
 
   return (
     String(leaderName || "")

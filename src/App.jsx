@@ -1,3 +1,4 @@
+import {emptyClubState} from "./core/clubStateBoundary.mjs";
 import FieldRouteBoundary from "./components/FieldRouteBoundary.jsx";
 import FieldPracticeTimer from "./components/FieldPracticeTimer.jsx";
 import SessionSelector from "./components/SessionSelector.jsx";
@@ -850,7 +851,7 @@ window.__TEST_NORMALIZE__ = ensureSeasonSchedulingShape;
 
 
 function ensureV2StateShape(s) {
-  const fallback = createDefaultStateV2();
+  const fallback = emptyClubState("unselected");
   if (!s || typeof s !== "object") return fallback;
 
   const activeSeasonId =
@@ -2844,6 +2845,15 @@ export default function App() {
       activeClubId,
       onNotificationOpened: async notification => {
         const data = notification?.data || {};
+        if(data.type === "facebook_highlight_ready" && /^[a-f0-9]{64}$/.test(data.draftId||"")){
+          if(data.recipientUid && data.recipientUid !== auth.currentUser?.uid)return;
+          const url=new URL(window.location.href);url.searchParams.set("facebookReview",data.draftId);
+          window.history.replaceState({},"",url);
+          nativeStartupRoutedRef.current=true;setNativeStartupReady(true);
+          setPage(PAGE_WELCOME);
+          window.dispatchEvent(new Event("facebook-review-open"));
+          return;
+        }
         const directDestination=notificationDestination(data);
         if(directDestination){
           // A notification is an explicit Official destination, including on cold launch.
@@ -3370,7 +3380,7 @@ export default function App() {
   };
 
   const [state, setState] = useState(() =>
-    USE_V2 ? createDefaultStateV2() : loadState()
+    USE_V2 ? emptyClubState(activeClubId) : loadState()
   );
 
   /*
@@ -3387,6 +3397,9 @@ export default function App() {
    * snapshot while the latest V2 write is still pending.
    */
   const pendingStateWriteUpdatedAtRef = useRef(null);
+  const footballLoadedScopeRef=useRef(null);
+  const [footballStateError,setFootballStateError]=useState("");
+  const footballScopeKey=JSON.stringify([activeClubId,footballDataScope]);
 
   /*
    * A coded Practice squad save must remain authoritative while
@@ -3817,7 +3830,9 @@ export default function App() {
 
 
   const updateState = (updater) => {
+    if(USE_V2&&footballLoadedScopeRef.current!==footballScopeKey){console.warn("Club setup is still loading. No football write was made.");return;}
     setState((prev) => {
+      if(USE_V2&&(footballLoadedScopeRef.current!==footballScopeKey||prev.clubId!==activeClubId))return prev;
       const next = typeof updater === "function" ? updater(prev) : updater;
       if (USE_V2) {
         const safe = ensureV2StateShape(next);
@@ -3879,7 +3894,14 @@ export default function App() {
     });
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    let disposed=false;
+    footballLoadedScopeRef.current=null;
+    setFootballStateError("");
+    pendingStateWriteUpdatedAtRef.current=null;
+    if(USE_V2)setState(ensureV2StateShape(emptyClubState(activeClubId)));
+    setPreloadedPlayerPhotosByName({});
+    setPracticeSavedLeagueTeams(null);setPracticeSavedFiveVFiveTeams(null);
     // Disabled localStorage bootstrap for V2.
     authoritativeFootballStateReceivedRef.current = false;
     setFootballStateReady(false);
@@ -3887,8 +3909,20 @@ export default function App() {
 
     const unsubscribe = USE_V2
       ? subscribeToStateV2(
-          (cloudState) => {
+          (cloudState,sourceInfo={}) => {
+            if(disposed)return;
+            if(sourceInfo.scopeMismatch || (isCompanyClub&&!isPracticeMode&&sourceInfo.unbound)){
+              footballLoadedScopeRef.current=null;
+              authoritativeFootballStateReceivedRef.current=true;
+              setState(ensureV2StateShape(emptyClubState(activeClubId)));
+              setFootballStateReady(true);
+              setFootballStateError("This Club has older football data without a verified Club ownership marker. It is hidden and editing is blocked pending review; no records have been deleted.");
+              return;
+            }
+            footballLoadedScopeRef.current=footballScopeKey;
+            authoritativeFootballStateReceivedRef.current=true;
             if (!cloudState) {
+              setState(ensureV2StateShape(emptyClubState(activeClubId)));
               setFootballStateReady(true);
               return;
             }
@@ -3918,6 +3952,7 @@ export default function App() {
             authoritativeFootballStateReceivedRef.current = true;
 
             setState((prev) => {
+              if(disposed)return prev;
               const pendingWriteVersion =
                 pendingStateWriteUpdatedAtRef.current;
 
@@ -3979,10 +4014,11 @@ export default function App() {
           setState(cloudState);
         });
 
-    return () => unsubscribe && unsubscribe();
+    return () => {disposed=true;unsubscribe?.();};
   }, [
     footballStateClubId,
     footballDataScope,
+    isCompanyClub,
   ]);
 
   /*
@@ -9681,6 +9717,8 @@ export default function App() {
           <span className="tk-admin-reclaim-tab-role">{activeRole}</span>
         </button>
       )}
+
+      {footballStateError&&page!==PAGE_HOME&&page!==PAGE_WELCOME&&page!==PAGE_VENUE_ENTRY&&<aside role="alert" style={{margin:"12px",padding:"16px",background:"#321c28",color:"#ffe2e2",border:"1px solid #c76e7c",borderRadius:14}}>{footballStateError}</aside>}
 
       {page === PAGE_WELCOME && (
         <WelcomePage

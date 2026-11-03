@@ -3,7 +3,7 @@ const {fixture}=require('./helpers/playerWorkflowFirestore.cjs');
 const {handle,sponsoredMembers,grantId}=require('../functions/companyClubs.cjs');
 const admin={uid:'fanm',email:'nkululekolerato@gmail.com',email_verified:true},user={uid:'contact',email:'contact@company.test',email_verified:true};
 const logo='data:image/png;base64,'+Buffer.from([137,80,78,71,13,10,26,10,0]).toString('base64');
-const application={action:'apply',requestId:'request',companyName:'Acme',contactName:'Contact',city:'Cape Town',phone:'0768304880',logoDataUrl:logo};
+const application={setup:{clubName:'Acme',venueName:'Pitch',address:'1 Main Road',suburb:'Wynberg',city:'Cape Town',country:'South Africa',playDay:'Wednesday',playTime:'17:30',playEndTime:'19:00',timezone:'Africa/Johannesburg',latitude:-33.9,longitude:18.4},action:'apply',requestId:'request',companyName:'Acme',contactName:'Contact',city:'Cape Town',phone:'0768304880',logoDataUrl:logo};
 async function company(){const f=fixture();const response=await handle({...f,user,body:application,uploadLogo:async()=>({url:'https://example.test/logo.png'})});const c=await handle({...f,user:admin,body:{action:'activate',applicationId:response.application.id}});return {...f,...c};}
 async function season(){const f=await company();const scope={clubId:f.clubId,venueId:'field',seasonId:'season'};f.records.set(`clubFieldMemberships/${f.clubId}`,{status:'active',venueId:'field'});f.records.set('leagueVenues/field',{name:'Field',league:{activeSeason:{id:'season',status:'active',clubIds:[f.clubId]}}});
  const entries={p:{memberId:'p',sourcePlayerId:'player',fullName:'Player',invitationStatus:'accepted',contributionCents:10000,currency:'ZAR',paymentStatus:'pending'}};

@@ -1,3 +1,4 @@
+import { clubFounderName } from "../core/clubFounderCredit.mjs";
 import HubMarketingAdvert from "../components/HubMarketingAdvert.jsx";
 import CompanyClubWorkspace from "../components/CompanyClubWorkspace.jsx";
 import {clubsInCategory} from "../core/clubCategory.mjs";
@@ -723,56 +724,12 @@ export default function HomePage_HUB({
                 collection(db, "clubs", clubId, "publicMembers")
               );
 
-              const platformSuperAdminEmail =
-                "nkululekolerato@gmail.com";
-
               const activeAdministrators = membersSnap.docs
-                .map((memberDoc) => ({
-                  id: memberDoc.id,
-                  ...(memberDoc.data() || {}),
-                }))
-                .filter((member) => {
-                  const role = String(member?.role || "")
-                    .trim()
-                    .toLowerCase();
-
-                  const status = String(member?.status || "active")
-                    .trim()
-                    .toLowerCase();
-
-                  return (
-                    role === "admin" &&
-                    !["deleted", "withdrawn", "terminated"].includes(status)
-                  );
-                });
-
-              const delegatedAdministrator =
-                activeAdministrators.find((member) => {
-                  const email = String(member?.email || "")
-                    .trim()
-                    .toLowerCase();
-
-                  return (
-                    email &&
-                    email !== platformSuperAdminEmail
-                  );
-                }) || null;
-
-              const fallbackAdministrator =
-                activeAdministrators[0] || null;
-
-              const recognisedAdministrator =
-                delegatedAdministrator || fallbackAdministrator;
-
-              const displayLeaderName = String(
-                recognisedAdministrator?.fullName ||
-                recognisedAdministrator?.shortName ||
-                recognisedAdministrator?.name ||
-                hydratedClub?.captain?.name ||
-                hydratedClub?.captainName ||
-                hydratedClub?.captainFirstName ||
-                ""
-              ).trim();
+                .map(memberDoc => ({ id: memberDoc.id, ...(memberDoc.data() || {}) }))
+                .filter(member => String(member.role || "").toLowerCase() === "admin" &&
+                  !["deleted", "withdrawn", "terminated", "removed"].includes(
+                    String(member.status || "active").toLowerCase()));
+              const displayLeaderName = clubFounderName(hydratedClub, activeAdministrators);
 
               return {
                 ...hydratedClub,
@@ -1518,8 +1475,8 @@ export default function HomePage_HUB({
             onClick={() => clubCategoryView==="company"?setCompanyWorkspaceOpen(true):setSignupOpen(true)}
           >
             <span>+</span>
-            <strong>{clubCategoryView==="company"?"Request a Company Club":"Register your club"}</strong>
-            <small>{clubCategoryView==="company"?"FANM helps develop your profile":"Free setup for captains"}</small>
+            <strong>{clubCategoryView==="company"?"Create a Company Club":"Register your club"}</strong>
+            <small>{clubCategoryView==="company"?"Free setup for creating a company team":"Free setup for captains"}</small>
           </button>
 
           {filteredVisibleClubs.map((club) => {
