@@ -73,3 +73,62 @@ body .pool-page > .pool-shell {
     padding-inline: 0;
   }
 }
+
+
+/* FANM Field and Welcome layout completion */
+:root { --fanm-page-max-width:1180px; }
+body .app-root.app-root--field > .field-ribbon-frame,
+body .app-root.app-root--field > .field-referee-booth {
+  width:100%!important; max-width:1180px!important;
+  min-width:0; margin-inline:auto!important; box-sizing:border-box;
+}
+body .app-root.app-root--field .field-ribbon-content,
+body .app-root.app-root--field .field-referee-booth-content {
+  width:100%!important; max-width:100%!important;
+  padding-inline:0!important; box-sizing:border-box;
+}
+body .app-root .page {
+  width:100%!important; max-width:1180px!important;
+  min-width:0; box-sizing:border-box;
+}
+body .app-root .page > .card,
+body .app-root .venue-stats-page > .venue-stats-card,
+body .app-root .venue-stats-page > .venue-stats-header {
+  width:100%!important; max-width:100%!important;
+  margin-inline:auto!important; box-sizing:border-box;
+}
+body .app-root .page .landing-actions > button,
+body .app-root .page .landing-actions > .field-portal-tile,
+body .app-root .page > .card > .actions-row > button {
+  width:100%!important; max-width:none!important; min-width:0;
+}
+body .app-root .page > .card > .actions-row:not(.landing-actions) > button {
+  flex:1 1 150px;
+}
+@media(min-width:641px) {
+  body .app-root .page .landing-actions {
+    width:100%; max-width:none;
+    grid-template-columns:repeat(auto-fit,minmax(170px,220px))!important;
+    justify-content:space-between!important; gap:20px!important;
+  }
+  body .app-root .page .landing-actions > button,
+  body .app-root .page .landing-actions > .field-portal-tile {
+    min-height:160px!important; max-height:220px!important; aspect-ratio:1;
+  }
+}
+body #fanm-welcome-hero .fanm-hero__content {
+  width:min(1180px,calc(100% - 28px))!important;
+  padding-inline:0!important;
+}
+body #fanm-welcome-hero .fanm-hero__actions {
+  width:100%; max-width:none;
+}
+@media(max-width:640px) {
+  body .app-root.app-root--field {
+    padding-left:max(4px,env(safe-area-inset-left))!important;
+    padding-right:max(4px,env(safe-area-inset-right))!important;
+  }
+  body #fanm-welcome-hero .fanm-hero__content {
+    width:calc(100% - 8px)!important;
+  }
+}
