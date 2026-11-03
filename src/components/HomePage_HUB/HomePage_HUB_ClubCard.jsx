@@ -72,6 +72,7 @@ function compactPlayTime(value = "") {
 }
 
 function getVerificationBadge(club = {}, entityLabel = "Club") {
+  if(club.clubType==="company"&&club.companyStatus==="active")return {label:"Company Club",className:"tk-trust-face--verified"};
   const level = Number(club.verificationLevel ?? club.trustLevel ?? 0);
 
   if (level >= 3) {

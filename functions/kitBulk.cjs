@@ -19,11 +19,12 @@ async function handle({db,user,body}){
  const clubId=body.clubId;
  if(body.action==="bibView"){
   const ctx=await context(db,user,clubId),[requests,products]=await Promise.all([db.collection(`${root(clubId)}/requests`).get(),db.collection("kitShopProducts").get()]);
-  return {captain:ctx.captain,memberId:ctx.member.id,clubName:ctx.club.name||ctx.club.clubName||"Your Club",onlinePayments:clubId==="turf-kings",members:(ctx.captain?ctx.members:[ctx.member]).map(m=>({id:m.id,name:m.shortName||m.fullName||"Player",number:m.jerseyNumber??null})),requests:requests.docs.filter(d=>ctx.captain||d.data().memberId===ctx.member.id).map(d=>publicRequest(d.data(),d.id)),products:products.docs.filter(d=>d.data().active).map(d=>({id:d.id,title:d.data().title,size:d.data().size,color:d.data().color,priceMinor:d.data().priceMinor,stock:d.data().stock,madeToOrder:d.data().madeToOrder===true}))};
+  return {payerModel:ctx.club.clubType==="company"?"company":"individual",captain:ctx.captain,memberId:ctx.member.id,clubName:ctx.club.name||ctx.club.clubName||"Your Club",onlinePayments:clubId==="turf-kings",members:(ctx.captain?ctx.members:[ctx.member]).map(m=>({id:m.id,name:m.shortName||m.fullName||"Player",number:m.jerseyNumber??null})),requests:requests.docs.filter(d=>ctx.captain||d.data().memberId===ctx.member.id).map(d=>publicRequest(d.data(),d.id)),products:products.docs.filter(d=>d.data().active).map(d=>({id:d.id,title:d.data().title,size:d.data().size,color:d.data().color,priceMinor:d.data().priceMinor,stock:d.data().stock,madeToOrder:d.data().madeToOrder===true}))};
  }
  return db.runTransaction(async tx=>{
   const ctx=await context(db,user,clubId,tx);
   if(body.action==="confirmBibContribution"){
+   if(ctx.club.clubType==="company")throw Error("Company merchandise is billed to the company, not to players.");
    if(!ctx.captain||!valid(body.requestId)||!clean(body.reference))throw Error("Captain access and a verified payment reference are required.");
    const ref=db.doc(`${root(clubId)}/requests/${body.requestId}`),saved=(await tx.get(ref)).data();
    if(!saved||saved.revision!==body.expectedRevision||saved.status!=="requested"||saved.paymentStatus==="pending")throw Error("Refresh this request before confirming payment.");
@@ -46,7 +47,7 @@ async function handle({db,user,body}){
  });
 }
 async function prepare({db,tx,user,body,orderId}){
- const ctx=await context(db,user,body.clubId,tx);if(!ctx.captain)throw Error("Your captain places the bulk order.");
+ const ctx=await context(db,user,body.clubId,tx);if(ctx.club.clubType==="company")throw Error("Company merchandise ordering opens with company invoicing. No personal payment is required.");if(!ctx.captain)throw Error("Your captain places the bulk order.");
  if(!Array.isArray(body.allocations)||![6,12,18,24].includes(body.allocations.length))throw Error("Select a pack of 6 or 12 players per home or away colour.");
  const seen=new Set(),numbers=new Set(),counts={},items={};
  const allocations=[];

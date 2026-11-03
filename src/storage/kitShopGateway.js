@@ -14,7 +14,7 @@ async function performShopRequest(body){
 // Share only simultaneous reads. Never cache order mutations or data across accounts.
 const pendingShopReads=new Map();
 export async function kitShopRequest(body){
- if(!['catalogue','bibView'].includes(body.action))return performShopRequest(body);
+ if(!['catalogue','bibView','hireView'].includes(body.action))return performShopRequest(body);
  const user=auth.currentUser;if(!user?.uid||!user.emailVerified)throw new Error("Sign in with your verified Google account.");
  const key=JSON.stringify([user.uid,getActiveFirebaseFunctionsBaseUrl(),body]);
  if(pendingShopReads.has(key))return pendingShopReads.get(key);

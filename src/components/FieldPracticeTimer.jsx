@@ -1,10 +1,11 @@
+import FieldSessionControl from "./FieldSessionControl.jsx";
 import React, {useContext, useEffect, useId, useState} from "react";
 import {createPortal} from "react-dom";
 import {practiceReminderVisible} from "../core/fieldPracticePresentation.mjs";
 import "./FieldPracticePresentation.css";
 import {FieldRibbonContext} from "./FieldRibbonContext.jsx";
 
-export default function FieldPracticeTimer({expiresAt, onExit, clubMode=false}) {
+export default function FieldPracticeTimer({expiresAt, onExit, clubMode=false, showSessionControl=false}) {
   const ribbonHost = useContext(FieldRibbonContext);
   const expiry = Date.parse(expiresAt);
   const remaining = () => Number.isFinite(expiry)
@@ -31,15 +32,8 @@ export default function FieldPracticeTimer({expiresAt, onExit, clubMode=false}) 
   };
 
   return <>
-    {ribbonHost && onExit && createPortal(
-      <button type="button" onClick={onExit}
-        title="Choose Session" aria-label="Choose Session"
-        style={{width: 80, minHeight: 32, padding: "4px 6px",
-          fontSize: 10, lineHeight: 1.15, borderRadius: 10, fontWeight: 800,
-          background: "linear-gradient(100deg,#581c87,#86198f)",
-          color: "#fff", border: "1px solid #d8b4fe", cursor: "pointer"}}>
-        Choose Session
-      </button>, ribbonHost)}
+    {showSessionControl && ribbonHost && onExit && createPortal(
+      <FieldSessionControl onClick={onExit}/>, ribbonHost)}
     <section aria-label="Practice session ribbon"
     style={{
       position: clubMode ? "fixed" : "sticky", top: clubMode ? 90 : 126, zIndex: clubMode ? 12000 : 45,
@@ -87,7 +81,7 @@ export default function FieldPracticeTimer({expiresAt, onExit, clubMode=false}) 
       <p style={{margin: 0}}>
         Official is for real seasons, match results and standings.
         Practice activity stays separate. The countdown shows the time
-        left in this session. Choose Choose Session on the top ribbon to choose your next session.
+        left in this session. Return Home and use the session control to choose your next session.
       </p>
     </div>}
   </section>

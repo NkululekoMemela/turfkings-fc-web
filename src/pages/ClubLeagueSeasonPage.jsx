@@ -28,6 +28,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
   const [authReady, setAuthReady] = useState(false);
   const [context, setContext] = useState(null);
   const [view, setView] = useState(null);
+  const companyFunded=view?.payerModel==="company";
   const [players, setPlayers] = useState([]);
   const [selected, setSelected] = useState([]);
   const [playerSearch, setPlayerSearch] = useState("");
@@ -256,21 +257,20 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
         Try again
       </button>}
 
-      {context&&(!canManageUi||invitation)&&<section className="card league-own-booking league-commit-card"><span className="league-studio-eyebrow">YOUR SEASON PLACE</span>{!invitation?<p>Your captain has not invited you to this season squad yet.</p>:<><h2>{invitation.fullName}</h2>{invitation.paymentStatus==="paid"?<><p className="league-own-paid" role="status">✓ Season booked</p><p className="muted small">You are available for the season. Only update the days you cannot play. Your captain selects each match-day team.</p></>:invitation.invitationStatus==="declined"?<p>Invitation declined. Contact your captain if your plans change.</p>:<><p className="muted">One season commitment. Review the dates and payment together.</p><FieldSeasonPayment scope={context.scope} invitation={invitation} onOpenPayment={()=>{setSeasonPaymentOpen(true);window.scrollTo(0,0);}}/>{invitation.invitationStatus==="accepted"&&<p className="muted small">Commitment saved · {invitation.seasonCheckoutPaymentId?"Resume payment to complete your booking.":"Payment confirmation pending."}</p>}{invitation.invitationStatus==="pending"&&<button type="button" className="league-decline-link" disabled={busy} onClick={()=>{if(window.confirm("Decline this season invitation?"))act(respondSeasonInvitation,{memberId:invitation.memberId,response:"declined"},"Invitation declined.");}}>I cannot join this season</button>}</>}</>}</section>}
+      {context&&(!canManageUi||invitation)&&<section className="card league-own-booking league-commit-card"><span className="league-studio-eyebrow">YOUR SEASON PLACE</span>{!invitation?<p>Your captain has not invited you to this season squad yet.</p>:<><h2>{invitation.fullName}</h2>{invitation.paymentStatus==="paid"&&!companyFunded?<><p className="league-own-paid" role="status">✓ Season booked</p><p className="muted small">You are available for the season. Only update the days you cannot play. Your captain selects each match-day team.</p></>:invitation.invitationStatus==="declined"?<p>Invitation declined. Contact your captain if your plans change.</p>:<><p className="muted">{companyFunded?"Review your company-funded season and confirm availability.":"One season commitment. Review the dates and payment together."}</p><FieldSeasonPayment scope={context.scope} invitation={invitation} onCommitted={()=>setRevision(v=>v+1)} onOpenPayment={()=>{setSeasonPaymentOpen(true);window.scrollTo(0,0);}}/>{!companyFunded&&invitation.invitationStatus==="accepted"&&<p className="muted small">Commitment saved · {invitation.seasonCheckoutPaymentId?"Resume payment to complete your booking.":"Payment confirmation pending."}</p>}{invitation.invitationStatus==="pending"&&<button type="button" className="league-decline-link" disabled={busy} onClick={()=>{if(window.confirm("Decline this season invitation?"))act(respondSeasonInvitation,{memberId:invitation.memberId,response:"declined"},"Invitation declined.");}}>I cannot join this season</button>}</>}</>}</section>}
       {context && canManageUi && !squad && (
         <section className="card" style={{
           border: "1px solid rgba(167,139,250,.6)", padding: 18,
         }}>
           <h3>Choose your season squad</h3>
-          <p className="muted">Invite your players and divide the whole-season
-            Club contribution between them.</p>
-          <label>Total team fee for the entire season · Rand
+          <p className="muted">{companyFunded?"Invite your season squad. FANM authorises the company’s funding; players do not pay personally.":"Invite your players and divide the whole-season Club contribution between them."}</p>
+          <label>{companyFunded?"Agreed company season cost · Rand":"Total team fee for the entire season · Rand"}
             <input className="text-input" type="number" min="0.01"
               step="0.01" value={total} disabled={busy}
               onChange={event => setTotal(event.target.value)} />
           </label>
           <p>{selected.length} selected
-            {selected.length > 0 && Number.isFinite(amount) && amount > 0
+            {!companyFunded && selected.length > 0 && Number.isFinite(amount) && amount > 0
               ? ` · approximately ${money(totalCents / selected.length)} each`
               : ""}
           </p>
@@ -305,13 +305,12 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
           </div>
           {!players.length && <p>No active players with linked Club memberships
             are available. Check the Club player records.</p>}
-          <p className="muted small">Each invitation states the exact contribution.
-            Players pay their captain. Acceptance does not confirm payment.</p>
+          <p className="muted small">{companyFunded?"Players accept their invitations. FANM authorises the company commitment against its agreed allowance; no player payment is requested.":"Each invitation states the exact contribution. Players pay their captain. Acceptance does not confirm payment."}</p>
           <button type="button" className="primary-btn"
             disabled={busy || !selected.length ||
               !Number.isSafeInteger(totalCents) || totalCents <= 0}
             onClick={() => {
-              if (!window.confirm(
+              if (!window.confirm(companyFunded?`Company season total: ${money(totalCents)}. Invite ${selected.length} players? FANM will authorise company funding.`:
                 `Total team fee: ${money(totalCents)} for the entire season.\n` +
                 `${selected.length} invited players share this total, approximately ` +
                 `${money(totalCents / selected.length)} each.\n\n` +
@@ -329,9 +328,9 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
       )}
 
       {canManageUi && squad && (
-        <details className="card league-admin-management"><summary>Manage squad &amp; payments <span>{entries.length} invited · {entries.filter(entry=>entry.paymentStatus==="paid").length} booked</span></summary>
+        <details className="card league-admin-management"><summary>{companyFunded?"Manage squad & company funding":"Manage squad & payments"} <span>{entries.length} invited · {entries.filter(entry=>companyFunded?entry.fundingStatus==="authorised":entry.paymentStatus==="paid").length} booked</span></summary>
           <h3>Season squad</h3>
-          <LeagueSeasonMarkPaid
+          {!companyFunded&&<LeagueSeasonMarkPaid
             scope={context.scope}
             entries={entries}
             seasonName={context.season.name || "League season"}
@@ -339,12 +338,12 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
               setMessage(report);
               setRevision(value => value + 1);
             }}
-          />
+          />}
           <p>{money(squad.plan.totalCents)} total · {entries.length} players</p>
           <div className="league-squad-grid">
           {entries.map(entry => (
             <div className={`league-squad-player ${
-              entry.paymentStatus === "paid" ? "is-paid" : "is-unpaid"
+              (companyFunded?entry.fundingStatus==="authorised":entry.paymentStatus === "paid") ? "is-paid" : "is-unpaid"
             }`} key={entry.memberId} style={{
               padding: "14px 0", borderTop: "1px solid rgba(167,139,250,.25)",
               display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12,
@@ -352,14 +351,14 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
               <div style={{flex: "1 1 180px", minWidth: 0}}>
                 <strong>{entry.fullName}</strong>
                 <p className="muted small" style={{margin: "5px 0"}}>
-                  {money(entry.contributionCents)} · {entry.invitationStatus}
-                  {entry.paymentStatus !== "paid" && " · Unpaid"}
+                  {companyFunded?"Company funded":money(entry.contributionCents)} · {entry.invitationStatus}
+                  {companyFunded?(entry.fundingStatus==="authorised"?" · Authorised":" · Awaiting FANM funding"):entry.paymentStatus !== "paid" && " · Unpaid"}
                 </p>
               </div>
               {entry.paymentStatus === "paid" && (
                 <span className="league-paid-badge">✓ Paid</span>
               )}
-              {["pending", "accepted"].includes(entry.invitationStatus) &&
+              {!companyFunded && ["pending", "accepted"].includes(entry.invitationStatus) &&
                 entry.paymentStatus !== "paid" && (
                 <button type="button" className="secondary-btn" disabled={busy}
                   onClick={() => {
@@ -432,7 +431,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
                           </span>
                           <span>{entry.fullName || entry.name || entry.memberId}</span>
                         </span>
-                        {canManageUi && entry.paymentStatus === "paid" && (
+                        {canManageUi && (companyFunded?entry.fundingStatus==="authorised":entry.paymentStatus === "paid") && (
                           <span className="league-matrix-paid" title="Paid"> ✓</span>
                         )}
                       </th>

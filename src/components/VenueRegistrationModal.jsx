@@ -1,3 +1,4 @@
+import {fieldHoursError} from "../core/fieldOperatingHours.mjs";
 import React, {
   useMemo,
   useState,
@@ -129,6 +130,8 @@ export default function VenueRegistrationModal({
 
   function validateStep(stepNumber) {
     if (stepNumber === 1) {
+      const hoursError=fieldHoursError(draft.operatingHours);
+      if(hoursError)return hoursError;
       if (!draft.name.trim()) {
         return "Field/Venue name is required.";
       }

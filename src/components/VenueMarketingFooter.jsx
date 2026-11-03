@@ -1,17 +1,16 @@
-import FIELD_MARKETING_IMAGE_TWO from "../assets/marketing/field-venue-advert-2.jpeg";
+import HubMarketingAdvert from "./HubMarketingAdvert.jsx";
 import { LEGAL } from "../legal/policies.js";
 import LegalSignature from "./LegalSignature.jsx";
 const FIELD_POLICY = LEGAL.field;
 import { ABOUT_RELEASE } from "../content/aboutRelease.js";
 import React, {
-  useEffect,
   useMemo,
   useState,
 } from "react";
 import HOME_FOOTER_LOGO_LIGHT from "../assets/branding/logo-main-light.jpeg";
 import HOME_FOOTER_LOGO_DAY from "../assets/branding/logo-main-day.jpeg";
 import HOME_FOOTER_LOGO_DARK from "../assets/branding/logo-main-dark.jpeg";
-import FIELD_MARKETING_IMAGE from "../assets/marketing/field-venue-marketing.png";
+
 
 const INFO = {
   help: {
@@ -61,22 +60,6 @@ const INFO = {
 };
 
 export default function VenueMarketingFooter() {
-  const [secondAdvertReady, setSecondAdvertReady] = useState(false);
-  const [advertIndex, setAdvertIndex] = useState(1);
-
-  useEffect(() => {
-    let active = true;
-    const preload = new Image();
-    preload.onload = () => {
-      if (active) setSecondAdvertReady(true);
-    };
-    preload.src = FIELD_MARKETING_IMAGE_TWO;
-    return () => {
-      active = false;
-      preload.onload = null;
-    };
-  }, []);
-
   const [infoModal, setInfoModal] =
     useState(null);
 
@@ -266,83 +249,9 @@ export default function VenueMarketingFooter() {
 
   return (
     <>
-      <section
-        className="fanm-venues__closing-visual field-marketing-carousel"
-        aria-label="5 Asides Near Me Field experience"
-      >
-        <img
-          src={
-            advertIndex === 1
-              ? FIELD_MARKETING_IMAGE_TWO
-              : FIELD_MARKETING_IMAGE
-          }
-          onError={() => {
-            setSecondAdvertReady(false);
-            setAdvertIndex(0);
-          }}
-          alt={
-            advertIndex === 1
-              ? "5 Asides Near Me Field football experience"
-              : "5 Asides Near Me Field and league experience"
-          }
-        />
+      <HubMarketingAdvert audience="field"/>
 
-        {secondAdvertReady && (
-          <>
-            <button
-              type="button"
-              className="field-marketing-carousel__arrow field-marketing-carousel__arrow--previous"
-              aria-label="Show previous marketing image"
-              onClick={() =>
-                setAdvertIndex((index) =>
-                  index === 0 ? 1 : 0
-                )
-              }
-            >
-              ‹
-            </button>
-
-            <button
-              type="button"
-              className="field-marketing-carousel__arrow field-marketing-carousel__arrow--next"
-              aria-label="Show next marketing image"
-              onClick={() =>
-                setAdvertIndex((index) =>
-                  index === 0 ? 1 : 0
-                )
-              }
-            >
-              ›
-            </button>
-
-            <div
-              className="field-marketing-carousel__dots"
-              aria-label={`Marketing image ${advertIndex + 1} of 2`}
-            >
-              {[0, 1].map((index) => (
-                <button
-                  key={index}
-                  type="button"
-                  className={
-                    index === advertIndex
-                      ? "field-marketing-carousel__dot is-active"
-                      : "field-marketing-carousel__dot"
-                  }
-                  aria-label={`Show marketing image ${index + 1}`}
-                  aria-current={
-                    index === advertIndex
-                      ? "true"
-                      : undefined
-                  }
-                  onClick={() => setAdvertIndex(index)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-
-      <footer className="hub-footer-brand fanm-venues__marketing-footer">
+      <footer className="hub-footer-brand fanm-venues__marketing-footer fanm-marketing-split">
         <div className="hub-footer-logo-stage">
           {footerLogos.map((logo, index) => (
             <img
@@ -366,10 +275,7 @@ export default function VenueMarketingFooter() {
           </h2>
 
           <p>
-            5 Asides Near Me connects Fields,
-            clubs, leagues, match officials
-            and players in one football
-            platform.
+            Bring clubs, fixtures, live scores and matchday updates together. Give players a home for the football they follow.
           </p>
 
           <div className="hub-footer-actions">
@@ -390,9 +296,6 @@ export default function VenueMarketingFooter() {
             </button>
           </div>
         </section>
-
-        {helpContent}
-
 
       </footer>
 

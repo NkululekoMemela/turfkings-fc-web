@@ -1,3 +1,4 @@
+import FieldBibHire from "../components/FieldBibHire.jsx";
 import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
 import {buildFieldClubTeam} from "../core/fieldClubTeam.js";
 import {resolveFieldUpcomingMatch} from "../core/fieldUpcomingMatch.js";
@@ -336,6 +337,8 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       onBack={() => navigate("landing")}
       onGoToStats={() => navigate("stats")}
     />;
+  } else if (page === "hireStock") {
+    content = <FieldBibHire venueId={venue.id} manage isPracticeMode/>;
   } else if (page === "lostFound") {
     content=<VenueLostFoundPage venueId={venue.id} venueName={practiceVenue?.name||venue.name} adminView scope={scope} onBack={()=>navigate("landing")}/>;
   } else if (page === "fixtures") {
@@ -371,7 +374,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   }
 
   return <div style={{paddingBottom: 90}}>
-    <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit}/>
+    <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit} showSessionControl={page==="landing"}/>
     {error && <p role="alert">{error}</p>}
     {busy && <p role="status">Preparing…</p>}
     {content}

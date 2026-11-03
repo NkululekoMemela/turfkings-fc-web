@@ -222,10 +222,10 @@
   stop-color: var(--field-ribbon-end) !important;
 }
 
-/* Sandstone identity text on the exposed canvas */
+/* Emerald identity text on the exposed canvas */
 .app-root--field[data-field-theme="sandstone"] .entry-page > header.header,
 .app-root--field[data-field-theme="sandstone"] .field-canvas-identity {
-  color: #0f2038 !important;
+  color: #f8fafc !important;
 }
 
 .app-root--field[data-field-theme="sandstone"] .entry-page > header.header :is(
@@ -240,7 +240,7 @@
   .auth-status > .muted > span strong
 ),
 .app-root--field[data-field-theme="sandstone"] .field-theme-picker > span {
-  color: #0f2038 !important;
+  color: #f8fafc !important;
 }
 
 /* Entry edit control occupies a separate row above hub navigation. */

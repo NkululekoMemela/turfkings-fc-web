@@ -1,3 +1,6 @@
+import HubMarketingAdvert from "../components/HubMarketingAdvert.jsx";
+import CompanyClubWorkspace from "../components/CompanyClubWorkspace.jsx";
+import {clubsInCategory} from "../core/clubCategory.mjs";
 import "../styles/FieldIdentityHub.css";
 import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
 import FirebaseEnvironmentControl from "../components/FirebaseEnvironmentControl.jsx";
@@ -331,9 +334,9 @@ function getMissingClubRequirements(club = {}) {
 
   if (!club?.completion?.hasLogo) missing.push("Upload a club logo");
   if (!club?.completion?.hasPhotos) missing.push("Add up to 3 club/team photos");
-  if (!club?.completion?.hasBanking) missing.push("Add banking details");
+  if (club.clubType!=="company" && !club?.completion?.hasBanking) missing.push("Add banking details");
   if (!club?.completion?.hasLocation) missing.push("Complete club location");
-  if (!club?.completion?.hasSchedule) missing.push("Add weekly play day/time");
+  if (club.clubType!=="company" && !club?.completion?.hasSchedule) missing.push("Add weekly play day/time");
 
   return missing;
 }
@@ -516,6 +519,9 @@ export default function HomePage_HUB({
   const [locationStatus, setLocationStatus] = useState("idle");
   const [clubSearchQuery, setClubSearchQuery] = useState("");
   const [clubFilter, setClubFilter] = useState("all");
+  const [clubCategoryView,setClubCategoryView]=useState(()=>{try{return sessionStorage.getItem("fanm:club-category")==="company"?"company":"community";}catch{return "community";}});
+  useEffect(()=>{try{sessionStorage.setItem("fanm:club-category",clubCategoryView);}catch{}},[clubCategoryView]);
+  const [companyWorkspaceOpen,setCompanyWorkspaceOpen]=useState(false);
   const [challengeClub, setChallengeClub] = useState(null);
   const [challengeFormat, setChallengeFormat] = useState("5v5");
   const [challengeDate, setChallengeDate] = useState("");
@@ -916,7 +922,7 @@ export default function HomePage_HUB({
   const filteredVisibleClubs = useMemo(() => {
     const query = String(clubSearchQuery || "").trim().toLowerCase();
 
-    let nextClubs = [...visibleClubs];
+    let nextClubs = clubsInCategory(visibleClubs,clubCategoryView);
 
     if (clubFilter === "mine") {
       nextClubs = nextClubs.filter((club) => isUsersOwnClub(club));
@@ -935,7 +941,7 @@ export default function HomePage_HUB({
     }
 
     if (clubFilter === "admin") {
-      nextClubs = [...visibleClubs];
+      nextClubs = clubsInCategory(visibleClubs,clubCategoryView);
     }
 
     if (clubFilter === "new") {
@@ -983,7 +989,7 @@ export default function HomePage_HUB({
 
       return haystack.includes(query);
     });
-  }, [visibleClubs, clubSearchQuery, clubFilter, identity]);
+  }, [visibleClubs, clubSearchQuery, clubFilter, identity, clubCategoryView]);
 
   function normalizeNewClubForHome(club) {
     const fakeDocSnap = {
@@ -1405,7 +1411,7 @@ export default function HomePage_HUB({
             <button
               type="button"
               className="hub-nav__primary"
-              onClick={() => setSignupOpen(true)}
+              onClick={() => clubCategoryView==="company"?setCompanyWorkspaceOpen(true):setSignupOpen(true)}
             >
               Sign up free
             </button>
@@ -1453,6 +1459,7 @@ export default function HomePage_HUB({
           </div>
         </div>
 
+        <p className="club-category-heading" aria-live="polite"><strong>{clubCategoryView==="company"?"Company clubs":"Community clubs"}</strong><span>{clubCategoryView==="company"?"Company-funded football":"Community-organised football"}</span></p>
         <div className="hub-club-filter-ribbon">
           <div className="hub-club-filter-ribbon__scroll">
             <button
@@ -1504,15 +1511,15 @@ export default function HomePage_HUB({
           <div className="hub-loading-card">Loading clubs...</div>
         ) : null}
 
-        <div className="hub-club-carousel" aria-label="Club carousel">
+        <div key={clubCategoryView} className="hub-club-carousel" aria-label={clubCategoryView==="company"?"Company Club carousel":"Community Club carousel"}>
           <button
             type="button"
-            className="hub-register-card"
-            onClick={() => setSignupOpen(true)}
+            className={`hub-register-card${clubCategoryView==="company"?" company-request-card":""}`}
+            onClick={() => clubCategoryView==="company"?setCompanyWorkspaceOpen(true):setSignupOpen(true)}
           >
             <span>+</span>
-            <strong>Register your club</strong>
-            <small>Free setup for captains</small>
+            <strong>{clubCategoryView==="company"?"Request a Company Club":"Register your club"}</strong>
+            <small>{clubCategoryView==="company"?"FANM helps develop your profile":"Free setup for captains"}</small>
           </button>
 
           {filteredVisibleClubs.map((club) => {
@@ -1531,12 +1538,15 @@ export default function HomePage_HUB({
                 onChallengeClub={openChallengeRequest}
                 onDeleteClub={handleDeleteClub}
                 canJoin={!isUsersOwnClub(club)}
-                canChallenge={canCurrentUserSendChallenge() && !isUsersOwnClub(club)}
+                canChallenge={clubCategoryView==="community" && canCurrentUserSendChallenge() && !isUsersOwnClub(club)}
                 canDelete={isSuperAdmin(currentUser)}
               />
             );
           })}
         </div>
+        <div className="club-category-switch" role="group" aria-label="Choose Club category">{[["community","Community"],["company","Company"]].map(([key,label])=><button key={key} type="button" data-category={key} aria-pressed={clubCategoryView===key} onClick={()=>{setClubCategoryView(key);setActiveMapClub(null);}}>{key==="company"&&<span className="club-category-crown" aria-hidden="true">♛</span>}{label} clubs</button>)}</div>
+
+
       </section>
 
       <section className="hub-map-section" aria-label="Club map preview">
@@ -1553,7 +1563,7 @@ export default function HomePage_HUB({
           <div className="hub-map-surface hub-map-surface--google">
             <HomePage_HUB_ClubGoogleMap
               apiKey={HAS_GOOGLE_MAPS_API_KEY ? GOOGLE_MAPS_API_KEY : ""}
-              clubs={clubFilter === "admin" ? visibleClubs : filteredVisibleClubs}
+              clubs={filteredVisibleClubs}
               onSelectClub={setActiveMapClub}
             />
           </div>
@@ -1594,7 +1604,8 @@ export default function HomePage_HUB({
         <FirebaseEnvironmentControl user={currentUser} />
       )}
 
-      <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer">
+      <HubMarketingAdvert audience="club"/>
+      <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer fanm-marketing-split">
         <div className="hub-footer-logo-stage">
           {footerLogoRotation.map((logo, index) => (
             <img
@@ -1613,8 +1624,7 @@ export default function HomePage_HUB({
           <span className="hub-kicker">Club-first football</span>
           <h2>Find football. Play today.</h2>
           <p>
-            5 Asides Near Me connects players, captains, payments, highlights
-            and club discovery in one clean football platform.
+            Community clubs organise their own football. Company clubs join through FANM for company-funded football. Play, connect and share your best moments.
           </p>
           <div className="hub-footer-actions">
             <button
@@ -1634,10 +1644,6 @@ export default function HomePage_HUB({
           </div>
 
         </section>
-
-        <ClubHubSupport openHubInfoModal={openHubInfoModal} />
-
-
 
       </footer>
 
@@ -1965,10 +1971,11 @@ export default function HomePage_HUB({
         </div>
       ) : null}
 
+      {companyWorkspaceOpen&&<CompanyClubWorkspace onClubCreated={async id=>{const snap=await getDoc(doc(db,"clubs",id));if(snap.exists()){const company=normalizeClub(snap);setClubs(current=>[...current.filter(c=>c.id!==id),company]);}}} onClose={()=>setCompanyWorkspaceOpen(false)}/>}
       <HomePage_HUB_SignupModal
         isOpen={signupOpen}
         onClose={() => setSignupOpen(false)}
-        onJoinExistingClub={() => handleJoinExistingClub(null)}
+        onRequestCompanyClub={() => {setClubCategoryView("company");setCompanyWorkspaceOpen(true);}}
         onClubCreated={handleClubCreated}
       />
 

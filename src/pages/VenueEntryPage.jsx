@@ -1,3 +1,4 @@
+import {fieldNavigationReady,fieldEmptyRouteMessage,safeFieldSeason} from "../core/fieldRouteSafety.mjs";
 import {buildPlatformPlayerSnapshot,evaluatePlatformPlayerState} from "../core/platformPlayer/platformPlayerService.js";
 import {planPlatformPlayerWrite} from "../core/platformPlayer/platformPlayerManager.js";
 import FieldBibHire from "../components/FieldBibHire.jsx";
@@ -971,19 +972,19 @@ export default function VenueEntryPage({
   });
 
   useEffect(() => {
-    const requestedPage = fieldSessionChoice === "practice" ? practicePage : venuePage;
+    const requestedPage = fieldSessionChoice === "practice" && canAccessFieldSettings ? practicePage : venuePage;
     onFieldNavState?.({
-      ready: Boolean(enteredIdentity) && Boolean(fieldSessionChoice) && fieldSessionChoice !== "choose",
-      page: requestedPage === "settings" && !canAccessFieldSettings ? "landing" : requestedPage,
+      ready: fieldNavigationReady({identity:enteredIdentity,choice:fieldSessionChoice,canChooseSession:canAccessFieldSettings}),
+      page: ["settings","hireStock"].includes(requestedPage) && !canAccessFieldSettings ? "landing" : requestedPage,
       canAccessSettings: canAccessFieldSettings,
     });
     return () => onFieldNavState?.({ready: false, page: "landing", canAccessSettings: false});
   }, [enteredIdentity, venuePage, onFieldNavState, fieldSessionChoice, practicePage, canAccessFieldSettings]);
 
   useEffect(() => {
-    if (venuePage === "settings" && !canAccessFieldSettings) setVenuePage("landing");
+    if (["settings","hireStock"].includes(venuePage) && !canAccessFieldSettings) setVenuePage("landing");
     if (fieldNavTarget?.page) {
-      setVenuePage(fieldNavTarget.page === "settings" && !canAccessFieldSettings ? "landing" : fieldNavTarget.page);
+      setVenuePage(["settings","hireStock"].includes(fieldNavTarget.page) && !canAccessFieldSettings ? "landing" : fieldNavTarget.page);
     }
   }, [fieldNavTarget, canAccessFieldSettings, Boolean(enteredIdentity)]);
 
@@ -1013,6 +1014,7 @@ export default function VenueEntryPage({
     return watchVenueSeason(
       venue.id,
       (season) => {
+        season=safeFieldSeason(season);
         console.info("[Field season check]", {
           venueId: venue.id,
           seasonId: season?.id || null,
@@ -1026,7 +1028,7 @@ export default function VenueEntryPage({
               ({ id, status, clubAId, clubBId })
           ),
         });
-        setVenueSeason(season);
+        setVenueSeason(safeFieldSeason(season));
       },
       (error) => {
         console.error(
@@ -5479,6 +5481,9 @@ export default function VenueEntryPage({
     });
 
 
+    const emptyFieldRoute=fieldEmptyRouteMessage(venuePage,venueSeason);
+    if(emptyFieldRoute)return <section className="card field-empty-season"><h2>{emptyFieldRoute}</h2><p>{canAccessFieldSettings?"Prepare your Field season, invite Clubs and publish fixtures. Squads will appear here.":"This Field has not published these match details yet. Come back once Clubs and fixtures are ready."}</p><button className="secondary-btn" onClick={()=>setVenuePage(canAccessFieldSettings?"settings":"landing")}>{canAccessFieldSettings?"Field settings":"Back to Field"}</button></section>;
+
     if (venuePage === "lostFound") {
       return (
         <VenueLostFoundPage
@@ -5546,7 +5551,7 @@ export default function VenueEntryPage({
           playerPhotosByName={{}}
           members={[]}
           identity={enteredIdentity}
-          activeClub={venue}
+          activeClub={activeClub}
           activeClubId={venue?.id}
           fieldSeason={venueSeason}
           canManageFieldNews={isFieldAdministrator}
@@ -5573,6 +5578,8 @@ export default function VenueEntryPage({
       );
     }
 
+    if (venuePage === "hireStock") return canAccessFieldSettings ? <FieldBibHire venueId={venue.id} manage/> : <p>Field management access is required.</p>;
+
     if (venuePage === "squads") {
       return <VenueSquadsPage venue={venue} season={venueSeason}
         onBack={() => setVenuePage("landing")} />;
@@ -5585,7 +5592,7 @@ export default function VenueEntryPage({
           paidFixtureId={liveMatch?.fixtureId||liveMatch?.id||nextFixture?.id||""}
           onShareFormation={draft=>{setFormationChatDraft(draft);setVenuePage("chat");}}
           activeClubId={venue.id}
-          activeClub={venue}
+          activeClub={activeClub}
           fieldLeagueScope={{
             kind: "venueLeague",
             environment: "official",
@@ -5699,7 +5706,7 @@ export default function VenueEntryPage({
     return (
       <>
       <FieldAcceptedTeams venueId={venue?.id} season={venueSeason} clubs={fieldClubProfiles} userId={currentUser?.uid} enabled={Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||authenticatedFieldStaff?.status==="active"))}/>
-      {canUseFieldPractice && <FieldPracticeEntry
+      {canUseFieldPractice && venuePage==="landing" && <FieldPracticeEntry
         key={`${venue.id}:${currentUser?.uid}`}
         venue={venue} userId={currentUser?.uid} onChooseSession={()=>setFieldSessionChoice("choose")} launchRequest={practiceStartRequest} onLaunchConsumed={()=>setPracticeStartRequest(0)}
         onPractice={session => {
@@ -5717,7 +5724,6 @@ export default function VenueEntryPage({
         />
       )}
       <FieldPageWarmup venue={venue} season={venueSeason} clubId={(isClubRepresentative || effectiveRole==="club_member")?enteredIdentity?.clubId||"":""} canManageBanking={!isReadOnlyFieldRole&&(isVenueOwner||hasActiveFieldRole)}/>
-      {venuePage==="settings"&&canAccessFieldSettings&&<FieldBibHire venueId={venue.id} manage/>}
       <VenueLandingPage
         fieldSettingsOnly={venuePage === "settings" && canAccessFieldSettings}
         onSettingsBack={() => setVenuePage("landing")}
@@ -5774,7 +5780,7 @@ export default function VenueEntryPage({
           enteredIdentity?.clubId === portalClubIdentity.clubId
             ? onBack : undefined
         }
-        activeClub={venue}
+        activeClub={activeClub}
         activeClubId={venue?.id}
         activeClubName={venue?.name}
         teams={teams}
@@ -6345,7 +6351,7 @@ export default function VenueEntryPage({
           <img
             src={activeClubLogoSrc || "/favicon_nobackground.png"}
             alt=""
-            className="field-entry-heading-logo"
+            className="tk-logo field-entry-heading-logo"
             onError={event => {
               event.currentTarget.onerror = null;
               event.currentTarget.src = "/favicon_nobackground.png";
@@ -6406,13 +6412,13 @@ export default function VenueEntryPage({
       </header>
 
       <div className="field-theme-picker" role="group" aria-label="Field theme">
-        <span>Field appearance</span>
+        <span>Appearance</span>
         <button type="button" aria-pressed={fieldTheme === "dark"}
-          onClick={() => setFieldTheme("dark")}>Blue Crimson</button>
+          onClick={() => setFieldTheme("dark")}>Blue</button>
         <button type="button" aria-pressed={fieldTheme === "pearl"}
-          onClick={() => setFieldTheme("pearl")}>Crimson Blue</button>
+          onClick={() => setFieldTheme("pearl")}>Crimson</button>
         <button type="button" aria-pressed={fieldTheme === "sandstone"}
-          onClick={() => setFieldTheme("sandstone")}>Ebony Emerald</button>
+          onClick={() => setFieldTheme("sandstone")}>Emerald</button>
 
       </div>
 

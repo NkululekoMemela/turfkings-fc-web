@@ -9,6 +9,7 @@ const recent = new Map();
 export function subscribeFieldManifest({
   venueId, season, matchDayId, scope = null, onData, onError,
 }) {
+  if(!venueId||!season?.id||!matchDayId){onData?.({clubs:[],matchDayId:matchDayId||""});return ()=>{};}
   const root = scope
     ? venueLeagueRootPath(scope)
     : `leagueVenues/${venueId}`;

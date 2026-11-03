@@ -1,3 +1,4 @@
+import {fieldHoursError} from "../../core/fieldOperatingHours.mjs";
 /*
  * VENUE LEAGUE UI CLONE
  *
@@ -68,6 +69,7 @@ function getDraftFromClub(club = {}, adminIdentity = {}) {
     googlePlaceId: source?.locationDetails?.placeId || source.googlePlaceId || "",
     venueVerificationStatus: source?.locationDetails?.verificationStatus || "",
     operatingHours: source.operatingHours || source.schedule?.operatingHours || {},
+    timezone: source.timezone || source.schedule?.timezone || "Africa/Johannesburg",
     websiteUrl: source.websiteUrl || source.website || "",
     playDay: source?.schedule?.playDay || source.playDay || parsedWeekly.playDay,
     playTime: source?.schedule?.playTime || source.playTime || parsedWeekly.playTime,
@@ -169,6 +171,8 @@ export default function HomePage_HUB_VenueProfileEditorModal({
     setErrorText("");
 
     try {
+      const hoursError=fieldHoursError(clubDraft.operatingHours);
+      if(hoursError){setStep(1);throw new Error(hoursError);}
       setSaving(true);
 
       if (logoDraft.isPreparingUpload) throw new Error("Wait for the logo image to finish preparing.");
@@ -186,8 +190,8 @@ export default function HomePage_HUB_VenueProfileEditorModal({
 
       onClose?.();
     } catch (error) {
-      console.error("[HomePage_HUB] Failed to update club profile:", error);
-      setErrorText(error?.message || "Failed to update club profile.");
+      console.error("[HomePage_HUB] Failed to update Field profile:", error);
+      setErrorText(error?.message || "Failed to update Field profile.");
     } finally {
       setSaving(false);
     }
@@ -205,25 +209,25 @@ export default function HomePage_HUB_VenueProfileEditorModal({
         className="hub-modal"
         role="dialog"
         aria-modal="true"
-        aria-label={`Edit ${club.name || "club"} profile`}
+        aria-label={`Edit ${club.name || "Field"} profile`}
       >
         <header className="hub-modal__header">
           <div>
-            <span>Club profile</span>
-            <h2>Edit {club.name || "club"}</h2>
+            <span>Field profile</span>
+            <h2>Edit {club.name || "Field"}</h2>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close club profile editor"
+            aria-label="Close Field profile editor"
             disabled={saving || Boolean(logoDraft.isPreparingUpload)}
           >
             ×
           </button>
         </header>
 
-        <div className="hub-stepper" aria-label="Club profile editor steps">
+        <div className="hub-stepper" aria-label="Field profile editor steps">
           {[1, 2, 3, 4].map((item) => (
             <button
               key={item}
@@ -239,7 +243,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
 
         {step === 1 ? (
           <>
-            <HomePage_HUB_ClubRegisterForm clubDraft={clubDraft} onChange={setClubDraft} showPlaySchedule={false}/>
+            <HomePage_HUB_ClubRegisterForm clubDraft={clubDraft} onChange={setClubDraft} showPlaySchedule={false} entityType="field"/>
             <label className="hub-field"><span>Field website (optional)</span><input value={clubDraft.websiteUrl || ""} onChange={event => setClubDraft({...clubDraft,websiteUrl:event.target.value})} placeholder="https://yourfield.co.za"/></label>
             <FieldScheduleInputs draft={clubDraft} onChange={setClubDraft}/>
           </>
@@ -247,6 +251,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
 
         {step === 2 ? (
           <HomePage_HUB_CaptainVerification
+            entityType="field"
             clubDraft={clubDraft}
             onClubDraftChange={setClubDraft}
             verificationConfirmed={captainVerificationConfirmed}
@@ -266,12 +271,12 @@ export default function HomePage_HUB_VenueProfileEditorModal({
           <div className="hub-form-section">
             <h3>Review and save</h3>
             <p className="hub-muted">
-              Check your club details, captain WhatsApp confirmation and badge before saving.
+              Check your Field details, contact confirmation and logo before saving.
             </p>
 
             <div className="hub-review-list">
               <div>
-                <strong>Club</strong>
+                <strong>Field</strong>
                 <span>{clubDraft.clubName || "Not set"}</span>
               </div>
               <div>
@@ -279,7 +284,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
                 <span>{clubDraft.venueName || clubDraft.city || "Not set"}</span>
               </div>
               <div>
-                <strong>Captain</strong>
+                <strong>Field contact</strong>
                 <span>{clubDraft.founderFirstName} {clubDraft.founderSurname}</span>
               </div>
               <div>
@@ -318,7 +323,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
               disabled={saving || Boolean(logoDraft.isPreparingUpload)}
               onClick={saveClubProfile}
             >
-              {saving ? "Saving..." : "Save club"}
+              {saving ? "Saving..." : "Save Field"}
             </button>
           )}
         </footer>

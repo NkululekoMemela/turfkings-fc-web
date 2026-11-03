@@ -397,7 +397,7 @@
 }
 .app-root--field[data-field-theme="sandstone"]
 .field-ribbon-frame[data-field-page="entry"] .field-ribbon-title-copy :is(h1, small) {
-  color: #0f2038 !important;
+  color: #f8fafc !important;
 }
 
 /* Larger Field ribbon titles */
@@ -463,14 +463,14 @@
   margin: 0;
 }
 .app-root--field[data-field-theme="sandstone"] .field-entry-heading-row :is(h1, .field-entry-eyebrow) {
-  color: #0f2038 !important;
+  color: #f8fafc !important;
 }
 
 /* Field header logo visibility */
 .app-root--field .field-entry-heading-logo {
-  width: 64px;
-  height: 64px;
-  flex: 0 0 64px;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
 }
 .field-ribbon-frame .field-ribbon-logo {
   width: 56px !important;
@@ -481,8 +481,8 @@
 
 /* Larger Field entry badge */
 .app-root--field .field-entry-heading-logo {
-  width: 64px;
-  height: 64px;
-  flex: 0 0 64px;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
   object-fit: contain;
 }

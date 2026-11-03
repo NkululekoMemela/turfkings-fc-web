@@ -69,12 +69,15 @@ service cloud.firestore {
 
       allow create: if isSignedIn()
         && !isCameraSession()
+        && request.resource.data.get("clubType", "community") == "community"
+        && !request.resource.data.keys().hasAny(["companyId", "billingModel", "companyStatus", "ownerType", "ownerCompanyId"])
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.createdByUid == request.auth.uid
         && request.auth.uid in request.resource.data.adminUids;
 
       allow update: if isSignedIn()
         && !isCameraSession()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["clubType", "companyId", "billingModel", "companyStatus", "ownerType", "ownerCompanyId"])
         && request.resource.data.get("ownerUid", "") ==
           resource.data.get("ownerUid", "")
         && request.resource.data.get("createdByUid", "") ==
@@ -809,7 +812,9 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && !isCameraSession()
                     && request.resource.data.id == venueId
-                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.get("clubType", "community") == "community"
+        && !request.resource.data.keys().hasAny(["companyId", "billingModel", "companyStatus", "ownerType", "ownerCompanyId"])
+        && request.resource.data.ownerUid == request.auth.uid
                     && request.auth.uid in request.resource.data.adminUids;
 
       allow update: if !isCameraSession()
@@ -2022,6 +2027,12 @@ service cloud.firestore {
                          && topLevel != "leagueVenues"
                          && topLevel != "legalAcceptances"
                          && topLevel != "clubs"
+                         && topLevel != "companyApplications"
+                         && topLevel != "companyOrganizations"
+                         && topLevel != "companyUserAccounts"
+                         && topLevel != "companyFundingAccounts"
+                         && topLevel != "companySponsorships"
+                         && topLevel != "companyFundingAudit"
                          && topLevel != "clubStateOperators"
                          && topLevel != "clubFieldMemberships"
                           && topLevel != "leagueClubBookings"

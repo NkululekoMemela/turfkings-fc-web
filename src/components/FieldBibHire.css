@@ -1,0 +1,27 @@
+body .field-bib-hire{color:#eff5ff;max-width:800px;margin-inline:auto;}
+body .field-bib-hire :is(h3,p,label,summary,legend){color:#eff5ff;}
+body .field-bib-hire>p{font-size:14px;line-height:1.5;color:#bfccdc;}
+.hire-stock-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.hire-stock-toolbar h3{margin:0;}
+.hire-stock-toolbar button{font-size:12px;padding:6px 10px;}
+body .hire-stock-editor fieldset{border:0;padding:0;min-width:0;margin:0;}
+body .hire-stock-editor .kit-colour-picker{margin:12px 0;}
+body .hire-stock-editor .kit-colour-swatches{display:flex;flex-wrap:wrap;gap:8px;}
+body .hire-stock-editor .kit-colour-swatches>button{width:34px;height:34px;border-radius:50%;border:2px solid #b9c6d978;background:var(--kit-swatch);padding:0;display:grid;place-items:center;box-shadow:0 2px 6px #0004;color:#fff;text-shadow:0 1px 3px #000;}
+body .hire-stock-editor .kit-colour-swatches>button[aria-pressed=true]{outline:2px solid #f5cd76;outline-offset:2px;}
+body .hire-stock-editor .kit-custom-colour{width:34px;height:34px;position:relative;display:grid;place-items:center;border:1px solid #9db4ce;border-radius:50%;overflow:hidden;}
+body .hire-stock-editor .kit-custom-colour input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;}
+.hire-stock-table-wrap{margin:18px 0;border-radius:14px;overflow:hidden;border:1px solid #d6e0e9;background:#f5f8fb;}
+body .hire-stock-table{width:100%;border-collapse:collapse;table-layout:fixed;color:#20334a;background:#f5f8fb;}
+body .hire-stock-table caption{padding:10px 12px;background:#e7edf4;color:#28415b;text-align:left;font-size:12px;font-weight:750;}
+body .hire-stock-table :is(th,td){padding:9px 10px;border-bottom:1px solid #dbe3ec;text-align:left;color:#20334a;font-size:13px;overflow-wrap:anywhere;}
+body .hire-stock-table th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
+body .hire-stock-table :is(th,td):first-child{width:40%;}
+body .hire-stock-table td input{width:100%;box-sizing:border-box;min-height:38px;min-width:0;padding:7px 8px;border:1px solid #a8b9cb;border-radius:8px;background:#fff;color:#182f46;font:inherit;}
+.hire-colour-dot{display:inline-block;width:10px;height:10px;border:1px solid #8f9baa;border-radius:50%;margin-right:6px;}
+body .hire-stock-address{display:grid;gap:7px;margin:16px 0;font-size:13px;}
+body .hire-stock-address input{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid #8da7c144;border-radius:10px;background:#0b1d2c;color:#f5f8ff;font:inherit;}
+.hire-stock-save{width:100%;}
+body .hire-stock-note{display:block;margin-top:10px;color:#aebfd2;font-size:12px;line-height:1.5;}
+.field-hire-reservations{margin-top:20px;padding-top:16px;border-top:1px solid #7895ac33;}
+.field-hire-reservations article{padding-block:12px;border-bottom:1px solid #7895ac22;}

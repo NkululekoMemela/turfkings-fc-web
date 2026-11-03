@@ -1,7 +1,7 @@
 const validId = value => typeof value === "string" &&
   /^[A-Za-z0-9_-]{1,150}$/.test(value);
 
-export function seasonPaidManifest({squad, scope}) {
+export function seasonPaidManifest({squad, scope, sponsoredMembers = new Map(), companyMode = false}) {
   if (!squad || squad.version !== 1 || squad.status !== "active" ||
       !scope || ["venueId", "seasonId", "clubId"].some(key =>
         !validId(scope[key]) || squad[key] !== scope[key])) {
@@ -19,15 +19,16 @@ export function seasonPaidManifest({squad, scope}) {
     }
     members.add(entry.memberId);
     players.add(entry.sourcePlayerId);
-    if (entry.invitationStatus !== "accepted" ||
-        entry.paymentStatus !== "paid") continue;
-    if (entry.currency !== "ZAR" ||
+    const sponsored=companyMode&&sponsoredMembers.has(entry.memberId);
+    if (entry.invitationStatus !== "accepted" || (companyMode ? !sponsored : entry.paymentStatus !== "paid")) continue;
+    if(typeof entry.fullName!=="string"||!entry.fullName.trim())throw new Error("A season player needs a registered name.");
+    if (!sponsored && (entry.currency !== "ZAR" ||
         !Number.isSafeInteger(entry.contributionCents) ||
         entry.contributionCents <= 0 ||
         entry.paidCents !== entry.contributionCents ||
         typeof entry.paymentConfirmedByUid !== "string" ||
         !entry.paymentConfirmedByUid ||
-        typeof entry.fullName !== "string" || !entry.fullName.trim()) {
+        typeof entry.fullName !== "string" || !entry.fullName.trim())) {
       throw new Error("A confirmed season payment needs valid contribution records.");
     }
     eligible.push({
@@ -36,6 +37,7 @@ export function seasonPaidManifest({squad, scope}) {
       fullName: entry.fullName.trim(),
       clubId: scope.clubId,
       contributionCents: entry.contributionCents,
+      ...(sponsored?{fundingType:"company"}:{}),
     });
   }
   return eligible;

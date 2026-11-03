@@ -14,9 +14,9 @@ function scheduleFromDraft(draft, fail) {
     if(status==="open") {
       const opens=clean(value.opens,5),closes=clean(value.closes,5);
       if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(opens) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(closes)) fail(`Set opening and closing times for ${day}.`);
-      if(opens===closes) fail(`Choose different opening and closing times for ${day}, or select Open 24 hours.`);
+      if(closes<=opens) fail(`Closing time must be after opening time for ${day}. Use Open 24 hours if appropriate.`);
       operatingHours[day]={status,opens,closes};
-      label=`${opens}–${closes}${closes<opens ? " (+1 day)" : ""}`;
+      label=`${opens}–${closes}`;
     }
     const previous=groups[groups.length-1];
     if(previous && previous.label===label && previous.lastIndex===days.indexOf(day)-1) {previous.last=day;previous.lastIndex=days.indexOf(day);}

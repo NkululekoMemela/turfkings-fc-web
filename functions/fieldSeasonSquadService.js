@@ -55,7 +55,7 @@ async function loadContext(tx, db, scope) {
       !list(season.clubIds).includes(scope.clubId)) {
     throw new Error("This Club is not registered in the active Field season.");
   }
-  return {club, season, clubRef, squadRef, squad: squadSnap.data()};
+  return {db,club, season, clubRef, squadRef, squad: squadSnap.data()};
 }
 
 async function createSeasonSquad({db, user, body, now = Date.now()}) {
@@ -189,6 +189,7 @@ async function confirmSeasonPayment({db, user, body, now = Date.now()}) {
   const policy = await import("./fieldSeasonSquadPolicy.mjs");
   return db.runTransaction(async tx => {
     const context = await loadContext(tx, db, scope);
+    if(context.club.clubType==="company")throw new Error("Company costs are authorised by FANM, not collected from players.");
     if (!canManageSquad(context.club, user)) {
       throw new Error("Only this Club's administrator or captain can confirm payment.");
     }
@@ -346,14 +347,16 @@ async function loadReplacementContext(tx, db, scope, matchDayId) {
 }
 
 async function assertReplacementPlace(tx, context, scope, matchDayId, originalMemberId) {
+  const sponsored=await require("./companyClubs.cjs").sponsoredMembers({db:context.db,tx,club:context.club,scope,squad:context.squad});
   const original = context.squad.entries?.[originalMemberId];
   if (!original || original.memberId !== originalMemberId ||
       original.invitationStatus !== "accepted" ||
-      original.paymentStatus !== "paid" ||
+      (context.club.clubType==="company"?!sponsored.has(original.memberId):original.paymentStatus !== "paid") ||
       context.squad.matchDayAvailability?.[matchDayId]?.[originalMemberId]
         ?.status !== "unavailable") {
     throw new Error("Choose an unavailable player with a confirmed season payment.");
   }
+  if(context.club.clubType==="company")return original;
   const receiptSnap = await tx.get(context.squadRef
     .collection("paymentConfirmations").doc(originalMemberId));
   const receipt = receiptSnap.data();
@@ -433,6 +436,7 @@ async function inviteSeasonMatchDayReplacement({db, user, body}) {
       throw new Error("This player already covers another place on this match day.");
     }
     const replacement = context.policy.createMatchDayReplacement({
+      companyFunded:context.club.clubType==="company",
       original, originalAvailability: "unavailable",
       replacement: player, actorUid: user.uid,
     });
@@ -526,7 +530,7 @@ async function getSeasonSquadView({db, user, body}) {
     const context = await loadContext(tx, db, scope);
     const manager = canManageSquad(context.club, user);
     if (!context.squad) return {
-      canManage: manager, squad: null, invitation: null,
+      canManage: manager, squad: null, invitation: null, payerModel:context.club.clubType==="company"?"company":"individual",
     };
 
     const entries = Object.values(context.squad.entries || {});
@@ -545,7 +549,11 @@ async function getSeasonSquadView({db, user, body}) {
     if (own.length > 1) {
       throw new Error("Your account matches multiple squad members. Ask the Club admin to fix the links.");
     }
+    const companyMode=context.club.clubType==="company";
+    const sponsored=await require("./companyClubs.cjs").sponsoredMembers({db,tx,club:context.club,scope,squad:context.squad});
+    const funding=entry=>entry&&companyMode?{...entry,fundingType:"company",fundingStatus:sponsored.has(entry.memberId)?"authorised":"pending"}:entry;
     return {
+      payerModel:companyMode?"company":"individual",
       squadId: context.squadRef.id, canManage: manager,
       attendancePlayers: manager || own[0]?.invitationStatus === "accepted"
         ? require("./fieldSeasonAttendanceView").attendanceView(
@@ -557,8 +565,8 @@ async function getSeasonSquadView({db, user, body}) {
                 member.playerId === entry.sourcePlayerId;
             })
           ) : [],
-      ...(manager ? {squad: context.squad} : {}),
-      invitation: own[0] || null,
+      ...(manager ? {squad:{...context.squad,entries:Object.fromEntries(Object.entries(context.squad.entries||{}).map(([id,e])=>[id,funding(e)]))}} : {}),
+      invitation: funding(own[0]) || null,
       availability: own[0] ? Object.fromEntries(
         Object.entries(context.squad.matchDayAvailability || {}).map(
           ([dayId, entries]) => [dayId, entries[own[0].memberId] || null]
