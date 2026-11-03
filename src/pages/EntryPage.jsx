@@ -46,7 +46,6 @@ import {
   onAuthStateChanged,
 } from "firebase/auth";
 import { isCaptainEmail } from "../core/captainAuth.js";
-import { ClubChatWidget } from "../components/ClubChat/ClubChatWidget.jsx";
 import {
   findCandidatePlatformIdentity,
 } from "../storage/platformIdentityRepository.js";
@@ -5133,16 +5132,7 @@ export function EntryPage({
         </div>
       </section>
 
-      <ClubChatWidget
-        activeClubId={activeClubId}
-        activeClubName={activeClubName}
-        currentUser={currentUser}
-        selectedMember={selectedMember}
-        identity={identity}
-        isAdminViewer={isAdminViewer}
-        premiumPanelStyle={premiumPanelStyle}
-        variant="launcher"
-      />
+
 
       {mode === "player" && (
         <section className="card" style={{ ...premiumPanelStyle, overflow: "hidden" }}>
