@@ -1,32 +1,8 @@
+import {prepareLogoImage as prepareUpload} from "../core/prepareLogoImage.js";
 import React, {useEffect, useState} from "react";
 import {MASCOTS, FRAMES, PALETTES, NAME_STYLES, renderFieldLogo, svgDataUrl, stockSpec} from "../../functions/fieldLogoDesigns.mjs";
 import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
 import "./FieldLogoDesigner.css";
-
-function prepareUpload(file) {
-  return new Promise((resolve, reject) => {
-    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return reject(new Error("Choose a PNG, JPG or WebP image."));
-    if (file.size > 20 * 1024 * 1024) return reject(new Error("Choose an image smaller than 20 MB."));
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      try {
-        const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round(image.width * scale));
-        canvas.height = Math.max(1, Math.round(image.height * scale));
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const data = canvas.toDataURL("image/png");
-        if (data.length > 5.3 * 1024 * 1024) throw new Error("Try a less detailed or smaller image.");
-        resolve(data);
-      } catch (e) { reject(e); }
-      finally { URL.revokeObjectURL(url); }
-    };
-    image.onerror = () => {URL.revokeObjectURL(url); reject(new Error("This image could not be opened."));};
-    image.src = url;
-  });
-}
 
 export default function FieldLogoDesigner({clubDraft, logoDraft, onChange}) {
   const [options, setOptions] = useState([]);
@@ -81,7 +57,7 @@ export default function FieldLogoDesigner({clubDraft, logoDraft, onChange}) {
         finally {setUploading(false);}
       }}/>
     </label>
-    <h4>25 stock identities</h4>
+    <h4>Signature starter identities</h4>
     <p>Football, Fields, stadiums and mascots. Claim one when your Field is created; its replacement joins the collection.</p>
     {loading && <p role="status">Loading available designs…</p>}
     {!loading && !options.length && <p>Stock designs are unavailable. You can still customise a logo below.</p>}

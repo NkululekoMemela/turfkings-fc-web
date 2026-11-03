@@ -1,7 +1,5 @@
 const {randomUUID} = require("node:crypto");
 
-const ITEMS = "fieldLostFoundItems";
-const CLAIMS = "fieldLostFoundClaims";
 const MAX_PHOTO = 512 * 1024;
 
 function identifier(value) {
@@ -78,13 +76,15 @@ async function operate({db, user, body = {}, photoBucket}) {
     throw new Error("Sign in with your own account.");
   }
   const venueId = identifier(body.venueId);
-  const [venue, staff] = await db.getAll(
-    db.doc(`leagueVenues/${venueId}`),
-    db.doc(`leagueVenues/${venueId}/staff/${user.uid}`)
-  );
+  const feature=await require("./fieldPracticeFeatureScope.cjs").resolveFeatureScope({db,user,body,venueId});
+  const practice=feature.practice, root=feature.root;
+  const ITEMS=practice?`${root}/fieldLostFoundItems`:"fieldLostFoundItems";
+  const CLAIMS=practice?`${root}/fieldLostFoundClaims`:"fieldLostFoundClaims";
+  const photoRoot=practice?`${root}/lostFoundPhotos`:`fieldLostFoundPhotos/${venueId}`;
+  const [venue, staff] = await db.getAll(db.doc(root),db.doc(`${root}/staff/${user.uid}`));
   if (!venue.exists) throw new Error("This Field is unavailable.");
   const staffData = staff.data() || {};
-  const admin = venue.data().ownerUid === user.uid ||
+  const admin = practice || venue.data().ownerUid === user.uid ||
     (staffData.status === "active" && staffData.isAdministrator === true &&
       String(staffData.role || "").trim().toLowerCase() !== "referee");
   const requireAdmin = () => {
@@ -190,7 +190,7 @@ async function operate({db, user, body = {}, photoBucket}) {
       createdAtMs: Date.now(),
     };
     if (action === "claim") {
-      const identity = await require("./fieldLostFoundIdentity").resolve({
+      const identity = practice ? {name:String(user.name||"Practice player").slice(0,160),clubId:"",memberId:""} : await require("./fieldLostFoundIdentity").resolve({
         db, user, venueId, clubId: body.clubId, staff: staffData,
       });
       const id = randomUUID();
@@ -205,9 +205,9 @@ async function operate({db, user, body = {}, photoBucket}) {
     }
     const id = randomUUID();
     const buffer = photoBuffer(body.photo);
-    const photoPath = buffer ? `fieldLostFoundPhotos/${venueId}/${id}.jpg` : "";
+    const photoPath = buffer ? `${photoRoot}/${id}.jpg` : "";
     let file;
-    if (buffer) {
+    if (buffer && !practice) {
       file = (photoBucket || bucket(db)).file(photoPath);
       await file.save(buffer, {
         resumable: false,
@@ -220,6 +220,7 @@ async function operate({db, user, body = {}, photoBucket}) {
     try {
       await db.collection(ITEMS).doc(id).create({
         ...data, recordedByUid: user.uid, status: "available", photoPath,
+        ...(practice&&buffer?{sandboxPhoto:`data:image/jpeg;base64,${buffer.toString("base64")}`}:{ }),
       });
     } catch (error) {
       if (file) await file.delete().catch(() => {});
@@ -307,8 +308,9 @@ async function operate({db, user, body = {}, photoBucket}) {
     if (!item.exists || item.data().venueId !== venueId) {
       throw new Error("Photo unavailable.");
     }
-    const expected = `fieldLostFoundPhotos/${venueId}/${itemId}.jpg`;
+    const expected = `${photoRoot}/${itemId}.jpg`;
     if (item.data().photoPath !== expected) return {photo: null};
+    if(practice)return {photo:item.data().sandboxPhoto||null};
     const [buffer] = await (photoBucket || bucket(db)).file(expected).download();
     if (buffer.length > MAX_PHOTO) throw new Error("Photo unavailable.");
     return {photo: `data:image/jpeg;base64,${buffer.toString("base64")}`};

@@ -62,7 +62,7 @@ export function FieldFixtureCard({
   };
 
   return (
-    <article className="field-fixture-card" role="button" tabIndex={0}
+    <article className={`field-fixture-card ${fixture.status==="completed"?"is-played":""}`} role="button" tabIndex={0}
       aria-label={`Download ${fixture.clubAName || a?.label || a?.name ||
         fixture.clubAId} versus ${fixture.clubBName || b?.label || b?.name ||
         fixture.clubBId} fixture image`}

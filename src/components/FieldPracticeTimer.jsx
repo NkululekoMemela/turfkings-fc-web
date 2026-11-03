@@ -4,7 +4,7 @@ import {practiceReminderVisible} from "../core/fieldPracticePresentation.mjs";
 import "./FieldPracticePresentation.css";
 import {FieldRibbonContext} from "./FieldRibbonContext.jsx";
 
-export default function FieldPracticeTimer({expiresAt, onExit}) {
+export default function FieldPracticeTimer({expiresAt, onExit, clubMode=false}) {
   const ribbonHost = useContext(FieldRibbonContext);
   const expiry = Date.parse(expiresAt);
   const remaining = () => Number.isFinite(expiry)
@@ -42,8 +42,9 @@ export default function FieldPracticeTimer({expiresAt, onExit}) {
       </button>, ribbonHost)}
     <section aria-label="Practice session ribbon"
     style={{
-      position: "sticky", top: 126, zIndex: 45,
-      width: minimized ? "fit-content" : "100%",
+      position: clubMode ? "fixed" : "sticky", top: clubMode ? 90 : 126, zIndex: clubMode ? 12000 : 45,
+      width: minimized ? "fit-content" : clubMode ? "min(440px,calc(100vw - 24px))" : "100%",
+      ...(clubMode?{right:12}:{}),
       maxWidth: "100%", boxSizing: "border-box", marginLeft: "auto",
       padding: minimized ? "5px 7px" : "8px 12px",
       borderRadius: 14, marginBottom: 12,
@@ -80,8 +81,8 @@ export default function FieldPracticeTimer({expiresAt, onExit}) {
       style={{fontSize: 12, lineHeight: 1.5, marginTop: 10,
         borderTop: "1px solid rgba(255,255,255,.25)", paddingTop: 8}}>
       <p style={{margin: "0 0 6px"}}>
-        Practice is your 15-minute training space. Rehearse league setup,
-        squads and matches without changing Official Field records.
+        Practice is your 15-minute training space. Rehearse setup,
+        squads and matches without changing Official records.
       </p>
       <p style={{margin: 0}}>
         Official is for real seasons, match results and standings.

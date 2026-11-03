@@ -2685,7 +2685,7 @@ export function FormationsPage({
                           touchAction: "manipulation",
                         }}
                       >
-                        <div className="live-lineup-number-pin">{sourceTeams.find(t=>String(t.id)===String(selectedTeamId))?.usePlayerNumbers!==false&&(()=>{const team=formationKitTeams.find(t=>t.id===String(selectedTeamId)),row=team?.players.find(r=>r.key===name||r.aliases.includes(normalizeKitName(name)));return <CompactPlayerNumber number={row?.number??null} name={displayCompactName(name)} disabled={!canEditNumbers} onCommit={canEditNumbers&&row?raw=>{const number=jerseyNumber(raw);validateKitTeams(formationKitTeams.filter(t=>t.players.length).map(t=>t.id!==team.id?t:{...t,players:t.players.map(r=>r.key!==row.key?r:{...r,number})}));return onNumberChange?.(team.id,row.key,number,isFriendlyMatch?"friendly":"league");}:undefined}/>;})()}</div>
+
                       <div
                           className={`player-shirt ${photoData ? "with-photo" : ""}`}
                           style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
@@ -2696,7 +2696,7 @@ export function FormationsPage({
 
 
                       <div className="player-label">
-                        <span className="player-name">{name?<>{withCaptainTag(name).replace(/^\((?:\d+|-)\)\s*/,"")}</>:"Empty"}</span>
+                        <span className="player-name">{name?<>{`${withCaptainTag(name).replace(/^\((?:\d+|-)\)\s*/,"")} ${labelWithNumber(formationKitTeams,name,"",selectedTeamId||"").match(/^\((?:\d+|-)\)/)?.[0]||""}`}</>:"Empty"}</span>
                         <span className="position-tag">{pos.label}</span>
                       </div>
                     </div>

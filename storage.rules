@@ -156,6 +156,21 @@ service firebase.storage {
     }
 
     // ---------------------------------------------------------
+    // Branding is available only after the Club record establishes its owner.
+    match /clubs/{clubId}/{assetFolder}/{fileName} {
+      function brandingAdministrator() {
+        let club=firestore.get(/databases/(default)/documents/clubs/$(clubId)).data;
+        return club.get("ownerUid", "")==request.auth.uid
+          || club.get("createdByUid", "")==request.auth.uid
+          || request.auth.uid in club.get("adminUids", []);
+      }
+      allow read: if assetFolder in ["branding","gallery"];
+      allow create, update: if assetFolder in ["branding","gallery"] && signedIn() && request.auth.token.get("cameraSession",false)==false
+        && request.resource.contentType in ["image/png","image/jpeg","image/webp"]
+        && request.resource.size < 5 * 1024 * 1024 && brandingAdministrator();
+      allow delete: if assetFolder in ["branding","gallery"] && signedIn() && request.auth.token.get("cameraSession",false)==false && brandingAdministrator();
+    }
+
     // FIELD/VENUE BRANDING STORAGE
     //
     // Public read supports Field cards before sign-in.

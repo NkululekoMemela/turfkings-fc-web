@@ -22,7 +22,7 @@ export default function VenueSquadsPage({
     day.status === "scheduled" && day.dateLocal >= today()
   ).sort((a,b) => a.dateLocal.localeCompare(b.dateLocal));
   const [dayId,setDayId] = useState(days[0]?.id || "");
-  const memoryKey = fieldPageKey("squads", venue.id, season?.id, dayId);
+  const memoryKey = fieldPageKey("squads", venue.id, season?.id, dayId,scope?.environment||"official",scope?.practiceSessionId||"");
   const [data,setData] = useState(() => readFieldPage(memoryKey));
   const [error,setError] = useState("");
   const teamsheetRef = useRef(null);
@@ -45,11 +45,11 @@ export default function VenueSquadsPage({
   }, [season?.id, days.map(day => day.id).join("|")]);
   useEffect(() => {
     setError("");
-    setData(null);
+    setData(readFieldPage(memoryKey));
     if (!dayId) return undefined;
     return subscribeFieldManifest({
       venueId: venue.id, season, matchDayId: dayId, scope,
-      onData: result => {setData(result); setError("");},
+      onData: result => {saveFieldPage(memoryKey,result);setData(result); setError("");},
       onError: failure => setError(failure.message),
     });
   }, [

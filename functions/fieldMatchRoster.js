@@ -8,11 +8,12 @@ async function loadFieldMatchRoster({
     "5_V_5": 5, "6_V_6": 6, "7_V_7": 7, "11_V_11": 11,
   }[season.gameFormat];
   if (!minimum) throw new Error("Unsupported game format.");
+  transaction=require("./fieldReadCache.cjs").cacheFieldReads(transaction);
   const squads = {};
   const bookingVersions = {};
   const squadVersions = {};
   const squadFingerprints = {};
-  for (const clubId of [fixture.clubAId, fixture.clubBId]) {
+  await Promise.all([fixture.clubAId, fixture.clubBId].map(async clubId=>{
     if (!(season.clubIds || []).includes(clubId)) {
       throw new Error("Both Clubs must be registered for this season.");
     }
@@ -52,7 +53,7 @@ async function loadFieldMatchRoster({
           throw new Error("Create and confirm each Club's season squad first.");
         }
         squads[clubId] = [];
-        continue;
+        return;
       }
       const entries = Object.values(booking.entries || {});
       if (entries.length > 30) throw new Error("Invalid squad capacity.");
@@ -87,7 +88,7 @@ async function loadFieldMatchRoster({
     }
     if(requireMinimum)assertLeagueBibs(eligible);
     squads[clubId] = eligible;
-  }
+  }));
   if(requireMinimum){const {assertOpponentColours}=await import("./opponentKitColours.mjs");assertOpponentColours(squads);}
   return {squads, bookingVersions, squadVersions, squadFingerprints};
 }

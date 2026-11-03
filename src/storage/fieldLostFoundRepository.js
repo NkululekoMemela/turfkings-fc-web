@@ -25,7 +25,7 @@ export async function lostFoundRequest(venueId, action, details = {}, signal) {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Please try again.");
-    if (!["view", "summary", "photo"].includes(action)) {
+    if (details.scope?.environment!=="practice" && !["view", "summary", "photo"].includes(action)) {
       summaries.clear();
       window.dispatchEvent(new Event("field-lost-found-updated"));
     }

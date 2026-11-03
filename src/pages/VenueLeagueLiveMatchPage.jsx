@@ -1,3 +1,4 @@
+import DigitalRefereeCard from "../components/DigitalRefereeCard.jsx";
 import {futsalCardDecision,futsalReductions,compactRefereeName,futsalMustAbandon} from "../core/fieldFutsalDiscipline.mjs";
 import "../components/FieldRefereePlayers.css";
 import {splitNumberDisplay} from "../core/playerNumberDisplay.mjs";
@@ -5087,6 +5088,7 @@ export function VenueLeagueLiveMatchPage({
     }
   };
 
+  const [digitalCard,setDigitalCard]=useState(null);
   const disciplineWritePending=useRef(false);
   const normalizedActiveRedCardRule = "two_minute";
   const futsalPlayingSeconds=Math.max(0,Number(matchSeconds||0)-Number(displaySeconds||0)) + Math.max(0,Number(additionalTimeTotalSeconds||0)-Number(additionalTimeSecondsLeft||0));
@@ -5597,6 +5599,7 @@ export function VenueLeagueLiveMatchPage({
       activeClubId
     );
 
+    setDigitalCard({type:event.type,name:displayCompactPlayerName(player.name,player.teamId),secondCaution:event.secondCaution});
     if(event.requiresAbandonment){
       await onFutsalAbandonment?.(true);
       await fieldAlert("Fewer than three players. Stop play and abandon the match.");
@@ -6845,12 +6848,13 @@ export function VenueLeagueLiveMatchPage({
 
   return (
     <div
-      className="page live-page"
+      className="page live-page field-referee-booth"
       style={{
         opacity: screenDimmed ? 0.42 : 1,
         transition: "opacity 0.8s ease",
       }}
     >
+      <DigitalRefereeCard card={digitalCard} onClose={()=>setDigitalCard(null)}/>
       <div className="field-page-context">
         <p className="muted small">Match #{currentMatchNo}</p>
 
@@ -7333,6 +7337,7 @@ export function VenueLeagueLiveMatchPage({
                   <section
                     key={teamId}
                     className="fanm-discipline-team"
+                    style={{"--discipline-team-accent":getTeamAccent(team).dot,"--discipline-team-soft":getTeamAccent(team).soft}}
                   >
                     <div className="fanm-discipline-team-heading">
                       <TeamColorBadge team={team} />
@@ -7662,6 +7667,7 @@ export function VenueLeagueLiveMatchPage({
                   <section
                     key={teamId}
                     className="fanm-discipline-team"
+                    style={{"--discipline-team-accent":getTeamAccent(team).dot,"--discipline-team-soft":getTeamAccent(team).soft}}
                   >
                     <div className="fanm-discipline-team-heading">
                       <TeamColorBadge team={team} />

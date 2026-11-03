@@ -1414,8 +1414,7 @@ export default function VenueLandingPage({
             borderRadius: "1.2rem",
           }}>
             <h3>Season settings</h3>
-            <button type="button" className="secondary-btn"
-              onClick={onSettingsBack}>Close settings</button>
+
             {true && (
               <div
                 style={{
@@ -2240,7 +2239,7 @@ export default function VenueLandingPage({
               >
                 💳
               </span>
-              <span>Book your next games</span>
+              <span>Bookings & Payments</span>
             </span>
           </button>
 

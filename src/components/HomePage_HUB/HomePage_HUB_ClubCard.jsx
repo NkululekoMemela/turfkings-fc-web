@@ -251,7 +251,7 @@ export default function HomePage_HUB_ClubCard({
 <div className={`hub-club-card__cube hub-club-card__cube--face-${faceIndex}`}>
         <section className="hub-club-card__face hub-club-card__face--logo">
           <div className="hub-club-card__logo-ring">
-            <HubClubLogo src={club.image || club.logoUrl || ""} name={club.name || entityLabel} initials={club.logoText || initials}/>
+            <HubClubLogo hideInitials={entityLabel === "Field"} src={club.image || club.logoUrl || ""} name={club.name || entityLabel} initials={club.logoText || initials}/>
           </div>
 
           <strong>{club.name || `Football ${entityLabel}`}</strong>

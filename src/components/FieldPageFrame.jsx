@@ -6,7 +6,7 @@ const titles = {
   entry: "Field Access",
   landing: "Home",
   stats: "League Stats",
-  signup: "Signup",
+  signup: "Bookings & Payments",
   squads: "Matchday Squads",
   formations: "Lineups & Formations",
   news: "Field News",

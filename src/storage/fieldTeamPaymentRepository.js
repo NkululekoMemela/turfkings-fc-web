@@ -1,14 +1,22 @@
+const viewCache=new Map();
+let viewGeneration=0;
 import {
   auth, getActiveFirebaseFunctionsBaseUrl,
 } from "../firebaseConfig.js";
 
-export async function fieldTeamPaymentRequest(
+async function performFieldTeamPaymentRequest(
   venueId, action, details = {}, signal,
 ) {
   const user = auth.currentUser;
   if (!user) {
     throw new Error("Sign in with Google to use Field payments.");
   }
+  const generation=viewGeneration;
+  const readOnly=["signupView","leagueEntryView"].includes(action);
+  const cacheKey=JSON.stringify([getActiveFirebaseFunctionsBaseUrl(),user.uid,venueId,action,details]);
+  const cached=viewCache.get(cacheKey);
+  if(readOnly&&cached&&Date.now()-cached.at<10000)return cached.value;
+  if(!readOnly){viewGeneration++;viewCache.clear();}
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort();
@@ -34,6 +42,7 @@ export async function fieldTeamPaymentRequest(
     if (!response.ok) {
       throw new Error(result.error || "Could not update Field payments.");
     }
+    if(readOnly&&generation===viewGeneration){viewCache.set(cacheKey,{at:Date.now(),value:result});if(viewCache.size>30)viewCache.delete(viewCache.keys().next().value);}
     return result;
   } catch (error) {
     if (error.name === "AbortError" && !signal?.aborted) {
@@ -46,4 +55,12 @@ export async function fieldTeamPaymentRequest(
     window.clearTimeout(timeout);
     signal?.removeEventListener("abort", abort);
   }
+}
+
+const pendingViews=new Map();
+export function fieldTeamPaymentRequest(venueId,action,details={},signal){
+ if(!["signupView","leagueEntryView"].includes(action))return performFieldTeamPaymentRequest(venueId,action,details,signal);
+ const key=JSON.stringify([viewGeneration,getActiveFirebaseFunctionsBaseUrl(),auth.currentUser?.uid,venueId,action,details]);
+ if(!pendingViews.has(key))pendingViews.set(key,performFieldTeamPaymentRequest(venueId,action,details).finally(()=>pendingViews.delete(key)));
+ return pendingViews.get(key);
 }

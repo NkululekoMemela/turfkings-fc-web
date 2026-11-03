@@ -19,7 +19,7 @@ async function handle({db,user,body}){
  const clubId=body.clubId;
  if(body.action==="bibView"){
   const ctx=await context(db,user,clubId),[requests,products]=await Promise.all([db.collection(`${root(clubId)}/requests`).get(),db.collection("kitShopProducts").get()]);
-  return {captain:ctx.captain,memberId:ctx.member.id,clubName:ctx.club.name||ctx.club.clubName||"Your Club",onlinePayments:clubId==="turf-kings",members:(ctx.captain?ctx.members:[ctx.member]).map(m=>({id:m.id,name:m.shortName||m.fullName||"Player",number:m.jerseyNumber??null})),requests:requests.docs.filter(d=>ctx.captain||d.data().memberId===ctx.member.id).map(d=>publicRequest(d.data(),d.id)),products:products.docs.filter(d=>d.data().active).map(d=>({id:d.id,title:d.data().title,size:d.data().size,color:d.data().color,priceMinor:d.data().priceMinor,stock:d.data().stock}))};
+  return {captain:ctx.captain,memberId:ctx.member.id,clubName:ctx.club.name||ctx.club.clubName||"Your Club",onlinePayments:clubId==="turf-kings",members:(ctx.captain?ctx.members:[ctx.member]).map(m=>({id:m.id,name:m.shortName||m.fullName||"Player",number:m.jerseyNumber??null})),requests:requests.docs.filter(d=>ctx.captain||d.data().memberId===ctx.member.id).map(d=>publicRequest(d.data(),d.id)),products:products.docs.filter(d=>d.data().active).map(d=>({id:d.id,title:d.data().title,size:d.data().size,color:d.data().color,priceMinor:d.data().priceMinor,stock:d.data().stock,madeToOrder:d.data().madeToOrder===true}))};
  }
  return db.runTransaction(async tx=>{
   const ctx=await context(db,user,clubId,tx);

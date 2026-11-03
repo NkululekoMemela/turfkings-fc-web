@@ -18,7 +18,7 @@
   pointer-events: none;
   background: linear-gradient(110deg, transparent 38%, #facc1510 44%, #fff0b8a8 50%, #facc1526 56%, transparent 62%);
   transform: translateX(-75%);
-  animation: field-season-gold 5s ease-in-out 3;
+  animation: field-season-gold 2.5s ease-in-out 6;
 }
 @keyframes field-season-gold {
   0%, 25% { transform: translateX(-75%); }

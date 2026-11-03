@@ -62,7 +62,7 @@ const INFO = {
 
 export default function VenueMarketingFooter() {
   const [secondAdvertReady, setSecondAdvertReady] = useState(false);
-  const [advertIndex, setAdvertIndex] = useState(0);
+  const [advertIndex, setAdvertIndex] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -272,7 +272,7 @@ export default function VenueMarketingFooter() {
       >
         <img
           src={
-            secondAdvertReady && advertIndex === 1
+            advertIndex === 1
               ? FIELD_MARKETING_IMAGE_TWO
               : FIELD_MARKETING_IMAGE
           }

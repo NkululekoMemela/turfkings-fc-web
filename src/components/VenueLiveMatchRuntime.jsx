@@ -807,6 +807,7 @@ export default function VenueLiveMatchRuntime({
       liveState.timeUp === true,
     running:
       liveState.running === true,
+    venue, season, currentLive:liveState,
     teams: fieldLiveTeams,
     fieldPaidSquads: liveState.paidSquads || null,
     currentMatchNo:
@@ -897,7 +898,8 @@ export default function VenueLiveMatchRuntime({
         handleRejectTakeOver
       }
       pendingMatchStartContext={{
-        teams: fieldLiveTeams,
+        venue, season, currentLive:liveState,
+    teams: fieldLiveTeams,
         currentMatch:
           liveState.currentMatch,
         matchType: "LEAGUE",
