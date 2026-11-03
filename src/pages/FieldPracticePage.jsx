@@ -1,3 +1,4 @@
+import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
 import {buildFieldClubTeam} from "../core/fieldClubTeam.js";
 import {resolveFieldUpcomingMatch} from "../core/fieldUpcomingMatch.js";
 import FieldMatchDaySchedule from "../components/FieldMatchDaySchedule.jsx";
@@ -205,6 +206,16 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       setError(failure.message);
     } finally {setBusy(false);}
   }
+  async function updatePracticeDuration(value) {
+    const seconds=Number(value);
+    if(!Number.isFinite(seconds)||seconds<60||seconds>7200)throw Error("Choose a duration between 1 and 120 minutes.");
+    if(!season||liveMatch)throw Error("Change the duration before starting a match.");
+    await runTransaction(db,async tx=>{
+      const ref=doc(db,root),snap=await tx.get(ref),active=snap.data()?.league?.activeSeason;
+      if(active?.id!==scope.seasonId)throw Error("This Practice season changed. Try again.");
+      tx.update(ref,{"league.activeSeason.matchSeconds":seconds});
+    });
+  }
   const unavailable = () => setError(
     "This feature still needs its sandbox adapter. No Official service was called."
   );
@@ -275,7 +286,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       hasLiveMatch={Boolean(liveMatch)}
       matchSeconds={season?.matchSeconds || 2400}
       defaultMatchSeconds={season?.matchSeconds || 2400}
-      durationSwitchLocked
+      durationSwitchLocked={Boolean(liveMatch)}
       formatSwitchLocked
       scheduledFixtures={scheduledFixtures}
       onOpenEndSeasonModal={() => {
@@ -289,7 +300,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       onGoToSquads={() => navigate("squads")}
       onGoToFormations={() => navigate("formations")}
       onGoToNews={unavailable}
-      onGoToLostFound={unavailable}
+      onGoToLostFound={()=>navigate("lostFound")}
       onGoToHighlights={unavailable}
       onOpenHighlightsCamera={unavailable}
       onGoToLiveAsSpectator={() => navigate("live")}
@@ -307,7 +318,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
           clubAId: pairing.teamAId, clubBId: pairing.teamBId,
         });
       }}
-      onUpdateMatchSeconds={unavailable}
+      onUpdateMatchSeconds={updatePracticeDuration}
       onSetMatchType={unavailable}
       onForceSetMatchType={unavailable}
       onSetGameFormat={unavailable}
@@ -325,6 +336,8 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       onBack={() => navigate("landing")}
       onGoToStats={() => navigate("stats")}
     />;
+  } else if (page === "lostFound") {
+    content=<VenueLostFoundPage venueId={venue.id} venueName={practiceVenue?.name||venue.name} adminView scope={scope} onBack={()=>navigate("landing")}/>;
   } else if (page === "fixtures") {
     content = <VenueFixturesPage venue={practiceVenue}
       season={season} teams={teams}/>;
@@ -360,15 +373,14 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   return <div style={{paddingBottom: 90}}>
     <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit}/>
     {error && <p role="alert">{error}</p>}
-    {busy && <p role="status">Preparing sandbox fixtures and squads…</p>}
-    {page==="landing"&&<p className="muted small">Practice copies: your Field’s clubs first, then public squads. Real clubs are not contacted.</p>}
+    {busy && <p role="status">Preparing…</p>}
     {content}
     {page === "landing" && season && <FieldDecisionReview
       scope={scope} venueId={venue.id} seasonId={season.id} isCreator
     />}
 
     {page !== "live" && <FieldBottomNav currentPage={page} onNavigate={next => {
-      if (["news", "videos", "lostFound"].includes(next)) unavailable();
+      if (["news", "videos"].includes(next)) unavailable();
       else navigate(next);
     }}/>}
     {showEndDay && season && <FieldPracticeEndMatchDay

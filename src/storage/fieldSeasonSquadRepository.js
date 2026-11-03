@@ -1,3 +1,4 @@
+const pendingRosterReads=new Map();
 import {
   auth, getActiveFirebaseFunctionsBaseUrl,
 } from "../firebaseConfig.js";
@@ -22,6 +23,7 @@ async function requestSeasonSquad(endpoint, details) {
       signal: controller.signal,
     });
     const result = await response.json().catch(() => null);
+    if(auth.currentUser?.uid!==user.uid)throw new Error('Your account changed. Reopen your league squad.');
     if (!response.ok) {
       throw new Error(result?.error || "Could not update the league squad.");
     }
@@ -65,8 +67,11 @@ export const getClubMatchDaySquad = details =>
   requestSeasonSquad("getClubFieldMatchDaySquad", details);
 export const submitClubMatchDaySquad = details =>
   requestSeasonSquad("submitClubFieldMatchDaySquad", details);
-export const getFieldMatchDaySquads = details =>
-  requestSeasonSquad("getFieldMatchDaySquads", details);
+export const getFieldMatchDaySquads = details => {
+ const key=JSON.stringify([getActiveFirebaseFunctionsBaseUrl(),auth.currentUser?.uid,details]);
+ if(!pendingRosterReads.has(key))pendingRosterReads.set(key,requestSeasonSquad("getFieldMatchDaySquads",details).finally(()=>pendingRosterReads.delete(key)));
+ return pendingRosterReads.get(key);
+};
 export const confirmMatchDayCover = details =>
   requestSeasonSquad("inviteFieldMatchDayReplacement", {
     ...details, captainConfirmed: true,

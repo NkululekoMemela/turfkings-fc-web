@@ -893,7 +893,7 @@ function HighlightCard({
             ) : (
               <video
                 src={highlight.mediaUrl}
-                preload="metadata"
+                preload="none"
                 muted
                 playsInline
                 tabIndex={-1}
@@ -961,7 +961,7 @@ function HighlightCard({
       <video
         className="tkh-video"
         controls
-        preload="metadata"
+        preload="none"
         playsInline
         src={highlight.mediaUrl}
         onPlay={() => {
@@ -1814,7 +1814,7 @@ function TopShelfSeasonCarousel({
                     controls
                     muted
                     playsInline
-                    preload="metadata"
+                    preload="none"
                     onEnded={() => {
                       if (index === activeIndex) moveAward(1);
                     }}
@@ -2257,148 +2257,25 @@ export function VideoHighlightsPage({
   }, []);
 
 
+  const feedGeneration=useRef(0);
   const loadHighlights = async () => {
-    if (!resolvedMatchId) {
-      setLoadingHighlights(false);
-      return;
-    }
-
-    try {
-      setLoadingHighlights(true);
-      setLoadError("");
-      const legacyTurfKingsMatchId =
-        "league__2026-S5__match_13__2026-S1-team-1_vs_2026-S1-team-2";
-
-      const [loaded, archived, recentClubClips, legacyTurfKingsRaw] =
-        await Promise.all([
-          VideoHighlightsRepository.loadRawHighlightsFromFirebase(
-            resolvedMatchId,
-            activeClubId
-          ),
-          typeof VideoHighlightsRepository
-            .loadClubArchivedHighlightsFromFirebase === "function"
-            ? VideoHighlightsRepository
-                .loadClubArchivedHighlightsFromFirebase(
-                  activeClubId
-                )
-            : Promise.resolve([]),
-          typeof VideoHighlightsRepository
-            .loadAllClubHighlightsForAudit === "function"
-            ? VideoHighlightsRepository
-                .loadAllClubHighlightsForAudit(
-                  activeClubId
-                )
-            : Promise.resolve([]),
-          activeClubId === "turf-kings"
-            ? VideoHighlightsRepository
-                .loadRawHighlightsFromFirebase(
-                  legacyTurfKingsMatchId,
-                  activeClubId
-                )
-            : Promise.resolve([]),
-        ]);
-
-      const combinedRaw = [
-        ...(Array.isArray(loaded) ? loaded : []),
-        ...(Array.isArray(recentClubClips)
-          ? recentClubClips
-          : []),
-        ...(Array.isArray(legacyTurfKingsRaw)
-          ? legacyTurfKingsRaw.map((clip) => ({
-              ...clip,
-              matchId:
-                clip?.matchId || legacyTurfKingsMatchId,
-            }))
-          : []),
-      ];
-
-      const seen = new Set();
-
-      const deduplicatedRaw = combinedRaw.filter((clip) => {
-        const key = String(
-          clip?.clipId || clip?.id || ""
-        ).trim();
-
-        if (!key) return true;
-        if (seen.has(key)) return false;
-
-        seen.add(key);
-        return true;
-      });
-
-      setFirebaseHighlights(deduplicatedRaw);
-
-      /*
-       * A collection-group archive query can be rejected or return
-       * no usable records in the browser. Fall back to exact,
-       * club-scoped archive reads for every match already present
-       * in this club's raw feed.
-       */
-      const clubMatchIds = [
-        ...new Set(
-          deduplicatedRaw
-            .map((clip) =>
-              String(
-                clip?.matchId ||
-                clip?.fixtureId ||
-                clip?.matchContext?.matchId ||
-                ""
-              ).trim()
-            )
-            .filter(Boolean)
-        ),
-      ];
-
-      const directArchiveResults =
-        typeof VideoHighlightsRepository
-          .loadArchivedHighlightsFromFirebase === "function"
-          ? await Promise.allSettled(
-              clubMatchIds.map((clubMatchId) =>
-                VideoHighlightsRepository
-                  .loadArchivedHighlightsFromFirebase(
-                    clubMatchId,
-                    activeClubId
-                  )
-              )
-            )
-          : [];
-
-      const directlyLoadedArchives =
-        directArchiveResults.flatMap((result) =>
-          result.status === "fulfilled" &&
-          Array.isArray(result.value)
-            ? result.value
-            : []
-        );
-
-      const archiveSeen = new Set();
-
-      const mergedArchives = [
-        ...(Array.isArray(archived) ? archived : []),
-        ...directlyLoadedArchives,
-      ].filter((clip) => {
-        const key = String(
-          clip?.clipId ||
-          clip?.id ||
-          clip?.storagePath ||
-          clip?.videoUrl ||
-          ""
-        ).trim();
-
-        if (!key) return true;
-        if (archiveSeen.has(key)) return false;
-
-        archiveSeen.add(key);
-        return true;
-      });
-
-      setArchivedHighlights(mergedArchives);
-    } catch (error) {
-      console.error("[TK HIGHLIGHTS] Failed to load highlights:", error);
-      setLoadError(error?.message || "Could not load highlights from the server.");
-    } finally {
-      setLoadingHighlights(false);
-    }
+    const generation=++feedGeneration.current;
+    if(!resolvedMatchId){setLoadingHighlights(false);return;}
+    setLoadingHighlights(true);setLoadError("");
+    const dedupe=clips=>[...new Map(clips.map(c=>[`${c.matchId||resolvedMatchId}:${c.clipId||c.id||c.videoUrl}`,c])).values()];
+    // Current-match metadata can paint while older clips load in the background.
+    const current=VideoHighlightsRepository.loadRawHighlightsFromFirebase(resolvedMatchId,activeClubId).then(clips=>{
+      if(generation!==feedGeneration.current)return;
+      setFirebaseHighlights(dedupe(Array.isArray(clips)?clips:[]));setLoadingHighlights(false);
+    }).catch(()=>{});
+    try{
+      const clips=await VideoHighlightsRepository.loadRecentClubHighlightsFromFirebase(activeClubId);
+      if(generation!==feedGeneration.current)return;
+      const list=Array.isArray(clips)?clips:[];
+      setFirebaseHighlights(dedupe(list.filter(c=>!c.archivedClubFeed)));
+      setArchivedHighlights(dedupe(list.filter(c=>c.archivedClubFeed)));
+    }catch(error){if(generation===feedGeneration.current)setLoadError(error.message||"Could not load clips.");}
+    finally{await current;if(generation===feedGeneration.current)setLoadingHighlights(false);}
   };
 
   useEffect(() => {
@@ -2410,79 +2287,11 @@ export function VideoHighlightsPage({
     setClipPreviewsReady(false);
     setPreviewLoadStatus("Loading match clips…");
     loadHighlights();
+    return()=>{feedGeneration.current++;};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedMatchId, activeClubId]);
 
-  useEffect(() => {
-    if (loadingHighlights) return undefined;
-
-    let cancelled = false;
-    let finished = false;
-    let fallbackTimer = null;
-
-    const frame = window.requestAnimationFrame(() => {
-      const videos = Array.from(
-        document.querySelectorAll(
-          ".video-highlights-page .tkh-video"
-        )
-      ).slice(0, 3);
-
-      if (videos.length === 0) {
-        setPreviewLoadStatus("Highlights ready");
-        setClipPreviewsReady(true);
-        return;
-      }
-
-      let settledCount = 0;
-
-      const finish = () => {
-        if (cancelled || finished) return;
-        finished = true;
-        setPreviewLoadStatus("Your highlights are ready");
-        setClipPreviewsReady(true);
-      };
-
-      const settleVideo = () => {
-        settledCount += 1;
-
-        if (!cancelled && settledCount < videos.length) {
-          setPreviewLoadStatus(
-            `Preparing preview ${settledCount + 1} of ${videos.length}…`
-          );
-        }
-
-        if (settledCount >= videos.length) finish();
-      };
-
-      setPreviewLoadStatus(
-        `Preparing preview 1 of ${videos.length}…`
-      );
-
-      videos.forEach((video) => {
-        if (video.readyState >= 2) {
-          settleVideo();
-          return;
-        }
-
-        video.preload = "auto";
-        video.addEventListener("loadeddata", settleVideo, {
-          once: true,
-        });
-        video.addEventListener("error", settleVideo, {
-          once: true,
-        });
-        video.load();
-      });
-
-      fallbackTimer = window.setTimeout(finish, 12000);
-    });
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-      if (fallbackTimer) window.clearTimeout(fallbackTimer);
-    };
-  }, [loadingHighlights]);
+  useEffect(()=>{if(!loadingHighlights){setPreviewLoadStatus("Highlights ready");setClipPreviewsReady(true);}},[loadingHighlights]);
 
   useEffect(() => {
     if (splashDismissed) return undefined;
@@ -6687,7 +6496,7 @@ export function VideoHighlightsPage({
 
             {clipPreviewUrl && (
               <div style={{ marginTop: 12 }}>
-                <video className="tkh-preview-video" controls playsInline preload="metadata" src={clipPreviewUrl} />
+                <video className="tkh-preview-video" controls playsInline preload="none" src={clipPreviewUrl} />
               </div>
             )}
 

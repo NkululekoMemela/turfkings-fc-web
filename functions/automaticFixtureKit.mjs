@@ -15,6 +15,6 @@ export function automaticFixtureBibs(players,color){
  return ordered.map(p=>{
   if(kept.has(p.sourcePlayerId))return {...p,bibColor:color};
   const number=free.shift();if(number===undefined)return {...p,jerseyNumber:null,bibColor:color};
-  return {...p,jerseyNumber:number,bibColor:color,kitNumberSource:'field',matchBib:{source:'hired',number,color,assigned:true,allocationSource:'field',reservationStatus:'not_reserved'}};
+  return {...p,...(p.ownsNumberedBib===true?{personalBib:p.personalBib||{number:p.jerseyNumber,color:p.bibColor}}:{}),jerseyNumber:number,bibColor:color,kitNumberSource:'field',matchBib:{source:'hired',number,color,assigned:true,allocationSource:'field',reservationStatus:'not_reserved'}};
  });
 }

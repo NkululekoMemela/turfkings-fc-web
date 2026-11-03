@@ -1,3 +1,4 @@
+import FieldPracticeTimer from "./components/FieldPracticeTimer.jsx";
 import SessionSelector from "./components/SessionSelector.jsx";
 import TeamChatWarmup from "./components/TeamChatWarmup.jsx";
 import {saveClubMatchNumber} from "./storage/clubMatchNumberGateway.js";
@@ -2921,7 +2922,7 @@ export default function App() {
           }
           return;
         }
-        if (data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" ||
+        if (data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" || data.type === "field_match_day_squads" ||
             data.type === "field_manager_approval" || data.type === "field_story" || data.type === "field_poll" || data.type === "field_winners_story_request") {
           const venueId = String(data.venueId || "").trim();
           if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
@@ -2933,7 +2934,7 @@ export default function App() {
               window.alert("This Field is no longer available.");
               return;
             }
-            if (data.seasonId && data.matchDayId) {
+            if (data.type==="field_match_day_review" && data.seasonId && data.matchDayId) {
               try {
                 sessionStorage.setItem(
                   `field-review-open:${venueId}:${data.seasonId}:${data.matchDayId}`,
@@ -2950,7 +2951,7 @@ export default function App() {
             setShowSessionSelector(false);
             setPortalOriginClubId("");
             setFieldNavTarget({
-              page: ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
+              page: data.type==="field_match_day_squads" ? "squads" : ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
               privateChat:data.type==="field_club_chat"?{clubId:String(data.clubId||""),openedAt:Date.now()}:null,
               entryRequest:["field_chat","field_club_chat"].includes(data.type)?{
                 venueId,privateClubId:data.type==="field_club_chat"?String(data.clubId||""):"",
@@ -9018,106 +9019,7 @@ export default function App() {
         </div>
       )}
 
-      {isPracticeMode && practiceRuntime?.expiresAt && (
-        <div
-          role="status"
-          aria-label={`Practice Session ${practiceTimerLabel} remaining`}
-          style={{
-            position: "fixed",
-            top: "4.25rem",
-            left:
-              practiceRibbonPosition === "left"
-                ? 0
-                : practiceRibbonPosition === "right"
-                  ? "auto"
-                  : "54%",
-            right: practiceRibbonPosition === "right" ? 0 : "auto",
-            transform:
-              practiceRibbonPosition === "open"
-                ? "translateX(-50%)"
-                : "none",
-            zIndex: 12000,
-            display: "flex",
-            alignItems: "center",
-            gap: practiceRibbonPosition === "open" ? "0.5rem" : "0.35rem",
-            padding:
-              practiceRibbonPosition === "open"
-                ? "0.62rem 0.95rem"
-                : practiceRibbonPosition === "left"
-                  ? "0.58rem 0.65rem 0.58rem 0.45rem"
-                  : "0.58rem 0.45rem 0.58rem 0.65rem",
-            borderRadius:
-              practiceRibbonPosition === "open"
-                ? 999
-                : practiceRibbonPosition === "left"
-                  ? "0 999px 999px 0"
-                  : "999px 0 0 999px",
-            border: "2px solid rgba(232,121,249,0.95)",
-            background:
-              "linear-gradient(135deg, rgba(76,29,149,0.98), rgba(88,28,135,0.98), rgba(30,12,48,0.98))",
-            color: "#fff7ff",
-            boxShadow:
-              "0 0 0 1px rgba(250,204,255,0.28), 0 0 20px rgba(217,70,239,0.42), 0 10px 30px rgba(30,12,48,0.48)",
-            backdropFilter: "blur(14px)",
-            fontWeight: 850,
-            fontSize: practiceRibbonPosition === "open" ? "0.9rem" : "0.82rem",
-            letterSpacing: "0.01em",
-            cursor: "pointer",
-            userSelect: "none",
-            transition:
-              "left 180ms ease, right 180ms ease, transform 180ms ease, padding 180ms ease, box-shadow 180ms ease",
-          }}
-          title={
-            practiceRibbonPosition === "open"
-              ? "Tap to move the Practice Session warning to the right edge"
-              : "Tap to move or expand the Practice Session warning"
-          }
-          onClick={() => {
-            setPracticeRibbonPosition((current) => {
-              if (current === "open") return "right";
-              if (current === "right") return "left";
-              return "open";
-            });
-          }}
-        >
-          <span aria-hidden="true">🧪</span>
-
-          {practiceRibbonPosition === "open" && (
-            <>
-              <span>Practice session</span>
-              <span
-                style={{ opacity: 0.65 }}
-                aria-hidden="true"
-              >
-                •
-              </span>
-            </>
-          )}
-
-          <span
-            style={{
-              fontVariantNumeric: "tabular-nums",
-              minWidth:
-                practiceRibbonPosition === "open" ? "3.2rem" : "2.95rem",
-              textAlign: "center",
-            }}
-          >
-            {practiceTimerLabel}
-          </span>
-
-          {practiceRibbonPosition !== "open" && (
-            <span
-              aria-hidden="true"
-              style={{
-                fontSize: "0.72rem",
-                opacity: 0.8,
-              }}
-            >
-              {practiceRibbonPosition === "right" ? "◀" : "▶"}
-            </span>
-          )}
-        </div>
-      )}
+      {isPracticeMode && practiceRuntime?.expiresAt && <FieldPracticeTimer expiresAt={practiceRuntime.expiresAt} clubMode />}
 
       {officialStartWarning && (
         <div className="tk-referee-lock-backdrop" onClick={() => setOfficialStartWarning(null)}>

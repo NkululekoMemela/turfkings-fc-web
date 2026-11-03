@@ -1,15 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { buildLogoStorageNames } from "../../core/homePageHubLogoUtils";
 import {
   buildSvgLogoOptions,
   getSelectedSvgLogo,
 } from "../../core/homePageHubLogoSvgFactory";
 import HomePage_HUB_AIBadgeCreator from "./HomePage_HUB_AIBadgeCreator";
-
-function fileToPreview(file) {
-  if (!file) return "";
-  return URL.createObjectURL(file);
-}
 
 export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onChange }) {
   const [conceptSeed, setConceptSeed] = useState(0);
@@ -30,10 +25,15 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
   const selectedSvgLogo = getSelectedSvgLogo(svgOptions, selectedOption);
   const storageNames = buildLogoStorageNames(clubDraft?.clubId || clubDraft?.clubName);
 
-  const logoPreviewUrl = useMemo(
-    () => fileToPreview(logoDraft?.logoFile),
-    [logoDraft?.logoFile]
-  );
+  const [preview,setPreview]=useState({file:null,url:""});
+  const [fileError,setFileError]=useState("");
+  useEffect(()=>{
+    const file=logoDraft?.logoFile;
+    if(!file){setPreview({file:null,url:""});return;}
+    const url=URL.createObjectURL(file);setPreview({file,url});
+    return()=>URL.revokeObjectURL(url);
+  },[logoDraft?.logoFile]);
+  const logoPreviewUrl=preview.file===logoDraft?.logoFile?preview.url:"";
 
   const activeBadgeUrl = logoPreviewUrl || selectedSvgLogo?.previewUrl || "";
 
@@ -47,6 +47,10 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
 
   function handleLogoFile(event) {
     const file = event.target.files?.[0] || null;
+    event.target.value="";
+    if(!file)return;
+    if(!/^image\/(png|jpeg|webp)$/.test(file.type)||file.size>20*1024*1024){setFileError("Choose a PNG, JPG or WebP smaller than 20 MB.");return;}
+    setFileError("");
 
     updateLogoDraft({
       logoFile: file,
@@ -95,6 +99,7 @@ export default function HomePage_HUB_LogoGenerator({ clubDraft, logoDraft, onCha
         />
       </label>
 
+      {fileError&&<p role="alert">{fileError}</p>}
       <div className="hub-or-divider"><span>OR</span></div>
 
       <div className="hub-identity-ai-card">

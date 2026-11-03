@@ -52,14 +52,14 @@ function buildHandlers({db, region, sendBatch, auth: suppliedAuth}) {
       }
       const result = await sendBatch({
         tokenRecords,
-        title: kind === "reminder" ? "Check your next match" : "League fixtures released",
-        body: kind === "reminder"
+        title: kind === "admin_summary" ? "Match-day squads & colours" : kind === "reminder" ? "Check your next match" : "League fixtures released",
+        body: kind === "admin_summary" ? squadNames : kind === "reminder"
           ? needsAttention ? "Your next squad needs attention. Review missing players or eligibility." : `${squadNames ? squadNames + ". " : "Your squad carries forward. "}Confirm or change players. No action keeps this squad.`
           : "Fixtures are ready. View your opponents and kickoff times. Your eligible season squad carries into every match.",
         imageUrl: "",
         data: {
-          type: kind === "reminder" ? "field_squad_ready_reminder" : "field_squad_fixtures_released",
-          route: "club-league", venueId, seasonId, clubId, matchDayId, memberId,
+          type: kind === "admin_summary" ? "field_match_day_squads" : kind === "reminder" ? "field_squad_ready_reminder" : "field_squad_fixtures_released",
+          route: kind === "admin_summary" ? "field" : "club-league", venueId, seasonId, clubId, matchDayId, memberId,
         },
       });
       if (!result.successCount) throw new Error("No squad reminders were delivered.");
@@ -125,7 +125,7 @@ function buildHandlers({db, region, sendBatch, auth: suppliedAuth}) {
         [fixture.clubAId, fixture.clubBId].includes(clubId))) continue;
       let squadNames="",needsAttention=false;
       if(kind==="reminder"&&matchDayId){
-        try{const roster=await db.runTransaction(tx=>require("./fieldMatchDaySquad").loadDay({db,tx,scope:{venueId,seasonId:season.id,clubId},matchDayId}));needsAttention=roster.submission.ready===false;squadNames=roster.submission.players.map(p=>p.fullName).join(", ").slice(0,500);}catch(error){console.warn("[Field squad review]",clubId,error.message);}
+        try{const roster=await db.runTransaction(tx=>require("./fieldMatchDaySquad").loadDay({db,tx,scope:{venueId,seasonId:season.id,clubId},matchDayId}));needsAttention=roster.submission.ready===false;squadNames=(await import("./fieldKitNotice.mjs")).squadKitSummary(roster.submission.players);}catch(error){console.warn("[Field squad review]",clubId,error.message);}
       }
       const recipients = await clubRecipients(venueId, season, clubId, kind);
       for (const recipient of recipients) {
@@ -135,6 +135,16 @@ function buildHandlers({db, region, sendBatch, auth: suppliedAuth}) {
         });
       }
     }
+  }
+  async function notifyAdmin(venueId,venue,season,day){
+    const rows=await Promise.all((season.clubIds||[]).map(async clubId=>{
+      if(!(season.fixtures||[]).some(f=>f.matchDayId===day.id&&[f.clubAId,f.clubBId].includes(clubId)))return "";
+      try{const roster=await db.runTransaction(tx=>require("./fieldMatchDaySquad").loadDay({db,tx,scope:{venueId,seasonId:season.id,clubId},matchDayId:day.id}));return `${roster.club?.name||clubId}: ${(await import("./fieldKitNotice.mjs")).squadKitSummary(roster.submission.players)}`;}catch{return `${clubId}: squad needs attention`;}
+    }));
+    const recipients=new Set([venue.ownerUid].filter(Boolean));
+    const staff=await db.collection(`leagueVenues/${venueId}/staff`).get();
+    for(const member of staff.docs){const d=member.data();if(d.status==="active"&&d.isAdministrator===true){const uid=await resolve({...d,uid:d.uid||member.id});if(uid)recipients.add(uid);}}
+    for(const uid of recipients)await deliver({venueId,seasonId:season.id,clubId:"",matchDayId:day.id,uid,kind:"admin_summary",revision:`${day.id}:16h`,squadNames:rows.filter(Boolean).join(" · ").slice(0,2800)});
   }
   return {
     fieldSquadRosterChanged: onDocumentUpdated({document:"leagueSeasonSquads/{squadId}",region,retry:true},async event=>{
@@ -174,13 +184,8 @@ function buildHandlers({db, region, sendBatch, auth: suppliedAuth}) {
       await notify(event.params.venueId, after, "fixtures", "", revision);
     }),
     remindFieldSquadCaptains: onSchedule({
-      schedule: "0 8-20 * * *", timeZone: "Africa/Johannesburg", region,
+      schedule: "*/15 * * * *", timeZone: "Africa/Johannesburg", region,
     }, async () => {
-      const tomorrow = new Date(Date.now() + 86400000);
-      const date = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Africa/Johannesburg", year: "numeric",
-        month: "2-digit", day: "2-digit",
-      }).format(tomorrow);
       let cursor = null;
       // Pagination stops when the final bounded page is reached.
       // eslint-disable-next-line no-constant-condition
@@ -193,9 +198,10 @@ function buildHandlers({db, region, sendBatch, auth: suppliedAuth}) {
           if (season?.status !== "active" || season.gameFormat !== "5_V_5" ||
               !season.schedulePublishedAtMs) continue;
           for (const day of season.matchDays || []) {
-            if (day.dateLocal === date && day.status === "scheduled") {
-              await notify(venue.id, season, "reminder", day.id, day.id);
-            }
+            if(day.status!=="scheduled")continue;
+            const phase=(await import("./fieldKitNotice.mjs")).noticePhase(day,season.fixtures||[]);
+            if(phase==="captain")await notify(venue.id,season,"reminder",day.id,`${day.id}:24h`);
+            if(phase==="admin")await notifyAdmin(venue.id,venue.data(),season,day);
           }
         }
         if (venues.size < 100) break;

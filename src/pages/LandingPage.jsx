@@ -1716,7 +1716,7 @@ export function LandingPage({
           <div style={{ marginBottom: "0.9rem" }}>
             <button
               type="button"
-              className="secondary-btn"
+              className="secondary-btn hub-match-settings-trigger"
               onClick={() => setShowSettingsPanel((prev) => !prev)}
               aria-expanded={showSettingsPanel}
               style={{

@@ -126,7 +126,7 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
       const token = crypto.randomUUID();
       const file = admin.storage().bucket().file(`leagueVenues/${venueId}/branding/${token}.${extension}`);
       uploadedFile = file;
-      await file.save(bytes, {resumable: false, metadata: {contentType, metadata: {firebaseStorageDownloadTokens: token}}});
+      await file.save(bytes, {resumable: false, metadata: {contentType, cacheControl:"public,max-age=31536000,immutable", metadata: {firebaseStorageDownloadTokens: token}}});
       const logoUrl = `https://firebasestorage.googleapis.com/v0/b/${file.bucket.name}/o/${encodeURIComponent(file.name)}?alt=media&token=${token}`;
       const coordinate = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) ? Number(value) : null;
       const latitude = coordinate(draft.latitude);

@@ -1,3 +1,4 @@
+import "../styles/FieldIdentityHub.css";
 import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
 import FirebaseEnvironmentControl from "../components/FirebaseEnvironmentControl.jsx";
 import { LEGAL } from "../legal/policies.js";

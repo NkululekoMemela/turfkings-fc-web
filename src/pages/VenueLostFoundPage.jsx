@@ -1,7 +1,7 @@
 import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
 
 import React, {useEffect, useRef, useState} from "react";
-import {lostFoundRequest as request} from "../storage/fieldLostFoundRepository.js";
+import {lostFoundRequest as officialRequest} from "../storage/fieldLostFoundRepository.js";
 import "./VenueLostFoundPage.css";
 async function compressPhoto(file) {
   if (!file || file.size === 0) return "";
@@ -42,9 +42,10 @@ const labels = {
 };
 
 export default function VenueLostFoundPage({
-  venueId, venueName, adminView, clubId = "", onBack,
+  venueId, venueName, adminView, clubId = "", onBack, scope=null,
 }) {
-  const memoryKey = fieldPageKey("lostFound", venueId, adminView);
+  const request=(id,action,details={},signal)=>officialRequest(id,action,{...details,...(scope?{scope}:{})},signal);
+  const memoryKey = fieldPageKey("lostFound", venueId, adminView,scope?.environment||"official",scope?.practiceSessionId||"");
   const [view, setViewState] = useState(() => readFieldPage(memoryKey));
   const setView = result => {
     saveFieldPage(memoryKey, result);

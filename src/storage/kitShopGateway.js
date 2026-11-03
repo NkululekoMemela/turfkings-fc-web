@@ -18,7 +18,11 @@ export async function kitShopRequest(body){
  const user=auth.currentUser;if(!user?.uid||!user.emailVerified)throw new Error("Sign in with your verified Google account.");
  const key=JSON.stringify([user.uid,getActiveFirebaseFunctionsBaseUrl(),body]);
  if(pendingShopReads.has(key))return pendingShopReads.get(key);
- const request=performShopRequest(body).finally(()=>pendingShopReads.delete(key));pendingShopReads.set(key,request);return request;
+ const request=performShopRequest(body).then(async result=>{
+  if(result.isOperator&&!result.settings?.enabled&&!result.settings?.launchProfileVersion){
+    await performShopRequest({action:"activateLaunchShop"});return performShopRequest(body);
+  }return result;
+ }).finally(()=>pendingShopReads.delete(key));pendingShopReads.set(key,request);return request;
 }
 
 export async function openShopYocoPayment(orderId){

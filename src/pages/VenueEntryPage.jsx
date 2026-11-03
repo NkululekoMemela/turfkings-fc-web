@@ -1,3 +1,9 @@
+import {buildPlatformPlayerSnapshot,evaluatePlatformPlayerState} from "../core/platformPlayer/platformPlayerService.js";
+import {planPlatformPlayerWrite} from "../core/platformPlayer/platformPlayerManager.js";
+import FieldBibHire from "../components/FieldBibHire.jsx";
+import FieldPageWarmup from "../components/FieldPageWarmup.jsx";
+import VenueLeagueSpectatorPage from "./VenueLeagueSpectatorPage.jsx";
+import "../styles/FieldIdentityHub.css";
 import {fieldFixtureStartTiming} from "../../functions/fieldStartTiming.mjs";
 import {chooseFieldOfficialStart} from "../components/FieldOfficialStartPrompt.jsx";
 import {enterFieldFromNotification} from "../storage/fieldNotificationEntryGateway.js";
@@ -5656,6 +5662,8 @@ export default function VenueEntryPage({
       );
     }
 
+    if (venuePage === "live" && !canOperateFieldMatch) return <VenueLeagueSpectatorPage venue={venue} season={venueSeason||{}} teams={teams} onBack={()=>setVenuePage("landing")}/>;
+
     if (venuePage === "live") {
       return (
         <VenueLiveMatchRuntime
@@ -5708,6 +5716,8 @@ export default function VenueEntryPage({
           onReviewStats={() => setVenuePage("stats")}
         />
       )}
+      <FieldPageWarmup venue={venue} season={venueSeason} clubId={(isClubRepresentative || effectiveRole==="club_member")?enteredIdentity?.clubId||"":""} canManageBanking={!isReadOnlyFieldRole&&(isVenueOwner||hasActiveFieldRole)}/>
+      {venuePage==="settings"&&canAccessFieldSettings&&<FieldBibHire venueId={venue.id} manage/>}
       <VenueLandingPage
         fieldSettingsOnly={venuePage === "settings" && canAccessFieldSettings}
         onSettingsBack={() => setVenuePage("landing")}
@@ -6398,11 +6408,11 @@ export default function VenueEntryPage({
       <div className="field-theme-picker" role="group" aria-label="Field theme">
         <span>Field appearance</span>
         <button type="button" aria-pressed={fieldTheme === "dark"}
-          onClick={() => setFieldTheme("dark")}>Dark</button>
+          onClick={() => setFieldTheme("dark")}>Blue Crimson</button>
         <button type="button" aria-pressed={fieldTheme === "pearl"}
-          onClick={() => setFieldTheme("pearl")}>Rosewood</button>
+          onClick={() => setFieldTheme("pearl")}>Crimson Blue</button>
         <button type="button" aria-pressed={fieldTheme === "sandstone"}
-          onClick={() => setFieldTheme("sandstone")}>Sandstone</button>
+          onClick={() => setFieldTheme("sandstone")}>Ebony Emerald</button>
 
       </div>
 

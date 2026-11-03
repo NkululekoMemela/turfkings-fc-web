@@ -474,8 +474,6 @@ export default function VenueFieldChatPage({
             <small>Field Chat · Football community</small>
           </span>
           <button type="button" className="secondary-btn"
-            onClick={onBack} aria-label="Minimize Field chat">−</button>
-          <button type="button" className="secondary-btn"
             onClick={onBack} aria-label="Close Field chat">×</button>
         </div>
 

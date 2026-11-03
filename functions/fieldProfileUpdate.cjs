@@ -68,7 +68,7 @@ async function updateFieldProfile({body,user,admin,db,fail,replenish}) {
         contentType="image/png";ext="png";
       } else {bytes=Buffer.from(catalog.renderFieldLogo(spec,name));contentType="image/svg+xml";ext="svg";}
       const token=crypto.randomUUID();uploaded=admin.storage().bucket().file(`leagueVenues/${id}/branding/${token}.${ext}`);
-      await uploaded.save(bytes,{resumable:false,metadata:{contentType,metadata:{firebaseStorageDownloadTokens:token}}});
+      await uploaded.save(bytes,{resumable:false,metadata:{contentType,cacheControl:"public,max-age=31536000,immutable",metadata:{firebaseStorageDownloadTokens:token}}});
       logoUrl=`https://firebasestorage.googleapis.com/v0/b/${uploaded.bucket.name}/o/${encodeURIComponent(uploaded.name)}?alt=media&token=${token}`;
       branding={logoUrl,accent:catalog.PALETTES[spec.palette][1],spec,stockId:stockRef ? logo.stockId : "",logoSource:logo.uploadDataUrl ? "uploaded_file" : stockRef ? "exclusive_stock" : "local_designer"};
     }

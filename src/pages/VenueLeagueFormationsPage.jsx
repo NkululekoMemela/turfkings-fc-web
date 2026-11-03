@@ -1,3 +1,4 @@
+import {CLUB_COLLECTIONS} from "../core/clubPaths.js";
 import {fieldFormationWeek} from "../core/fieldFormationWeek.mjs";
 import {resolvePlayerPortrait} from "../core/playerPortrait.mjs";
 import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
@@ -22,6 +23,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { db } from "../firebaseConfig";
 import {
+  getClubDoc,
   getPlayersCollection,
   getMembersCollection,
   getPlayerPhotosCollection,
@@ -2465,7 +2467,7 @@ export function FormationsPage({
       setSavingFormationImage(true);
       const target=exportRef.current?.querySelector(".pitch-wrapper")||exportRef.current;
       if(!target)return;
-      const imageData=await toPng(target,{cacheBust:true,pixelRatio:2,backgroundColor:"#0f172a"});
+      const imageData=await toPng(target,{cacheBust:false,pixelRatio:1,backgroundColor:"#0f172a"});
       if(imageData.length>1300000)throw Error("The image is too large. Try saving it first.");
       onShareFormation({kind:"formation",clipId:crypto.randomUUID(),venueId:fieldLeagueScope.venueId,environment:"official",ownerUid:authUser?.uid,matchId:`formation__${fieldLeagueScope.seasonId}__${fieldWeek?.matchDayId||"upcoming"}`,title:`${selectedTeamCanonical?.label||"Team"} · ${fieldWeek?.dateLocal||"Next match day"}`,imageData});
     }catch(error){await fieldAlert(error.message||"Could not prepare this formation.");}
@@ -2568,7 +2570,7 @@ export function FormationsPage({
         <p role="status" className="muted small">{fieldFormationMessage}</p>
       )}
 
-      {fieldWeek&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><small>{fieldWeek.label}</small>{onShareFormation&&fieldLeagueScope?.environment==="official"&&<button type="button" className="secondary-btn" disabled={savingFormationImage} onClick={shareFormationToChat}>Share to chat</button>}</div>}
+      {fieldWeek&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}><small>{fieldWeek.label}</small></div>}
       <section
         ref={exportRef}
         className="card lineups-card"
@@ -2850,6 +2852,7 @@ export function FormationsPage({
 
 
         <div className="lineups-layout" style={{ gap: "0.55rem" }}>
+          {onShareFormation&&fieldLeagueScope?.environment==="official"&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:6}}><button type="button" className="secondary-btn formation-chat-icon" aria-label="Attach formation to chat" title="Attach formation to chat" disabled={savingFormationImage} onClick={shareFormationToChat}>💬</button></div>}
           <div className="pitch-wrapper" style={{ marginBottom: 0 }}>
             <div className="pitch">
               <div className="pitch-centre-circle" />
@@ -3030,10 +3033,7 @@ export function FormationsPage({
                           touchAction: "manipulation",
                         }}
                       >
-                        {name && <div className="live-lineup-number-pin"><CompactPlayerNumber number={(() => {
-                          const label=labelWithNumber(formationKitTeams,name,"",selectedTeamId || "");
-                          const match=label.match(/^\((\d+)\)/);return match?Number(match[1]):null;
-                        })()} name={name}/></div>}
+
                         <div
                           className={`player-shirt ${photoData ? "with-photo" : ""}`}
                           style={photoData ? { backgroundImage: `url(${photoData})` } : {}}
@@ -3044,7 +3044,7 @@ export function FormationsPage({
 
 
                       <div className="player-label">
-                        <span className="player-name">{name ? withCaptainTag(name).replace(/^\((?:\d+|-)\)\s*/, "") : "Empty"}</span>
+                        <span className="player-name">{name ? `${withCaptainTag(name).replace(/^\((?:\d+|-)\)\s*/, "")} ${labelWithNumber(formationKitTeams,name,"",selectedTeamId||"").match(/^\((?:\d+|-)\)/)?.[0]||""}` : "Empty"}</span>
                         <span className="position-tag">{pos.label}</span>
                       </div>
                     </div>
