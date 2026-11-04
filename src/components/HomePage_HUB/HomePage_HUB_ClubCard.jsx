@@ -1,5 +1,3 @@
-import { clubFounderName } from "../../core/clubFounderCredit.mjs";
-import HubClubLogo from "./HubClubLogo.jsx";
 // src/components/HomePage_HUB/HomePage_HUB_ClubCard.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -32,7 +30,24 @@ function getClubVideoUrl(club) {
 
 
 function getClubLeaderFirstName(club = {}) {
-  const leaderName = club?.displayLeaderName || clubFounderName(club);
+  const adminNames = Array.isArray(club?.adminNames)
+    ? club.adminNames
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    : [];
+
+  const leaderName =
+    club?.displayLeaderName ||
+    club?.delegatedAdminName ||
+    club?.mainAdminName ||
+    club?.ownerName ||
+    club?.owner?.name ||
+    club?.captain?.name ||
+    club?.captainName ||
+    club?.captainFirstName ||
+    club?.contactName ||
+    adminNames[0] ||
+    "";
 
   return (
     String(leaderName || "")
@@ -55,8 +70,7 @@ function compactPlayTime(value = "") {
     .trim();
 }
 
-function getVerificationBadge(club = {}, entityLabel = "Club") {
-  if(club.clubType==="company"&&club.companyStatus==="active")return {label:"Company Club",className:"tk-trust-face--verified"};
+function getVerificationBadge(club = {}) {
   const level = Number(club.verificationLevel ?? club.trustLevel ?? 0);
 
   if (level >= 3) {
@@ -68,10 +82,10 @@ function getVerificationBadge(club = {}, entityLabel = "Club") {
   }
 
   if (level >= 1 || club.verified === true) {
-    return { label: `Verified ${entityLabel}`, className: "tk-trust-face--verified" };
+    return { label: "Verified Club", className: "tk-trust-face--verified" };
   }
 
-  return { label: `New ${entityLabel}`, className: "tk-trust-face--new" };
+  return { label: "New Club", className: "tk-trust-face--new" };
 }
 
 export default function HomePage_HUB_ClubCard({
@@ -84,16 +98,8 @@ export default function HomePage_HUB_ClubCard({
   canJoin = true,
   canChallenge = false,
   canDelete = false,
-  initialFace = 0,
-  freezeFace = false,
-  faceCount = 3,
-  entityLabel = "Club",
-  participantLabel = "Players",
-  busy = false,
-  activityLabel,
-  websiteUrl = "",
 }) {
-  const [faceIndex, setFaceIndex] = useState(initialFace);
+  const [faceIndex, setFaceIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
 
@@ -115,12 +121,9 @@ export default function HomePage_HUB_ClubCard({
   const highlightPreview = getHighlightPreview(club);
   const videoUrl = getClubVideoUrl(club);
   const playerCount = club?.playerCount ?? club?.memberCount ?? club?.playersCount ?? 0;
-  const distanceValue = club?.distanceKm != null &&
-    Number.isFinite(Number(club.distanceKm))
-      ? `${club.distanceUncertain ? "~" : ""}${Number(club.distanceKm).toFixed(
-          Number(club.distanceKm) < 10 ? 1 : 0
-        )} km`
-      : "Distance unavailable";
+  const distanceValue = Number.isFinite(Number(club?.distanceKm))
+    ? `${Number(club.distanceKm).toFixed(Number(club.distanceKm) < 10 ? 1 : 0)} km`
+    : "Near you";
   const gamesPlayed = Number(
     club?.weeksPlayed ??
       club?.matchWeeksPlayed ??
@@ -134,25 +137,19 @@ export default function HomePage_HUB_ClubCard({
 
   const clubLeaderFirstName = getClubLeaderFirstName(club);
 
-  let fieldWebsite = null;
-  if (entityLabel === "Field" && websiteUrl) {
-    try {const url = new URL(/^https?:\/\//i.test(websiteUrl) ? websiteUrl : `https://${websiteUrl}`);
-      if (["https:", "http:"].includes(url.protocol) && !url.username && !url.password) fieldWebsite = url;
-    } catch { /* Keep the useful fallback for invalid legacy URLs. */ }
-  }
-  const clubActivityLabel = activityLabel || (clubLeaderFirstName
-    ? `${clubLeaderFirstName}'s ${entityLabel}`
-    : `Local ${entityLabel}`);
+  const clubActivityLabel = clubLeaderFirstName
+    ? `${clubLeaderFirstName}'s Club`
+    : "Local Club";
 
   useEffect(() => {
-    if (isPaused || freezeFace) return undefined;
+    if (isPaused) return undefined;
 
     const timer = window.setInterval(() => {
-      setFaceIndex((current) => (current + 1) % faceCount);
+      setFaceIndex((current) => (current + 1) % 3);
     }, 7000);
 
     return () => window.clearInterval(timer);
-  }, [isPaused, freezeFace, faceCount]);
+  }, [isPaused]);
 
   if (!club) return null;
 
@@ -176,7 +173,7 @@ export default function HomePage_HUB_ClubCard({
       onTouchEnd={() => setIsPaused(false)}
       aria-label={`Open ${club.name || "club"}`}
     >
-      <div className="hub-club-card__menu-wrap" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+      <div className="hub-club-card__menu-wrap" onClick={(event) => event.stopPropagation()}>
         <button
           type="button"
           className="hub-club-card__menu-button"
@@ -220,13 +217,12 @@ export default function HomePage_HUB_ClubCard({
                 type="button"
                 role="menuitem"
                 className="hub-club-card__menu-danger"
-                disabled={busy}
                 onClick={() => {
                   setActionsOpen(false);
                   onDeleteClub?.(club);
                 }}
               >
-                {busy ? "Deleting…" : `Delete ${entityLabel}`}
+                Delete Club
               </button>
             ) : null}
           </div>
@@ -236,18 +232,28 @@ export default function HomePage_HUB_ClubCard({
 <div className={`hub-club-card__cube hub-club-card__cube--face-${faceIndex}`}>
         <section className="hub-club-card__face hub-club-card__face--logo">
           <div className="hub-club-card__logo-ring">
-            <HubClubLogo hideInitials={entityLabel === "Field"} src={club.image || club.logoUrl || ""} name={club.name || entityLabel} initials={club.logoText || initials}/>
+            {club.image || club.logoUrl ? (
+              <img
+                src={club.image || club.logoUrl}
+                alt={`${club.name || "Club"} logo`}
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <span>{club.logoText || initials}</span>
+            )}
           </div>
 
-          <strong>{club.name || `Football ${entityLabel}`}</strong>
+          <strong>{club.name || "Football Club"}</strong>
           <small>Tap to enter</small>
         </section>
 
         <section className="hub-club-card__face hub-club-card__face--details hub-club-card__face--trust">
-          <div className={`tk-trust-face ${getVerificationBadge(club, entityLabel).className}`}>
+          <div className={`tk-trust-face ${getVerificationBadge(club).className}`}>
             <div className="tk-trust-face__header">
               <span />
-              <strong>{getVerificationBadge(club, entityLabel).label}</strong>
+              <strong>{getVerificationBadge(club).label}</strong>
               <span />
             </div>
 
@@ -256,7 +262,7 @@ export default function HomePage_HUB_ClubCard({
               <path d="m8.8 12.1 2.1 2.1 4.4-4.8" />
             </svg>
 
-            <h3>{club.name || `Football ${entityLabel}`}</h3>
+            <h3>{club.name || "Football Club"}</h3>
 
             <div className="tk-trust-face__stats tk-trust-face__stats--hero">
               <div className="tk-trust-face__stat tk-trust-face__stat--players">
@@ -267,7 +273,7 @@ export default function HomePage_HUB_ClubCard({
                   <path d="M11 19.2c.4-3.1 2.4-5.1 4.8-5.1s4.4 2 4.8 5.1" />
                 </svg>
                 <b>{playerCount}</b>
-                <small>{participantLabel}</small>
+                <small>Players</small>
               </div>
 
               <div className="tk-trust-face__stat tk-trust-face__stat--distance">
@@ -302,9 +308,7 @@ export default function HomePage_HUB_ClubCard({
                   <circle cx="12" cy="12" r="8.5" />
                   <path d="m12 3.5 2.6 5.2 5.7.8-4.1 4 1 5.6L12 16.5 6.9 19.1l1-5.6-4.1-4 5.7-.8L12 3.5Z" />
                 </svg>
-                {fieldWebsite ? <a href={fieldWebsite.href} target="_blank" rel="noopener noreferrer" title={fieldWebsite.href}
-                  onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}
-                  style={{color:"inherit",maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fieldWebsite.host}</a> : <span>{clubActivityLabel}</span>}
+                <span>{clubActivityLabel}</span>
               </p>
             </div>
 
@@ -337,7 +341,7 @@ export default function HomePage_HUB_ClubCard({
               <div className="hub-club-card__highlight-overlay">
                 <span className="hub-club-card__eyebrow">Highlights</span>
                 <div className="hub-club-card__play">▶</div>
-                <h3>{highlightPreview === "Highlights coming soon" ? `${entityLabel} highlight` : highlightPreview}</h3>
+                <h3>{highlightPreview === "Highlights coming soon" ? "Club highlight" : highlightPreview}</h3>
               </div>
             </>
           ) : (
@@ -345,7 +349,7 @@ export default function HomePage_HUB_ClubCard({
               <span className="hub-club-card__eyebrow">Highlights</span>
               <div className="hub-club-card__play">▶</div>
               <h3>{highlightPreview}</h3>
-              <p>Goals, saves and skills from this {entityLabel.toLowerCase()} will live here.</p>
+              <p>Goals, saves and skills from this club will live here.</p>
             </>
           )}
         </section>

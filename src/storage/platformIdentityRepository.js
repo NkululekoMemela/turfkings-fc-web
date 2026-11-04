@@ -1,4 +1,3 @@
-import {ownMembershipSnapshots} from "./playerPrivacyGateway.js";
 import {
   collectionGroup,
   doc,
@@ -55,7 +54,7 @@ async function loadSourcePlayerPhoto(candidate = {}) {
           db,
           "clubs",
           candidate.clubId,
-          "publicPlayerPhotos",
+          "playerPhotos",
           photoId
         )
       );
@@ -150,7 +149,12 @@ export async function findPlatformIdentitiesByEmail(emailValue = "") {
 
   console.log("[GPI Repository] Looking up authenticated email:", email);
 
-  const membersSnap = await ownMembershipSnapshots();
+  const membersSnap = await getDocs(
+    query(
+      collectionGroup(db, "members"),
+      where("email", "==", email)
+    )
+  );
 
   const rawCandidates = [];
 
@@ -246,7 +250,12 @@ export async function findCandidatePlatformIdentity(identity = {}) {
     email,
   });
 
-  const membersSnap = await ownMembershipSnapshots();
+  const membersSnap = await getDocs(
+    query(
+      collectionGroup(db, "members"),
+      where("email", "==", email)
+    )
+  );
 
   console.log(
     "[IdentityDebug] Matching member documents:",

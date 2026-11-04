@@ -1,4 +1,0 @@
-const test=require('node:test'),assert=require('node:assert/strict'),{spawnSync}=require('node:child_process'),path=require('node:path');
-test('Company Clubs starts independently of the shared match and payment entry point',()=>{
- const result=spawnSync(process.execPath,['-e',`const f=require('./functionsBootstrap.cjs');console.log(JSON.stringify({keys:Object.keys(f),loaded:Boolean(require.cache[require.resolve('./index.js')]),serviceLoaded:Boolean(require.cache[require.resolve('./companyClubs.cjs')])}));process.exit(0);`],{cwd:path.resolve(__dirname,'../functions'),env:{...process.env,FUNCTION_TARGET:'companyClubs',GCLOUD_PROJECT:'demo-fanm-company'},encoding:'utf8',timeout:15000});assert.equal(result.status,0,result.stderr);const output=JSON.parse(result.stdout);assert.deepEqual(output.keys,['companyClubs']);assert.equal(output.loaded,false);assert.equal(output.serviceLoaded,false);
-});

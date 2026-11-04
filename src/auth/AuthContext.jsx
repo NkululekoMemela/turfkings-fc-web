@@ -1,4 +1,3 @@
-import {ownMembershipSnapshots} from "../storage/playerPrivacyGateway.js";
 // src/auth/AuthContext.jsx
 import React, {
   createContext,
@@ -8,14 +7,12 @@ import React, {
   useMemo,
 } from "react";
 import {
-  onIdTokenChanged,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut as firebaseSignOut,
 } from "firebase/auth";
-import {
-  auth,
-  db,
-  logOut as logOutFirebase,
-  signInWithGoogle as signInWithGoogleFirebase,
-} from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 import {
   getPlayersCollection,
   getMembersCollection,
@@ -53,7 +50,7 @@ export function AuthProvider({ children }) {
 
   // Listen to Firebase auth state
   useEffect(() => {
-    const unsub = onIdTokenChanged(auth, async (firebaseUser) => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
         setAuthUser(null);
         setLoading(false);
@@ -75,7 +72,9 @@ export function AuthProvider({ children }) {
 
         // 1) Try Firestore: members doc matching this email
         try {
-          const snap = await ownMembershipSnapshots("turf-kings");
+          const membersRef = getMembersCollection(db);
+          const q = query(membersRef, where("email", "==", email));
+          const snap = await getDocs(q);
 
           if (!snap.empty) {
             const docSnap = snap.docs[0];
@@ -111,9 +110,6 @@ export function AuthProvider({ children }) {
           uid: firebaseUser.uid,
           email,
           firebaseUser,
-          emailVerified: firebaseUser.emailVerified,
-          photoURL: firebaseUser.photoURL,
-          providerData: firebaseUser.providerData,
           role,
           fullName,
           shortName,
@@ -134,12 +130,13 @@ export function AuthProvider({ children }) {
   // ---- actions ----
 
   const signInWithGoogle = async () => {
-    const result = await signInWithGoogleFirebase();
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
     return result?.user || null;
   };
 
   const signOutUser = async () => {
-    await logOutFirebase();
+    await firebaseSignOut(auth);
   };
 
   /**

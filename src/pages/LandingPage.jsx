@@ -1,12 +1,8 @@
-import "../components/LandingDesktopLayout.css";
-import {matchTeamCaption} from "../core/matchTeamCaption.mjs";
-import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
 // src/pages/LandingPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import {canUsePlayerFeatures} from "../core/playerFeatureAccess.mjs";
-import ClubFieldPortal from "../components/ClubFieldPortal.jsx";
 import { getTeamById } from "../core/teams.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
+import { GLOBAL_CAPTAIN_CODES } from "../core/accessCodes.js";
 import {
   FANM_PRO_CLUBS,
 } from "../data/fanm/fanmTeamLibrary.js";
@@ -23,6 +19,7 @@ import {
   normalizeMatchMode,
 } from "../core/matchConfig.js";
 
+const CAPTAIN_CODES = GLOBAL_CAPTAIN_CODES;
 
 function landingTeamIdentityKey(value) {
   return String(value || "")
@@ -252,8 +249,6 @@ export function LandingPage({
   activeClubId = null,
   activeClubName = null,
   clubIdentity = null,
-  onEnterField,
-  onExploreFields,
   teams,
   currentMatchNo,
   currentMatch,
@@ -295,7 +290,6 @@ export function LandingPage({
   onGoToHighlights,
   onGoToEntryDev,
   onGoToPayments,
-  leagueSeasonEntry = null,
   identity,
   activeRole,
   isAdmin = false,
@@ -304,7 +298,6 @@ export function LandingPage({
   isSpectator = false,
   canStartMatch = false,
   hasRecordedMatchDayState = false,
-  onReady,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
@@ -369,12 +362,6 @@ export function LandingPage({
   const [photoIndex, setPhotoIndex] = useState(0);
 
   useEffect(() => {
-    if (!teamPhotos.length) {
-      onReady?.();
-    }
-  }, [teamPhotos.length, onReady]);
-
-  useEffect(() => {
     if (teamPhotos.length <= 1) return;
 
     const interval = setInterval(() => {
@@ -427,7 +414,6 @@ export function LandingPage({
     return getIdentityRole(identity);
   }, [activeRole, identity]);
 
-  const canUsePlayerPortal=canUsePlayerFeatures({user:currentUser,identity,clubId:activeClubId,activeRole:resolvedRole});
   const teamA = getTeamById(teams, teamAId);
   const teamB = getTeamById(teams, teamBId);
   const standbyTeam = getTeamById(teams, standbyId);
@@ -447,6 +433,14 @@ export function LandingPage({
     return "spectator";
   }, [resolvedRole]);
 
+
+  const activeCaptainCodes = useMemo(() => {
+    const code = String(adminCode || "3333").trim() || "3333";
+    return Array.from(new Set([...CAPTAIN_CODES, code]));
+  }, [adminCode]);
+
+  const isAdminCode = (value) =>
+    String(value || "").trim() === (String(adminCode || "3333").trim() || "3333");
 
   const closeSettingsPanelAfterPopup = () => {
     setShowSettingsPanel(false);
@@ -1063,8 +1057,8 @@ export function LandingPage({
   const confirmPairingChange = () => {
     if (!pendingMatch) return;
 
-    if (!canStartMatch || pairingCode.trim().toUpperCase() !== "CONFIRM") {
-      setPairingError("Type CONFIRM to continue.");
+    if (!CAPTAIN_CODES.includes(pairingCode.trim())) {
+      setPairingError("Invalid captain code.");
       return;
     }
 
@@ -1076,7 +1070,7 @@ export function LandingPage({
   const optionsForTeamB = teams.filter((t) => t.id !== teamAId);
 
   const renderOptionLabel = (team) =>
-    isMobile ? team.label : matchTeamCaption(team);
+    isMobile ? team.label : `${team.label} (c: ${team.captain})`;
 
   const handleSpectatorLiveClick = () => {
     onGoToLiveAsSpectator();
@@ -1223,8 +1217,8 @@ export function LandingPage({
   const confirmGameFormatChange = () => {
     if (!pendingGameFormat) return;
 
-    if (!canSeeCaptainStyleControls || formatCode.trim().toUpperCase() !== "CONFIRM") {
-      setFormatError("Type CONFIRM to continue.");
+    if (!activeCaptainCodes.includes(formatCode.trim())) {
+      setFormatError("Invalid captain code.");
       return;
     }
 
@@ -1309,6 +1303,55 @@ export function LandingPage({
     );
     onUpdateMatchSeconds?.(resolvedDefaultMatchSeconds, resolvedMatchType);
     closeDurationModal();
+  };
+
+  const generateAdminCode = () => {
+    if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+      const values = new Uint32Array(1);
+      window.crypto.getRandomValues(values);
+      return String(1000 + (values[0] % 9000));
+    }
+
+    return String(Math.floor(1000 + Math.random() * 9000));
+  };
+
+  const handleRegenerateAdminCode = async () => {
+    if (!isAdmin) return;
+
+    if (typeof onUpdateAdminCode !== "function") {
+      setAdminCodeStatus("Admin code updater is not connected yet.");
+      return;
+    }
+
+    const ok = window.confirm(
+      "Generate a new admin code?\n\nThe old admin code will stop working for admin-only actions."
+    );
+    if (!ok) return;
+
+    const nextCode = generateAdminCode();
+    setAdminCodeStatus("");
+    setAdminCodeBusy(true);
+
+    try {
+      const result = await onUpdateAdminCode({
+        currentCode: adminCode,
+        nextCode,
+      });
+
+      if (!result?.ok) {
+        setAdminCodeStatus(result?.message || "Could not update admin code.");
+        return;
+      }
+
+      setShowCodes(true);
+      setCodeCopyStatus("");
+      setAdminCodeStatus(`New admin code generated: ${nextCode}`);
+    } catch (error) {
+      console.error("[TK SETTINGS] Admin code update failed:", error);
+      setAdminCodeStatus("Could not update admin code.");
+    } finally {
+      setAdminCodeBusy(false);
+    }
   };
 
   return (
@@ -1419,57 +1462,9 @@ export function LandingPage({
           box-shadow: none;
         }
 
-        .tk-ribbon-desktop-lip {
-          display: none;
-        }
-
         @media (min-width: 760px) {
-          /*
-           * Desktop ribbon:
-           * the main bar follows the central page width,
-           * while the mode lip remains a fixed premium size.
-           */
-          .landing-wave-header::before {
-            display: none;
-            content: "";
-            position: absolute;
-            z-index: 0;
-            inset: 0 0 auto;
-            height: 86px;
-            background:
-              linear-gradient(
-                90deg,
-                #1d4ed8 0%,
-                #071329 42%,
-                #22c55e 100%
-              );
-          }
-
-          .tk-ribbon-wave-svg--mobile {
-            display: none;
-          }
-
-          .tk-ribbon-desktop-lip {
-            position: absolute;
-            display: block;
-            z-index: 1;
-            top: -1px;
-            left: 0;
-            width: 100%;
-            height: 123px;
-            overflow: visible;
-            pointer-events: none;
-            filter:
-              drop-shadow(
-                0 13px 22px rgba(2, 6, 23, 0.24)
-              );
-          }
-
           .tk-ribbon-mode-label {
-            left: 67px;
-            top: 103px;
-            transform: translateY(-50%);
-            font-size: 0.62rem;
+            font-size: clamp(0.58rem, 0.52vw, 0.72rem);
             letter-spacing: 0.08em;
           }
         }
@@ -1508,7 +1503,7 @@ export function LandingPage({
       >
         <header className="landing-wave-header">
           <svg
-            className="tk-ribbon-wave-svg tk-ribbon-wave-svg--mobile"
+            className="tk-ribbon-wave-svg"
             viewBox="0 0 390 122"
             preserveAspectRatio="none"
             aria-hidden="true"
@@ -1563,62 +1558,6 @@ export function LandingPage({
               strokeWidth="1.2"
             />
 
-          </svg>
-
-          <svg
-            className="tk-ribbon-desktop-lip"
-            viewBox="0 0 1200 122"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <defs>
-              <linearGradient
-                id="tkLandingDesktopLipGradient"
-                gradientUnits="userSpaceOnUse"
-                x1="0"
-                y1="0"
-                x2="1200"
-                y2="0"
-              >
-                <stop offset="0%" stopColor="#1d4ed8" />
-                <stop offset="42%" stopColor="#071329" />
-                <stop offset="100%" stopColor="#22c55e" />
-              </linearGradient>
-            </defs>
-
-            {/*
-             * One continuous desktop path:
-             * full-width header and compact mode lip share
-             * the same fill, with no join between them.
-             */}
-            <path
-              d="
-                M 0 0
-                H 1200
-                V 86
-                H 240
-                C 216 86, 207 119, 182 119
-                H 69
-                C 54 119, 48 86, 35 86
-                H 0
-                Z
-              "
-              fill="url(#tkLandingDesktopLipGradient)"
-            />
-
-            <path
-              d="
-                M 35 86
-                C 48 86, 54 119, 69 119
-                H 182
-                C 207 119, 216 86, 240 86
-              "
-              fill="none"
-              stroke="rgba(34,211,238,0.38)"
-              strokeWidth="1.2"
-              vectorEffect="non-scaling-stroke"
-            />
           </svg>
 
           <div className="tk-ribbon-mode-label" aria-label={modeLipLabel}>
@@ -1716,7 +1655,7 @@ export function LandingPage({
           <div style={{ marginBottom: "0.9rem" }}>
             <button
               type="button"
-              className="secondary-btn hub-match-settings-trigger"
+              className="secondary-btn"
               onClick={() => setShowSettingsPanel((prev) => !prev)}
               aria-expanded={showSettingsPanel}
               style={{
@@ -2013,7 +1952,48 @@ export function LandingPage({
               <span aria-hidden="true" className="muted small">Edit</span>
             </button>
 
-
+            {(isAdmin || isCaptain) && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  setAdminCodeStatus("");
+                  setCodeCopyStatus("");
+                  setShowCodes(true);
+                  setShowAdminCodeModal(true);
+                }}
+                style={{
+                  width: "100%",
+                  minHeight: "42px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  borderRadius: "1rem",
+                  padding: "0.55rem 0.78rem",
+                  border: "1px solid rgba(148,163,184,0.18)",
+                  background: "rgba(15,23,42,0.42)",
+                  color: "#e5e7eb",
+                  textAlign: "left",
+                }}
+              >
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.55rem",
+                    minWidth: 0,
+                    fontWeight: 800,
+                  }}
+                >
+                  <span aria-hidden="true">🔐</span>
+                  <span>Click for password update</span>
+                </span>
+                <span className="muted small" style={{ whiteSpace: "nowrap" }}>
+                  View
+                </span>
+              </button>
+            )}
               </div>
             )}
           </div>
@@ -2050,25 +2030,21 @@ export function LandingPage({
           </section>
         )}
 
-        <header className="match-preview-heading">
-          <div className="match-preview-heading__title">
-            <h2>Upcoming match:</h2>
-          </div>
-          <div className="match-preview-heading__details">
-            <span className="match-preview-heading__mode">
-              {isThreeTeamLeague ? "League" : "Friendly"}
-            </span>
-            <span>{activeGameFormatLabel}</span>
-            {isThreeTeamLeague && (
-              <span className="match-preview-heading__number">
-                Match #{currentMatchNo}
-              </span>
-            )}
-          </div>
-        </header>
+        <h2>
+          {isThreeTeamLeague
+            ? `Upcoming League ${activeGameFormatLabel} Match #${currentMatchNo}`
+            : `Upcoming Friendly ${activeGameFormatLabel} Match`}
+        </h2>
 
 
-
+        {isFriendlyMatch && (
+          <p
+            className="muted small"
+            style={{ marginTop: "-0.25rem", marginBottom: "0.9rem" }}
+          >
+            Friendly {activeGameFormatLabel} is active. Squads and live match flow should follow the {activeGameFormatLabel} format.
+          </p>
+        )}
 
         {isThreeTeamLeague && (
           <div
@@ -2078,36 +2054,53 @@ export function LandingPage({
                 : ""
             }`}
           >
-            <MatchTeamChooser
-              label="On-field Team 1"
-              value={teamAId || ""}
-              teams={optionsForTeamA}
-              renderLabel={renderOptionLabel}
-              onChange={handleTeamAChange}
-              disabled={!canSeeCaptainStyleControls || fixturedMode}
-              side="a"
-            />
+            <div className="team-select">
+              <label>On-field Team 1</label>
+              <select
+                value={teamAId || ""}
+                onChange={handleTeamAChange}
+                disabled={!canSeeCaptainStyleControls || fixturedMode}
+              >
+                {optionsForTeamA.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {renderOptionLabel(team)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <span className="vs-label match-team-versus">VS</span>
+            <span className="vs-label">vs</span>
 
-            <MatchTeamChooser
-              label="On-field Team 2"
-              value={teamBId || ""}
-              teams={optionsForTeamB}
-              renderLabel={renderOptionLabel}
-              onChange={handleTeamBChange}
-              disabled={!canSeeCaptainStyleControls || fixturedMode}
-              side="b"
-            />
+            <div className="team-select">
+              <label>On-field Team 2</label>
+              <select
+                value={teamBId || ""}
+                onChange={handleTeamBChange}
+                disabled={!canSeeCaptainStyleControls || fixturedMode}
+              >
+                {optionsForTeamB.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {renderOptionLabel(team)}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
-
+        {isThreeTeamLeague && standbyTeam && (
+          <p className="standby-label">
+            Standby Team:{" "}
+            <strong>
+              {standbyTeam.label} (c: {standbyTeam.captain})
+            </strong>
+          </p>
+        )}
 
 
         {canStartMatch ? (
           <div
-            className="actions-row landing-actions landing-actions--operator"
+            className="actions-row landing-actions"
             style={{
               display: "grid",
               gridTemplateColumns: isMobile
@@ -2146,13 +2139,60 @@ export function LandingPage({
               })}
             </button>
 
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={onGoToFormations}
+              style={tileButtonStyle(isMobile)}
+            >
+              {renderTileContent({
+                isMobile,
+                icon: (
+                  <img
+                    src="/formations-icon.png"
+                    alt=""
+                    style={{
+                      width: isMobile ? 30 : 26,
+                      height: isMobile ? 30 : 26,
+                      objectFit: "contain",
+                    }}
+                    draggable="false"
+                  />
+                ),
+                desktopLines: ["Lineups &", "Formations"],
+                mobileLines: ["Lineups &", "Formations"],
+              })}
+            </button>
 
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={onGoToNews}
+              style={tileButtonStyle(isMobile)}
+            >
+              {renderTileContent({
+                isMobile,
+                icon: (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: isMobile ? "1.55rem" : "1.38rem",
+                      lineHeight: 1,
+                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
+                    }}
+                  >
+                    📰
+                  </span>
+                ),
+                desktopLines: ["News &", "Highlights"],
+                mobileLines: ["News &", "Highlights"],
+              })}
+            </button>
 
             <button
               type="button"
               onClick={() => onOpenHighlightsCamera?.()}
               style={{
-                gridColumn: "1",
                 ...tileButtonStyle(isMobile, {
                   background:
                     "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 60%), linear-gradient(145deg, rgba(8,15,35,0.98), rgba(3,8,23,0.98))",
@@ -2248,34 +2288,25 @@ export function LandingPage({
               </span>
             </button>
 
-<button
-              className="secondary-btn"
+            <button
               type="button"
-              onClick={onGoToNews}
+              className="secondary-btn"
+              onClick={() => onGoToHighlights?.()}
               style={tileButtonStyle(isMobile)}
             >
               {renderTileContent({
                 isMobile,
-                icon: (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      fontSize: isMobile ? "1.55rem" : "1.38rem",
-                      lineHeight: 1,
-                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
-                    }}
-                  >
-                    📰
-                  </span>
-                ),
-                desktopLines: ["News &", "Highlights"],
-                mobileLines: ["News &", "Highlights"],
+                icon: renderPublicImageIcon({
+                  src: "/videotape.png",
+                  alt: "",
+                  isMobile,
+                  mobileSize: 31,
+                  desktopSize: 28,
+                }),
+                desktopLines: ["Video", "Highlights"],
+                mobileLines: ["Video", "Highlights"],
               })}
             </button>
-
-
-
-
 
             {isThreeTeamLeague && isAdmin && (
               <button
@@ -2311,17 +2342,6 @@ export function LandingPage({
                 })}
               </button>
             )}
-
-            {canUsePlayerPortal && activeClubId &&
-              typeof onEnterField === "function" && (
-              <ClubFieldPortal
-                playerAccess={canUsePlayerPortal}
-                clubId={activeClubId}
-                onEnterField={onEnterField}
-                onExploreFields={onExploreFields}
-                tileStyle={tileButtonStyle(isMobile)}
-              />
-            )}
           </div>
         ) : (
           <>
@@ -2333,12 +2353,12 @@ export function LandingPage({
               }
             >
               {isPlayer
-                ? "Match start: captains and admins only."
+                ? "Players can view the setup, lineups and stats, but only captains or admin can start a match."
                 : "You can follow the live game."}
             </p>
 
             <div
-              className="actions-row landing-actions landing-actions--viewer"
+              className="actions-row landing-actions"
               style={{
                 display: "grid",
                 gridTemplateColumns: isMobile
@@ -2377,13 +2397,60 @@ export function LandingPage({
                 })}
               </button>
 
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={onGoToFormations}
+                style={tileButtonStyle(isMobile)}
+              >
+                {renderTileContent({
+                isMobile,
+                icon: (
+                  <img
+                    src="/formations-icon.png"
+                    alt=""
+                    style={{
+                      width: isMobile ? 30 : 26,
+                      height: isMobile ? 30 : 26,
+                      objectFit: "contain",
+                    }}
+                    draggable="false"
+                  />
+                ),
+                desktopLines: ["Lineups &", "Formations"],
+                mobileLines: ["Lineups &", "Formations"],
+              })}
+              </button>
 
+              <button
+                className="secondary-btn"
+                type="button"
+                onClick={onGoToNews}
+                style={tileButtonStyle(isMobile)}
+              >
+                {renderTileContent({
+                  isMobile,
+                  icon: (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      fontSize: isMobile ? "1.55rem" : "1.38rem",
+                      lineHeight: 1,
+                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
+                    }}
+                  >
+                    📰
+                  </span>
+                ),
+                  desktopLines: ["News &", "Highlights"],
+                  mobileLines: ["News &", "Highlights"],
+                })}
+              </button>
 
               <button
                 type="button"
                 onClick={() => onOpenHighlightsCamera?.()}
                 style={{
-                gridColumn: "1",
                   ...tileButtonStyle(isMobile, {
                     background:
                       "radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 60%), linear-gradient(145deg, rgba(8,15,35,0.98), rgba(3,8,23,0.98))",
@@ -2479,46 +2546,25 @@ export function LandingPage({
                 </span>
               </button>
 
-<button
+              <button
                 className="secondary-btn"
                 type="button"
-                onClick={onGoToNews}
+                onClick={() => onGoToHighlights?.()}
                 style={tileButtonStyle(isMobile)}
               >
                 {renderTileContent({
                   isMobile,
-                  icon: (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      fontSize: isMobile ? "1.55rem" : "1.38rem",
-                      lineHeight: 1,
-                      filter: "drop-shadow(0 0 5px rgba(56,189,248,0.25))",
-                    }}
-                  >
-                    📰
-                  </span>
-                ),
-                  desktopLines: ["News &", "Highlights"],
-                  mobileLines: ["News &", "Highlights"],
+                  icon: renderPublicImageIcon({
+                    src: "/videotape.png",
+                    alt: "",
+                    isMobile,
+                    mobileSize: 31,
+                    desktopSize: 28,
+                  }),
+                  desktopLines: ["Video", "Highlights"],
+                  mobileLines: ["Video", "Highlights"],
                 })}
               </button>
-
-
-
-
-
-            {canUsePlayerPortal && activeClubId &&
-              typeof onEnterField === "function" && (
-              <ClubFieldPortal
-                playerAccess={canUsePlayerPortal}
-                clubId={activeClubId}
-                onEnterField={onEnterField}
-                onExploreFields={onExploreFields}
-                tileStyle={tileButtonStyle(isMobile)}
-              />
-            )}
-
             </div>
           </>
         )}
@@ -2550,8 +2596,6 @@ export function LandingPage({
           src={teamPhotos[photoIndex]}
           alt={`${resolvedClubName} club image ${photoIndex + 1}`}
           className="team-photo"
-          onLoad={() => onReady?.()}
-          onError={() => onReady?.()}
           style={{
             width: "100%",
             height: "100%",
@@ -2616,7 +2660,6 @@ export function LandingPage({
 
       <section className="card website-card">
         <div className="website-links">
-          {leagueSeasonEntry}
           <button
             type="button"
             className="website-btn"
@@ -2759,70 +2802,187 @@ export function LandingPage({
 
       {showAdminCodeModal && (
         <div className="modal-backdrop">
-          <div className="modal">
-            <h3>Account permissions</h3>
-            <p>Admin and captain access follows your current account role.
-              Remembered access codes are no longer required.</p>
-            <p>For protected actions, type the confirmation word shown.</p>
-            <button type="button" className="primary-btn"
-              onClick={closeAdminCodeModal}>Done</button>
+          <div
+            className="modal"
+            style={{
+              width: "min(92vw, 360px)",
+              padding: isMobile ? "0.92rem" : "1rem",
+              borderRadius: "1.05rem",
+              border: "1px solid rgba(148,163,184,0.20)",
+              background:
+                "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "0.75rem",
+                marginBottom: "0.65rem",
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: "1rem" }}>🔐 Access codes</h3>
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => setShowCodes((prev) => !prev)}
+                style={{ fontSize: "0.78rem", fontWeight: 850 }}
+              >
+                {showCodes ? "Hide" : "Show"}
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: "0.5rem" }}>
+              {isAdmin && renderCodeRow("Admin", adminCode, "rgba(34,197,94,0.22)")}
+
+              {CAPTAIN_CODES.map((code, index) => (
+                <React.Fragment key={`captain-code-${code}-${index}`}>
+                  {renderCodeRow(`Captain ${index + 1}`, code)}
+                </React.Fragment>
+              ))}
+            </div>
+
+            {isAdmin && (
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleRegenerateAdminCode}
+                disabled={adminCodeBusy}
+                style={{
+                  width: "100%",
+                  marginTop: "0.7rem",
+                  minHeight: "40px",
+                  borderRadius: "999px",
+                }}
+              >
+                {adminCodeBusy ? "Generating…" : "Generate new admin code"}
+              </button>
+            )}
+
+            {(adminCodeStatus || codeCopyStatus) && (
+              <p
+                className="muted small"
+                style={{
+                  margin: "0.58rem 0 0",
+                  color: (adminCodeStatus || codeCopyStatus).includes("copied") || (adminCodeStatus || codeCopyStatus).includes("generated") ? "#86efac" : "#fecaca",
+                  fontWeight: 750,
+                  lineHeight: 1.35,
+                }}
+              >
+                {adminCodeStatus || codeCopyStatus}
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={closeAdminCodeModal}
+              style={{
+                width: "100%",
+                marginTop: "0.75rem",
+                minHeight: "42px",
+                borderRadius: "999px",
+              }}
+            >
+              Done
+            </button>
           </div>
         </div>
       )}
 
       {showDurationModal && (
-        <div className="modal-backdrop duration-sheet-backdrop">
-          <div className="modal duration-sheet" role="dialog"
-            aria-modal="true" aria-labelledby="duration-sheet-title">
-            <header className="duration-sheet__header">
-              <div>
-                <span className="duration-sheet__eyebrow">MATCH SETTINGS</span>
-                <h3 id="duration-sheet-title">Time on the pitch</h3>
-              </div>
-              <button type="button" className="duration-sheet__close"
-                aria-label="Close match length" onClick={closeDurationModal}>×</button>
-            </header>
-
-            <label className="duration-sheet__display">
-              <span>Match duration</span>
-              <div>
-                <input type="number" min="1" max="180" step="0.5"
-                  aria-label="Match duration in minutes"
-                  value={durationDraftMinutes}
-                  onChange={event => setDurationDraftMinutes(event.target.value)}
-                  disabled={durationSwitchLocked} autoFocus />
-                <span>MINUTES</span>
-              </div>
-            </label>
-
-            <div className="duration-sheet__presets" aria-label="Quick durations">
-              {[5, 10, 15, 20].map(minutes => (
-                <button type="button" key={minutes}
-                  className={Number(durationDraftMinutes) === minutes ? "is-selected" : ""}
-                  aria-pressed={Number(durationDraftMinutes) === minutes}
-                  disabled={durationSwitchLocked}
-                  onClick={() => setDurationDraftMinutes(String(minutes))}>
-                  {minutes}<span>min</span>
-                </button>
-              ))}
-            </div>
-
-            <p className="duration-sheet__hint">
-              {durationSwitchLocked
-                ? "Match duration is locked for this match day."
-                : "Choose a quick duration or enter your own."}
+        <div className="modal-backdrop">
+          <div
+            className="modal"
+            style={{
+              width: "min(92vw, 420px)",
+              padding: isMobile ? "1rem" : "1.15rem",
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: "0.35rem" }}>⏱️ Match Length</h3>
+            <p className="muted small" style={{ marginTop: 0 }}>
+              Default for {isThreeTeamLeague ? "League" : "Friendly"}: <strong>{defaultDurationLabel}</strong>
             </p>
 
-            <div className="duration-sheet__actions">
-              <button type="button" className="duration-sheet__cancel"
-                onClick={closeDurationModal}>Cancel</button>
-              <button type="button" className="duration-sheet__apply"
-                onClick={handleApplyMatchDuration}
-                disabled={durationSwitchLocked}>Apply duration</button>
+            <div className="field-row">
+              <label>Minutes</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  step="0.5"
+                  className="text-input"
+                  value={durationDraftMinutes}
+                  onChange={(e) => setDurationDraftMinutes(e.target.value)}
+                  disabled={durationSwitchLocked}
+                  autoFocus
+                  style={{
+                    width: "100%",
+                    paddingRight: "3.15rem",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <span
+                  className="muted small"
+                  style={{
+                    position: "absolute",
+                    right: "0.75rem",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    pointerEvents: "none",
+                  }}
+                >
+                  min
+                </span>
+              </div>
             </div>
-            <button type="button" className="duration-sheet__reset"
-              onClick={handleResetMatchDuration} disabled={durationSwitchLocked}>
-              Restore {isThreeTeamLeague ? "League" : "Friendly"} default · {defaultDurationLabel}
+
+            {durationIsCustom && (
+              <p className="muted small" style={{ color: "#facc15", marginTop: "0.35rem" }}>
+                Custom length active.
+              </p>
+            )}
+
+            <div
+              className="actions-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gap: "0.55rem",
+                marginTop: "0.9rem",
+              }}
+            >
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={closeDurationModal}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleApplyMatchDuration}
+                disabled={durationSwitchLocked}
+              >
+                Apply
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={handleResetMatchDuration}
+              disabled={durationSwitchLocked}
+              style={{
+                width: "100%",
+                marginTop: "0.55rem",
+                borderRadius: "999px",
+              }}
+            >
+              Reset to {defaultDurationLabel}
             </button>
           </div>
         </div>
@@ -2862,9 +3022,9 @@ export function LandingPage({
             </p>
 
             <div className="field-row">
-              <label>Type CONFIRM to continue</label>
+              <label>Captain code</label>
               <input
-                type="text"
+                type="password"
                 className="text-input"
                 value={formatCode}
                 onChange={(e) => {
@@ -2897,12 +3057,12 @@ export function LandingPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Match Override</h3>
-            <p>Type CONFIRM to change the next pairing.</p>
+            <p>Changing the next pairing requires a captain code.</p>
 
             <div className="field-row">
-              <label>Type CONFIRM to continue</label>
+              <label>Captain code</label>
               <input
-                type="text"
+                type="password"
                 className="text-input"
                 value={pairingCode}
                 onChange={(e) => {

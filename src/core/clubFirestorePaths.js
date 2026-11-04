@@ -91,7 +91,7 @@ export function getClubDoc(
 }
 
 export function getPlayersCollection(db, clubId = DEFAULT_CLUB_ID) {
-  return getClubCollection(db, "publicPlayers", clubId);
+  return getClubCollection(db, CLUB_COLLECTIONS.players, clubId);
 }
 
 export function getPlayerDoc(db, playerId, clubId = DEFAULT_CLUB_ID) {
@@ -103,7 +103,7 @@ export function getMembersCollection(db, clubId = DEFAULT_CLUB_ID) {
 }
 
 export function getMatchSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
-  return getClubCollection(db, "publicMatchSignups", clubId);
+  return getClubCollection(db, CLUB_COLLECTIONS.matchSignups, clubId);
 }
 
 // ---------------------------------------------------------
@@ -169,7 +169,7 @@ export function getScopedMatchCreditDoc(
 }
 
 export function getPendingSignupsCollection(db, clubId = DEFAULT_CLUB_ID) {
-  return getClubCollection(db, "publicPendingSignups", clubId);
+  return getClubCollection(db, CLUB_COLLECTIONS.pendingSignups, clubId);
 }
 
 // ---------------------------------------------------------
@@ -333,7 +333,7 @@ export function getScopedPeerRatingBaselineDoc(
 }
 
 export function getPlayerPhotosCollection(db, clubId = DEFAULT_CLUB_ID) {
-  return getClubCollection(db, "publicPlayerPhotos", clubId);
+  return getClubCollection(db, CLUB_COLLECTIONS.playerPhotos, clubId);
 }
 
 export function getMatchesCollection(db, clubId = DEFAULT_CLUB_ID) {
@@ -388,7 +388,4 @@ export function getNewsStoriesCollection(db, clubId = DEFAULT_CLUB_ID) {
 
 export function getVideoHighlightsCollection(db, clubId = DEFAULT_CLUB_ID) {
   return getClubCollection(db, CLUB_COLLECTIONS.videoHighlights, clubId);
-}
-export function getPublicMembersCollection(db, clubId = DEFAULT_CLUB_ID) {
-  return getClubCollection(db,"publicMembers",clubId);
 }

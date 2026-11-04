@@ -43,27 +43,27 @@ test("borrowed registered player is explicitly restricted to GK", () => {
   );
 });
 
-test("borrowed GK can come from the standby ThreeTeamLeague team", () => {
-  const standbyPoolMatches = page.match(
-    /borrowableGoalkeepers=\{uniquePlayersNormalized\(\s*standbyTeam\?\.players/g
-  ) || [];
+test("borrowed GK can come from another ThreeTeamLeague team", () => {
+  assert.match(
+    page,
+    /\.filter\(\(team\) => team\?\.id !== teamAId\)/
+  );
 
-  assert.equal(
-    standbyPoolMatches.length,
-    2,
-    "both playing teams must receive the standby team player pool"
+  assert.match(
+    page,
+    /\.filter\(\(team\) => team\?\.id !== teamBId\)/
   );
 });
 
 test("short-handed referee receives both recovery routes", () => {
   assert.match(
     page,
-    /🧤 Borrow goalkeeper/
+    /Borrow a registered player from/
   );
 
   assert.match(
     page,
-    /Registered player from another team/
+    /add a guest below/
   );
 
   assert.match(
@@ -96,15 +96,10 @@ test("borrowed goalkeeper metadata participates in lineup equality", () => {
   );
 });
 
-test("borrowed goalkeeper survives live lineup sanitisation", () => {
+test("borrowed goalkeeper survives verified lineup snapshot", () => {
   assert.match(
     page,
-    /const borrowedGoalkeepers = uniquePlayersNormalized/
-  );
-
-  assert.match(
-    page,
-    /borrowedGoalkeepers,\s*benchSnapshot/
+    /borrowedGoalkeepers:\s*uniquePlayersNormalized/
   );
 });
 

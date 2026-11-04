@@ -4,8 +4,7 @@
     "fanm": "five-asides-near-me",
     "production": "five-asides-near-me",
     "legacy": "turfkings-fc",
-    "staging": "turfkings-staging",
-    "fanm-staging": "five-asides-near-me-staging"
+    "staging": "turfkings-staging"
   },
   "targets": {
     "five-asides-near-me": {
@@ -25,13 +24,6 @@
       "hosting": {
         "staging": [
           "turfkings-staging"
-        ]
-      }
-    },
-    "five-asides-near-me-staging": {
-      "hosting": {
-        "fanm-staging": [
-          "five-asides-near-me-staging"
         ]
       }
     }

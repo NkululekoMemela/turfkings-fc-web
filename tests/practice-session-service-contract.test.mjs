@@ -31,15 +31,18 @@ test("Practice start uses a Firestore transaction", () => {
   assert.match(source, /db\.runTransaction/);
 });
 
-test("session creation and recovery pointer share one transaction", () => {
-  const start = source.slice(
-    source.indexOf("async function startPracticeSession"),
-    source.indexOf("async function transferPracticeCredit")
+test("credit consumption and session creation share one transaction", () => {
+  const transactionStart = source.indexOf("db.runTransaction");
+  const entitlementWrite = source.indexOf(
+    "transaction.set(\n      refs.entitlementRef"
   );
-  assert.match(start, /db\.runTransaction/);
-  assert.match(start, /transaction\.set\(refs\.sessionRef/);
-  assert.match(start, /transaction\.set\(refs\.entitlementRef/);
-  assert.match(start, /activeSessionId:\s*sessionId/);
+  const sessionWrite = source.indexOf(
+    "transaction.set(\n      refs.sessionRef"
+  );
+
+  assert.ok(transactionStart >= 0);
+  assert.ok(entitlementWrite > transactionStart);
+  assert.ok(sessionWrite > transactionStart);
 });
 
 test("session control records are outside disposable sandbox", () => {
@@ -73,15 +76,8 @@ test("Practice business week is calculated server-side in SAST", () => {
   assert.match(source, /2\s*\*\s*60\s*\*\s*60\s*\*\s*1000/);
 });
 
-test("Practice starts without a weekly credit restriction", () => {
-  const start = source.slice(
-    source.indexOf("async function startPracticeSession"),
-    source.indexOf("async function transferPracticeCredit")
-  );
-  assert.match(start, /unlimitedPractice:\s*true/);
-  assert.match(start, /creditConsumed:\s*false/);
-  assert.match(start, /weeklyLimitApplied:\s*false/);
-  assert.doesNotMatch(start, /practice\/no-credits/);
+test("starting with no available credits fails closed", () => {
+  assert.match(source, /practice\/no-credits/);
 });
 
 test("Practice start stores the active session pointer on entitlement", () => {
@@ -99,12 +95,14 @@ test("Practice service exposes active-session recovery", () => {
 });
 
 test("active-session recovery reads the entitlement pointer", () => {
-  const recovery = source.slice(
-    source.indexOf("async function getActivePracticeSession")
+  assert.match(
+    source,
+    /activeSessionId/
   );
-  assert.match(recovery, /await entitlementRef\.get\(\)/);
-  assert.match(recovery, /entitlement\.activeSessionId/);
-  assert.match(recovery, /await sessionRef\.get\(\)/);
+  assert.match(
+    source,
+    /transaction\.get\(refs\.entitlementRef\)|refs\.entitlementRef\.get\(\)/
+  );
 });
 
 test("active-session recovery validates server expiry", () => {

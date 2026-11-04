@@ -1,4 +1,3 @@
-import {ClubKitColours} from "../ClubKitColours.jsx";
 // src/components/HomePage_HUB/HomePage_HUB_ClubRegisterForm.jsx
 
 import React, { useMemo } from "react";
@@ -22,11 +21,7 @@ export default function HomePage_HUB_ClubRegisterForm({
   clubDraft,
   onChange,
   onQuickFill,
-  showPlaySchedule = true,
-  entityType = "club",
 }) {
-  const isField=entityType==="field";
-  const nameLimit=isField||entityType==="company"?100:16;
   const clubId = useMemo(
     () => slugifyClubName(clubDraft?.clubName),
     [clubDraft?.clubName]
@@ -74,7 +69,7 @@ export default function HomePage_HUB_ClubRegisterForm({
   function updateField(field, value) {
     const cleanValue =
       field === "clubName"
-        ? String(value || "").slice(0, nameLimit)
+        ? String(value || "").slice(0, 16)
         : String(value || "");
 
     const nextDraft = {
@@ -115,10 +110,10 @@ export default function HomePage_HUB_ClubRegisterForm({
       <div className="hub-form-panel__head">
         <span>Step 1</span>
 
-        <h3>{isField?"Field details":"Club details"}</h3>
+        <h3>Club details</h3>
 
         <p>
-          {isField?"Add your Field name and location. Set operating hours below.":"Add the venue location and playing time."}
+          Add the venue location and playing time.
         </p>
 
         {typeof window !== "undefined" &&
@@ -140,18 +135,18 @@ export default function HomePage_HUB_ClubRegisterForm({
 
       <div className="hub-form-grid">
         <label className="hub-field hub-field--wide">
-          <span>{isField?"Field name":"Club name"}</span>
+          <span>Club name</span>
 
           <input
             value={clubDraft?.clubName || ""}
-            maxLength={nameLimit}
+            maxLength={16}
             onChange={(event) =>
               updateField(
                 "clubName",
-                event.target.value.slice(0, nameLimit)
+                event.target.value.slice(0, 16)
               )
             }
-            placeholder={isField?"Wynberg MM":"Farmers FC"}
+            placeholder="Farmers FC"
           />
         </label>
 
@@ -167,7 +162,7 @@ export default function HomePage_HUB_ClubRegisterForm({
 
           {clubDraft?.latitude && clubDraft?.longitude ? (
             <small className="hub-venue-verification-note hub-venue-verification-note--good">
-              {isField?"Location captured from Google. Confirm this is your Field.":"Location captured from Google. Please confirm this is the exact pitch or venue where your club plays."}
+              Location captured from Google. Please confirm this is the exact pitch or venue where your club plays.
             </small>
           ) : (
             <small className="hub-venue-verification-note">
@@ -220,7 +215,6 @@ export default function HomePage_HUB_ClubRegisterForm({
           />
         </label>
 
-        {showPlaySchedule && <>
         <label className="hub-field">
           <span>Playing day</span>
 
@@ -261,10 +255,6 @@ export default function HomePage_HUB_ClubRegisterForm({
           />
         </label>
 
-        </>}
-
-        {!isField&&<ClubKitColours draft={clubDraft||{}} onChange={onChange}/>}
-
         <label className="hub-field">
           <span>First name</span>
 
@@ -298,7 +288,7 @@ export default function HomePage_HUB_ClubRegisterForm({
         </label>
 
         <label className="hub-field">
-          <span>Google account email</span>
+          <span>Email / Gmail</span>
 
           <input
             type="email"
@@ -310,7 +300,7 @@ export default function HomePage_HUB_ClubRegisterForm({
                 event.target.value
               )
             }
-            placeholder="captain@example.com"
+            placeholder="captain@gmail.com"
           />
         </label>
 
@@ -333,7 +323,7 @@ export default function HomePage_HUB_ClubRegisterForm({
       </div>
 
       <div className="hub-club-id-preview">
-        <span>{isField?"Field ID":"Club ID"}</span>
+        <span>Club ID</span>
 
         <strong>
           {clubId || initials}

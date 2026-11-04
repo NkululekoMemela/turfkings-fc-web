@@ -1,12 +1,3 @@
-import NotificationTicketNotice from "../components/NotificationTicketNotice.jsx";
-import {selectNotificationCredit} from "../core/notificationDestination.mjs";
-import "../components/NotificationFocus.css";
-import {playerPrivacyRequest} from "../storage/playerPrivacyGateway.js";
-import useSignupPlayerPhotos from "../hooks/useSignupPlayerPhotos.js";
-import SignupHeroHeader from "../components/SignupHeroHeader.jsx";
-import { saveSignupWithCapacity } from "../core/payments/saveSignupWithCapacity.js";
-import ClubBookingSettings from "../components/ClubBookingSettings.jsx";
-import { bookingDeadline, calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
 // src/pages/MatchSignupPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -17,7 +8,7 @@ import {
   getDocs,
   onSnapshot,
   query,
-  setDoc as firestoreSetDoc,
+  setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
@@ -44,7 +35,6 @@ import {
   listAvailablePlayerMatchCredits,
   listClubMatchCredits,
   redeemMatchCreditForMatch,
-  reclaimLateCancelledMatch,
   returnRedeemedMatchTicketToWallet,
   MATCH_CREDIT_SOURCE,
   MATCH_CREDIT_STATUS,
@@ -311,9 +301,6 @@ function mergeMatchSignupSettings(raw = {}) {
       ? weeklyDay
       : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyDay,
     weeklyStartTime,
-    maxPlayers: Number.isInteger(Number(raw.maxPlayers)) &&
-      Number(raw.maxPlayers) >= 1 && Number(raw.maxPlayers) <= 100
-      ? Number(raw.maxPlayers) : MAX_PLAYERS,
     weeklyPrice: Number.isFinite(weeklyPrice) && weeklyPrice > 0
       ? weeklyPrice
       : DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyPrice,
@@ -492,7 +479,7 @@ function buildMatchDayFromDate(date, overrides = {}) {
 function getPrimarySignupScopeMonth() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const shouldShiftToNextMonth = today.getDate() >= 24;
+  const shouldShiftToNextMonth = today.getDate() >= 25;
   const targetYear = shouldShiftToNextMonth
     ? now.getMonth() === 11
       ? now.getFullYear() + 1
@@ -512,7 +499,7 @@ function getMonthWednesdays({ visibleOnly = true, settings = DEFAULT_MATCH_SIGNU
   const mergedSettings = mergeMatchSignupSettings(settings);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const shouldShiftToNextMonth = today.getDate() >= 24;
+  const shouldShiftToNextMonth = today.getDate() >= 25;
 
   const monthTargets = [];
 
@@ -544,7 +531,7 @@ function getMonthWednesdays({ visibleOnly = true, settings = DEFAULT_MATCH_SIGNU
         const matchDay = buildMatchDayFromDate(candidate, {
           type: "weekly",
           title: getWeekdayName(mergedSettings.weeklyDay),
-          maxPlayers: mergedSettings.maxPlayers,
+          maxPlayers: MAX_PLAYERS,
           costPerGame: mergedSettings.weeklyPrice,
         });
         byId.set(matchDay.id, matchDay);
@@ -969,7 +956,6 @@ export default function MatchSignupPage({
   dataScope = null,
   onBack,
   onProceedToPayment,
-  initialTicketOpen=null,
 }) {
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
 
@@ -986,26 +972,15 @@ export default function MatchSignupPage({
     [clubWeeklyScheduleText]
   );
 
-
-  const canManageSignupsAsAdmin = useMemo(() => {
-    const effectiveRole = String(
-      activeRole || identity?.actingRole || identity?.role || currentUser?.role || ""
-    )
-      .trim()
-      .toLowerCase();
-
-    return effectiveRole === "admin";
-  }, [activeRole, identity, currentUser]);
-
   const pendingSignupsCollectionRef = () =>
     isPracticeMode
       ? getScopedPendingSignupsCollection(db, dataScope)
-      : canManageSignupsAsAdmin ? getClubCollection(db,"pendingSignups",activeClubId) : getPendingSignupsCollection(db, activeClubId);
+      : getPendingSignupsCollection(db, activeClubId);
 
   const matchSignupsCollectionRef = () =>
     isPracticeMode
       ? getScopedMatchSignupsCollection(db, dataScope)
-      : canManageSignupsAsAdmin ? getClubCollection(db,"matchSignups",activeClubId) : getMatchSignupsCollection(db, activeClubId);
+      : getMatchSignupsCollection(db, activeClubId);
 
   const pendingSignupDocRef = (docId) =>
     isPracticeMode
@@ -1066,25 +1041,6 @@ export default function MatchSignupPage({
   const [paidWeeks, setPaidWeeks] = useState([]);
 
   const [availableMatchCredits, setAvailableMatchCredits] = useState([]);
-  const [creditRefresh,setCreditRefresh]=useState(0);
-  const ticketRequest=initialTicketOpen?.clubId===activeClubId&&!isPracticeMode?initialTicketOpen:null;
-  const focusedCredit=selectNotificationCredit(availableMatchCredits,ticketRequest);
-  const ticketFocusKey=`${ticketRequest?.openedAt||""}:${focusedCredit?.id||""}`;
-  const [ticketFocus,setTicketFocus]=useState("");
-  useEffect(()=>{
-    if(!ticketRequest||focusedCredit)return;
-    let stopped=false,attempts=0,timer;
-    const retry=()=>{if(stopped||++attempts>10)return;setCreditRefresh(v=>v+1);timer=setTimeout(retry,3000);};
-    timer=setTimeout(retry,3000);return()=>{stopped=true;clearTimeout(timer);};
-  },[ticketRequest?.openedAt,Boolean(focusedCredit)]);
-  useEffect(()=>{
-    if(!focusedCredit||!ticketRequest)return;
-    setTicketFocus(ticketFocusKey);setMatchTicketMinimized(false);
-    const scroll=setTimeout(()=>document.getElementById("fanm-notification-ticket")?.scrollIntoView({behavior:"smooth",block:"center"}),150);
-    const clear=setTimeout(()=>setTicketFocus(""),5000);
-    return()=>{clearTimeout(scroll);clearTimeout(clear);};
-  },[ticketFocusKey]);
-
   const [clubMatchCredits, setClubMatchCredits] = useState([]);
   const [matchCreditsLoading, setMatchCreditsLoading] = useState(false);
   const [matchCreditBusyWeekId, setMatchCreditBusyWeekId] = useState("");
@@ -1105,7 +1061,7 @@ export default function MatchSignupPage({
   const [dangerZoneError, setDangerZoneError] = useState("");
   const [matchTicketMinimized, setMatchTicketMinimized] = useState(false);
   const [directoryPlayers, setDirectoryPlayers] = useState([]);
-
+  const [playerPhotos, setPlayerPhotos] = useState({});
   const [attendanceBadge, setAttendanceBadge] = useState({
     loading: true,
     percent: null,
@@ -1136,20 +1092,9 @@ export default function MatchSignupPage({
     resolveClubPaymentSettings(activeClub || {})
   );
 
-  const [clubBookingSettings, setClubBookingSettings] = useState({});
-
-  useEffect(() => {
-    return onSnapshot(doc(db, "clubs", activeClubId), snapshot => {
-      setClubBookingSettings(snapshot.data()?.bookingSettings || {});
-    }, error => {
-      console.error("Could not load Club booking settings:", error);
-    });
-  }, [activeClubId]);
-
   const effectiveMatchSignupSettings = useMemo(
     () => ({
       ...matchSignupSettings,
-      maxPlayers: clubBookingSettings.maxPlayers || MAX_PLAYERS,
       weeklyDay:
         clubWeeklySchedule?.day ??
         matchSignupSettings.weeklyDay,
@@ -1158,7 +1103,7 @@ export default function MatchSignupPage({
         matchSignupSettings.weeklyStartTime ||
         DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime,
     }),
-    [clubBookingSettings, matchSignupSettings, clubWeeklySchedule]
+    [matchSignupSettings, clubWeeklySchedule]
   );
 
   const [sharedChallengeFixtures, setSharedChallengeFixtures] = useState([]);
@@ -1585,7 +1530,44 @@ export default function MatchSignupPage({
     }
   }
 
+  useEffect(() => {
+    let cancelled = false;
 
+    async function loadPhotos() {
+      try {
+        const snap = await getDocs(getPlayerPhotosCollection(db, activeClubId));
+        if (cancelled) return;
+
+        const loaded = {};
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const photoData = data?.photoData || "";
+          const rawName = data?.name || docSnap.id || "";
+          if (!photoData) return;
+
+          const title = toTitleCaseLoose(rawName);
+          const first = firstNameOf(rawName);
+          const slug = slugFromLooseName(rawName);
+
+          [rawName, title, first, slug]
+            .map((x) => String(x || "").trim())
+            .filter(Boolean)
+            .forEach((key) => {
+              loaded[key] = photoData;
+            });
+        });
+
+        setPlayerPhotos(loaded);
+      } catch (err) {
+        console.error("Failed to load player photos in MatchSignupPage:", err);
+      }
+    }
+
+    loadPhotos();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1830,7 +1812,6 @@ export default function MatchSignupPage({
     beneficiary?.isGuest,
     isPracticeMode,
     dataScope,
-    creditRefresh,
   ]);
 
   const currentUserDocKey = useMemo(
@@ -2237,7 +2218,7 @@ export default function MatchSignupPage({
       unsubscribePending();
       unsubscribeMatchSignups();
     };
-  }, [calendarMonthKey, signupScopeId, weeks, visibleWeekIds, canManageSignupsAsAdmin, activeClubId, isPracticeMode, dataScope]);
+  }, [calendarMonthKey, signupScopeId, weeks, visibleWeekIds]);
 
   const paidWeekSet = useMemo(() => new Set(paidWeeks), [paidWeeks]);
 
@@ -2290,30 +2271,6 @@ export default function MatchSignupPage({
   const effectivePaidWeekSet = useMemo(
     () => new Set(effectivePaidWeeks),
     [effectivePaidWeeks]
-  );
-
-  const effectiveLateCancelledWeeks = useMemo(
-    () =>
-      uniqueWeekIds(
-        currentBeneficiaryLiveRecords.flatMap((user) => {
-          const direct = Array.isArray(user?.lateCancelledWeeks)
-            ? user.lateCancelledWeeks
-            : [];
-          const raw = Array.isArray(
-            user?.rawData?.lateCancelledWeeks
-          )
-            ? user.rawData.lateCancelledWeeks
-            : [];
-
-          return [...direct, ...raw];
-        })
-      ),
-    [currentBeneficiaryLiveRecords]
-  );
-
-  const effectiveLateCancelledWeekSet = useMemo(
-    () => new Set(effectiveLateCancelledWeeks),
-    [effectiveLateCancelledWeeks]
   );
 
   const paidWeeksFromAllKnownRecords = useMemo(
@@ -2404,37 +2361,6 @@ export default function MatchSignupPage({
 
   const getCostForWeekId = (weekId) => Number(weekById.get(weekId)?.costPerGame || matchSignupSettings.weeklyPrice || COST_PER_GAME);
 
-  async function setDoc(ref, data, options) {
-    if(!isPracticeMode && ref.path.startsWith(`clubs/${activeClubId}/`) && ["pendingSignups","matchSignups"].includes(ref.parent.id)){
-      const fixtureLimits=Object.fromEntries(allMonthWeeks.filter(week=>week.isChallenge).map(week=>[week.id,week.maxPlayers]));
-      await playerPrivacyRequest({action:"signup",clubId:activeClubId,kind:ref.parent.id,docId:ref.id,data,merge:options?.merge===true,defaultLimit:MAX_PLAYERS,fixtureLimits});
-      return;
-    }
-
-    const signupCollections = [
-      pendingSignupDocRef(pendingId).parent,
-      matchSignupDocRef(pendingId).parent,
-    ];
-    if (isPracticeMode ||
-        !signupCollections.some(collection => collection.path === ref.parent.path) ||
-        !Array.isArray(data.selectedWeeks)) {
-      return options
-        ? firestoreSetDoc(ref, data, options)
-        : firestoreSetDoc(ref, data);
-    }
-    const fixtureLimits = {};
-    allMonthWeeks.filter(week => week.isChallenge).forEach(week => {
-      fixtureLimits[week.id] = week.maxPlayers;
-    });
-    return saveSignupWithCapacity({
-      db, clubId: activeClubId, ref, data, options,
-      pendingCollection: signupCollections[0],
-      matchCollection: signupCollections[1],
-      defaultLimit: MAX_PLAYERS,
-      fixtureLimits,
-    });
-  }
-
   const sumWeekCosts = (weekIds = []) =>
     uniqueWeekIds(weekIds).reduce((sum, weekId) => sum + getCostForWeekId(weekId), 0);
 
@@ -2473,7 +2399,31 @@ export default function MatchSignupPage({
   const isFullyPaidSelection =
     effectiveSelectedWeeks.length > 0 && weeksToPayNow.length === 0;
 
-  const getPlayerPhoto = useSignupPlayerPhotos(activeClubId);
+  const getPlayerPhoto = useMemo(() => {
+    return (playerName = "") => {
+      const raw = String(playerName || "").trim();
+      if (!raw) return null;
+
+      const title = toTitleCaseLoose(raw);
+      const first = firstNameOf(raw);
+      const slug = slugFromLooseName(raw);
+
+      const candidates = [raw, title, first, slug]
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
+
+      for (const key of candidates) {
+        if (playerPhotos[key]) return playerPhotos[key];
+
+        const matchedKey = Object.keys(playerPhotos).find(
+          (k) => normKey(k) === normKey(key)
+        );
+        if (matchedKey && playerPhotos[matchedKey]) return playerPhotos[matchedKey];
+      }
+
+      return null;
+    };
+  }, [playerPhotos]);
 
   const photoData =
     getPlayerPhoto(beneficiary.fullName) || getPlayerPhoto(beneficiary.shortName);
@@ -2822,32 +2772,8 @@ export default function MatchSignupPage({
       .map(normKey)
       .filter(Boolean);
 
-    const currentPlayerKeys = uniqueStrings([
-      beneficiary?.playerId,
-      beneficiary?.stableKey,
-      beneficiary?.fullName,
-      beneficiary?.shortName,
-      firstNameOf(
-        beneficiary?.fullName ||
-        beneficiary?.shortName ||
-        ""
-      ),
-    ])
-      .map(normKey)
-      .filter(Boolean);
-
-    const isCurrentPlayer = keys.some((key) =>
-      currentPlayerKeys.includes(key)
-    );
-
-    return (
-      keys.some((key) =>
-        withdrawnPlayerWeekKeys.has(`${key}::${weekId}`)
-      ) ||
-      (
-        isCurrentPlayer &&
-        effectiveLateCancelledWeekSet.has(weekId)
-      )
+    return keys.some((key) =>
+      withdrawnPlayerWeekKeys.has(`${key}::${weekId}`)
     );
   };
 
@@ -2932,10 +2858,7 @@ export default function MatchSignupPage({
     effectiveMatchSignupSettings,
   ]);
 
-  const handleAdminWeatherCancellation = async (
-    week,
-    reasonCode = "bad_weather"
-  ) => {
+  const handleAdminWeatherCancellation = async (week) => {
     if (
       !canManageSignupsAsAdmin ||
       !week?.id ||
@@ -2944,111 +2867,34 @@ export default function MatchSignupPage({
       return;
     }
 
-    const reasonConfig =
-      reasonCode === "insufficient_players"
-        ? {
-            code: "insufficient_players",
-            label: "insufficient player sign-ups",
-            icon: "👥",
-          }
-        : {
-            code: "bad_weather",
-            label: "bad weather",
-            icon: "🌧️",
-          };
-
     const paidPlayers = adminCleanupCandidates.filter(
-      (player) => {
-        if (
-          !Array.isArray(player?.paidWeeks) ||
-          !player.paidWeeks.includes(week.id)
-        ) {
-          return false;
-        }
-
-        const data = {
-          ...(player?.rawData || {}),
-          ...player,
-        };
-        const method = String(
-          data.paymentMethod || ""
-        ).trim().toLowerCase();
-        const moneyBackedWeeks = uniqueWeekIds(
-          data.moneyBackedWeeks || []
-        );
-        const accessOverrideWeeks = uniqueWeekIds(
-          data.accessOverrideWeeks || []
-        );
-
-        const isTicketBooking =
-          method === "match_ticket" &&
-          String(data.lastMatchTicketWeekId || "").trim() ===
-            week.id &&
-          Boolean(
-            String(data.lastMatchTicketId || "").trim()
-          );
-
-        if (isTicketBooking) return true;
-        if (moneyBackedWeeks.includes(week.id)) return true;
-        if (accessOverrideWeeks.includes(week.id)) return false;
-        if (data.paymentSimulation === true) return false;
-
-        if (
-          [
-            "manual_admin_add_paid_week",
-            "practice_manual_admin_paid",
-            "practice simulation",
-          ].includes(method)
-        ) {
-          return false;
-        }
-
-        return (
-          data.paymentActuallyReceived === true ||
-          [
-            "yoco",
-            "paystack",
-            "manual_admin_verify",
-          ].includes(method) ||
-          ["yoco_webhook", "paystack_webhook"].includes(
-            String(data.verifiedBy || "")
-              .trim()
-              .toLowerCase()
-          )
-        );
-      }
+      (player) =>
+        Array.isArray(player?.paidWeeks) &&
+        player.paidWeeks.includes(week.id)
     );
 
     const fixtureLabel =
       week.shortLabel || week.label || week.id;
 
-    const affectedPlayers = adminCleanupCandidates.filter(
-      (player) =>
-        Array.isArray(player?.selectedWeeks) &&
-        player.selectedWeeks.includes(week.id)
-    );
-
-    if (!affectedPlayers.length) {
+    if (!paidPlayers.length) {
       setAdminWeatherMessage("");
       setAdminWeatherError(
-        `${fixtureLabel} has no registered players to notify.`
+        `${fixtureLabel} has no recorded paid bookings to return.`
       );
       return;
     }
 
     const confirmed = await showPremiumConfirm({
-      icon: reasonConfig.icon,
-      title: `Cancel Match Day · ${fixtureLabel}`,
+      icon: "🌧️",
+      title: `Weather cancellation · ${fixtureLabel}`,
       message:
-        `${affectedPlayers.length} registered player${
-          affectedPlayers.length === 1 ? "" : "s"
-        } will be notified that the entire Match Day is cancelled due to ${reasonConfig.label}.`,
-      detail:
-        `${paidPlayers.length} eligible paid booking${
+        `${paidPlayers.length} paid booking${
           paidPlayers.length === 1 ? "" : "s"
-        } will receive Match Tickets. Free-access and unpaid bookings will not receive tickets.`,
-      confirmText: "Cancel Match Day",
-      cancelText: "Keep Match Day",
+        } will be released.`,
+      detail:
+        `Each paid player will receive one Match Ticket. Unpaid bookings will not receive tickets.`,
+      confirmText: "Cancel match",
+      cancelText: "Keep Match",
       variant: "danger",
     });
 
@@ -3079,55 +2925,22 @@ export default function MatchSignupPage({
         }
 
         try {
-          const playerData = {
-            ...(player?.rawData || {}),
-            ...player,
-          };
-          const redeemedTicketId = String(
-            playerData.lastMatchTicketId || ""
-          ).trim();
-          const redeemedTicketWeekId = String(
-            playerData.lastMatchTicketWeekId || ""
-          ).trim();
-
-          if (
-            redeemedTicketId &&
-            redeemedTicketWeekId === week.id &&
-            String(playerData.paymentMethod || "")
-              .trim()
-              .toLowerCase() === "match_ticket"
-          ) {
-            await returnRedeemedMatchTicketToWallet({
-              clubId: activeClubId,
-              creditId: redeemedTicketId,
-              playerId,
-              signupDocId,
-              weekId: week.id,
-              returnedBy:
-                currentUser?.uid ||
-                identity?.uid ||
-                identity?.userId ||
-                "admin",
-            });
-          } else {
-            await cancelPaidMatchAndIssueCredit({
-              clubId: activeClubId,
-              playerId,
-              playerName:
-                player?.fullName ||
-                player?.shortName ||
-                "",
-              signupDocId,
-              weekId: week.id,
-              sourceType:
-                MATCH_CREDIT_SOURCE.MATCH_CANCELLED,
-              issuedBy:
-                currentUser?.uid ||
-                identity?.uid ||
-                identity?.userId ||
-                "admin",
-            });
-          }
+          await cancelPaidMatchAndIssueCredit({
+            clubId: activeClubId,
+            playerId,
+            playerName:
+              player?.fullName ||
+              player?.shortName ||
+              "",
+            signupDocId,
+            weekId: week.id,
+            sourceType: MATCH_CREDIT_SOURCE.MATCH_CANCELLED,
+            issuedBy:
+              currentUser?.uid ||
+              identity?.uid ||
+              identity?.userId ||
+              "admin",
+          });
 
           completed += 1;
         } catch (error) {
@@ -3139,77 +2952,6 @@ export default function MatchSignupPage({
           failures.push(player?.fullName || "Unknown player");
         }
       }
-
-      await setDoc(
-        getClubDoc(
-          db,
-          "matchDayOperations",
-          week.id,
-          activeClubId
-        ),
-        {
-          clubId: activeClubId,
-          clubName: activeClubName,
-          matchDayId: week.id,
-          matchDayLabel:
-            week.fullLabel ||
-            week.label ||
-            fixtureLabel,
-          status: "cancelled",
-          scope: "entire_match_day",
-          reasonCode: reasonConfig.code,
-          reasonLabel: reasonConfig.label,
-          affectedRecipients: affectedPlayers.map((player) => {
-            const data = {
-              ...(player?.rawData || {}),
-              ...player,
-            };
-
-            return {
-              playerId: String(
-                data.beneficiaryPlayerId ||
-                data.userId ||
-                data.playerId ||
-                ""
-              ),
-              firebaseUid: String(
-                data.firebaseUid ||
-                data.authUid ||
-                data.uid ||
-                ""
-              ),
-              email: String(
-                data.email ||
-                data.payerEmail ||
-                ""
-              ),
-              playerName: String(
-                data.beneficiaryName ||
-                data.playerName ||
-                data.fullName ||
-                data.shortName ||
-                ""
-              ),
-            };
-          }),
-          affectedPlayerCount: affectedPlayers.length,
-          ticketEligibleCount: paidPlayers.length,
-          ticketsIssuedCount: completed,
-          ticketFailureCount: failures.length,
-          cancelledByUid:
-            currentUser?.uid ||
-            identity?.uid ||
-            identity?.userId ||
-            "",
-          cancelledByEmail:
-            currentUser?.email ||
-            identity?.email ||
-            "",
-          cancelledAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
 
       if (completed > 0) {
         setAdminWeatherMessage(
@@ -3334,7 +3076,7 @@ export default function MatchSignupPage({
   const handleUseMatchTicket = async (week) => {
     if (!week?.id || matchTicketBusy) return;
 
-    const credit = focusedCredit || availableMatchCredits[0];
+    const credit = availableMatchCredits[0];
 
     if (!credit?.id) {
       setMatchCreditMessage("You do not currently have a Match Ticket.");
@@ -3587,110 +3329,36 @@ export default function MatchSignupPage({
       return;
     }
 
-    const isReclaiming =
-      effectiveLateCancelledWeekSet.has(week.id);
-
-    if (isReclaiming) {
-      const confirmed = await showPremiumConfirm({
-        icon: "↩️",
-        title: "Reclaim your paid spot?",
+    if (!eligible) {
+      await showPremiumConfirm({
+        icon: "⏱️",
+        title: "Inside the 48-hour window",
         message:
-          "Your availability has changed and you want to return to this match.",
+          "Automatic Match Ticket returns close 48 hours before kickoff.",
         detail:
-          "Your existing payment will be restored to the booking. You will not pay again.",
-        confirmText: "Reclaim Spot",
-        cancelText: "Keep Withdrawn",
-        variant: "success",
+          "An admin can still grant an exception when appropriate.",
+        confirmText: "OK",
+        cancelText: "",
       });
-
-      if (!confirmed) return;
-
-      setMatchCreditBusyWeekId(week.id);
-      setMatchCreditMessage("");
-
-      try {
-        if (isPracticeMode) {
-          throw new Error(
-            "Reclaim testing is available in the Official club."
-          );
-        }
-
-        await reclaimLateCancelledMatch({
-          clubId: activeClubId,
-          playerId: beneficiary.playerId,
-          signupDocId: pendingId,
-          weekId: week.id,
-          reclaimedBy:
-            currentUser?.uid ||
-            currentUser?.email ||
-            beneficiary.playerId,
-        });
-
-        const nextSelectedWeeks = uniqueWeekIds([
-          ...effectiveSelectedWeeks,
-          week.id,
-        ]);
-
-        setSelectedWeeks(nextSelectedWeeks);
-        setPaidWeeks(effectivePaidWeeks);
-
-        writeSignupCache(pendingId, {
-          selectedWeeks: nextSelectedWeeks,
-          paidWeeks: effectivePaidWeeks,
-          reminderPreference,
-        });
-
-        setMatchCreditMessage(
-          "Your paid spot has been reclaimed. No new payment was required."
-        );
-      } catch (error) {
-        console.error(
-          "Failed to reclaim late-cancelled match:",
-          error
-        );
-
-        await showPremiumConfirm({
-          title: "Spot not reclaimed",
-          message:
-            error?.message ||
-            "Nothing was changed. Please try again.",
-          confirmText: "OK",
-          cancelText: "",
-        });
-      } finally {
-        setMatchCreditBusyWeekId("");
-      }
-
       return;
     }
-
-    const isLateCancellation = !eligible;
 
     const redeemedTicket =
       getRedeemedMatchTicketForWeek(week.id);
 
     const confirmed = await showPremiumConfirm({
-      icon: isLateCancellation ? "⏱️" : "🎟️",
-      title: isLateCancellation
-        ? "Late cancellation — no Match Ticket"
-        : redeemedTicket
+      icon: "🎟️",
+      title: redeemedTicket
         ? "Return your Match Ticket?"
         : "Cancel this match?",
-      message: isLateCancellation
-        ? "Your place will be released, but you will not receive a Match Ticket or an automatic refund because the funds have already booked the field."
-        : redeemedTicket
+      message: redeemedTicket
         ? "Your place will be released and your Match Ticket will return to your wallet."
         : "Your place will be released and a Match Ticket will be added to your wallet.",
-      detail: isLateCancellation
-        ? "A refund can only be arranged if a replacement player is found."
-        : "",
-      confirmText: isLateCancellation
-        ? "Cancel Without Refund"
-        : redeemedTicket
+      confirmText: redeemedTicket
         ? "Return Ticket"
         : "Cancel Match",
       cancelText: "Keep Booking",
-      variant: isLateCancellation ? "danger" : "success",
+      variant: "success",
     });
 
     if (!confirmed) return;
@@ -3713,8 +3381,6 @@ export default function MatchSignupPage({
           playerId: beneficiary.playerId,
           signupDocId: pendingId,
           weekId: week.id,
-          returnToWallet: !isLateCancellation,
-          preservePaidEntitlement: isLateCancellation,
           returnedBy:
             currentUser?.uid ||
             currentUser?.email ||
@@ -3736,8 +3402,6 @@ export default function MatchSignupPage({
           weekId: week.id,
           sourceType:
             MATCH_CREDIT_SOURCE.PLAYER_EARLY_CANCELLATION,
-          issueMatchCredit: !isLateCancellation,
-          preservePaidEntitlement: isLateCancellation,
           issuedBy:
             currentUser?.uid ||
             currentUser?.email ||
@@ -3750,11 +3414,10 @@ export default function MatchSignupPage({
           (id) => id !== week.id
         );
 
-      const nextPaidWeeks = isLateCancellation
-        ? effectivePaidWeeks
-        : effectivePaidWeeks.filter(
-            (id) => id !== week.id
-          );
+      const nextPaidWeeks =
+        effectivePaidWeeks.filter(
+          (id) => id !== week.id
+        );
 
       setSelectedWeeks(nextSelectedWeeks);
       setPaidWeeks(nextPaidWeeks);
@@ -3793,9 +3456,7 @@ export default function MatchSignupPage({
       }
 
       setMatchCreditMessage(
-        isLateCancellation
-          ? "Late cancellation completed — no Match Ticket or automatic refund was issued."
-          : redeemedTicket
+        redeemedTicket
           ? "Match Ticket returned to your wallet."
           : "Match cancelled — Match Ticket added."
       );
@@ -3823,29 +3484,7 @@ export default function MatchSignupPage({
     clubPaymentSettings?.pricingModel?.serviceFeePerPlayer ?? 7.5
   );
   const serviceFeeDueNow = weeksToPayNow.length * serviceFeePerGame;
-  /* Booking notice outside the monthly payment window */
-  const bookingNoticeDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
-  const bookingNoticeDay = bookingNoticeDate.getUTCDate();
-  const bookingNoticeLastDay = new Date(Date.UTC(
-    bookingNoticeDate.getUTCFullYear(),
-    bookingNoticeDate.getUTCMonth() + 1,
-    0
-  )).getUTCDate();
-  const showBookingDeadlineNotice =
-    bookingNoticeDay < 24 ||
-    bookingNoticeDay > Math.min(30, bookingNoticeLastDay);
-
-  const lateBookingFee = calculateLateBookingFee({
-    policy: isPracticeMode ? {} : clubBookingSettings.lateBookingFee,
-    games: weeksToPayNow.map(id => {
-      const date = weekById.get(id)?.date;
-      const monthKey = date instanceof Date
-        ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-        : String(id).slice(0, 7);
-      return { id, monthKey };
-    }),
-  });
-  const totalAmount = fieldContributionDueNow + serviceFeeDueNow + lateBookingFee.amount;
+  const totalAmount = fieldContributionDueNow + serviceFeeDueNow;
   const selectedCount = selectedWeeks.length;
 
   const signupStatusText = isFullyPaidSelection
@@ -3880,7 +3519,15 @@ export default function MatchSignupPage({
     [liveCommittedUsers]
   );
 
+  const canManageSignupsAsAdmin = useMemo(() => {
+    const effectiveRole = String(
+      activeRole || identity?.actingRole || identity?.role || currentUser?.role || ""
+    )
+      .trim()
+      .toLowerCase();
 
+    return effectiveRole === "admin";
+  }, [activeRole, identity, currentUser]);
 
   const BULK_PAID_MAX_PLAYERS = 18;
 
@@ -4367,7 +4014,6 @@ export default function MatchSignupPage({
       });
     } catch (error) {
       console.error("Failed to prepare payment:", error);
-      window.alert(error?.message || "Your signup could not be saved. Please retry.");
     }
   }
 
@@ -4438,7 +4084,8 @@ export default function MatchSignupPage({
       onBack?.();
     } catch (error) {
       console.error("Pay later save failed", error);
-      window.alert(error?.message || "Your signup could not be saved. Please retry.");
+      setShowLeavePrompt(false);
+      onBack?.();
     }
   };
 
@@ -4585,70 +4232,6 @@ export default function MatchSignupPage({
       pendingData
     );
 
-    const isGenuinePaymentConfirmation =
-      paymentMethod === "manual_admin_verify";
-
-    const paymentVerificationEventId =
-      isGenuinePaymentConfirmation
-        ? globalThis.crypto?.randomUUID?.() ||
-          `manual_${Date.now()}_${Math.random()
-            .toString(36)
-            .slice(2)}`
-        : "";
-
-    const manuallyConfirmedLateFee = calculateLateBookingFee({
-      policy: isPracticeMode ? {} : clubBookingSettings.lateBookingFee,
-      games: addWeeks.filter(id => !existingPaidWeeks.includes(id)).map(id => {
-        const date = weekById.get(id)?.date;
-        return {
-          id,
-          monthKey: date instanceof Date
-            ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-            : String(id).slice(0, 7),
-        };
-      }),
-    });
-    if (isGenuinePaymentConfirmation && manuallyConfirmedLateFee.amount > 0) {
-      const confirmed = await showPremiumConfirm({
-        icon: "💳",
-        title: "Confirm the late booking payment",
-        message: `Game contribution: R${sumWeekCosts(addWeeks).toFixed(2)}. Late booking fee: R${manuallyConfirmedLateFee.amount.toFixed(2)}.`,
-        detail: "Confirm only after receiving both amounts. Existing paid games are excluded.",
-        confirmText: "Both amounts received",
-        variant: "warning",
-      });
-      if (!confirmed) return false;
-    }
-    const paymentConfirmedAmount =
-      isGenuinePaymentConfirmation
-        ? sumWeekCosts(addWeeks) + manuallyConfirmedLateFee.amount
-        : 0;
-
-    const existingMoneyBackedWeeks = uniqueWeekIds(
-      pendingData.moneyBackedWeeks || []
-    );
-    const existingAccessOverrideWeeks = uniqueWeekIds(
-      pendingData.accessOverrideWeeks || []
-    );
-
-    const nextMoneyBackedWeeks =
-      isGenuinePaymentConfirmation
-        ? uniqueWeekIds([
-            ...existingMoneyBackedWeeks,
-            ...addWeeks,
-          ])
-        : existingMoneyBackedWeeks;
-
-    const nextAccessOverrideWeeks =
-      isGenuinePaymentConfirmation
-        ? existingAccessOverrideWeeks.filter(
-            (weekId) => !addWeeks.includes(weekId)
-          )
-        : uniqueWeekIds([
-            ...existingAccessOverrideWeeks,
-            ...addWeeks,
-          ]);
-
     await setDoc(
       pendingRef,
       {
@@ -4671,22 +4254,6 @@ export default function MatchSignupPage({
         verifiedBy: verifier,
         verifiedAt: serverTimestamp(),
         paymentMethod,
-        paymentSimulation: false,
-        paymentActuallyReceived:
-          isGenuinePaymentConfirmation,
-        paymentProviderContacted: false,
-        paymentVerificationEventId,
-        paymentConfirmedAmount,
-        paymentConfirmedLateBookingFee: isGenuinePaymentConfirmation
-          ? manuallyConfirmedLateFee.amount : 0,
-        paymentConfirmedWeeks:
-          isGenuinePaymentConfirmation ? addWeeks : [],
-        moneyBackedWeeks: nextMoneyBackedWeeks,
-        accessOverrideWeeks: nextAccessOverrideWeeks,
-        paymentActuallyReceivedAt:
-          isGenuinePaymentConfirmation
-            ? serverTimestamp()
-            : null,
         updatedAt: serverTimestamp(),
         createdAt:
           pendingData.createdAt || serverTimestamp(),
@@ -4711,22 +4278,6 @@ export default function MatchSignupPage({
         verifiedAt: serverTimestamp(),
         paymentVerifiedAt: serverTimestamp(),
         paymentMethod,
-        paymentSimulation: false,
-        paymentActuallyReceived:
-          isGenuinePaymentConfirmation,
-        paymentProviderContacted: false,
-        paymentVerificationEventId,
-        paymentConfirmedAmount,
-        paymentConfirmedLateBookingFee: isGenuinePaymentConfirmation
-          ? manuallyConfirmedLateFee.amount : 0,
-        paymentConfirmedWeeks:
-          isGenuinePaymentConfirmation ? addWeeks : [],
-        moneyBackedWeeks: nextMoneyBackedWeeks,
-        accessOverrideWeeks: nextAccessOverrideWeeks,
-        paymentActuallyReceivedAt:
-          isGenuinePaymentConfirmation
-            ? serverTimestamp()
-            : null,
         updatedAt: serverTimestamp(),
         createdAt:
           pendingData.createdAt || serverTimestamp(),
@@ -4803,8 +4354,9 @@ export default function MatchSignupPage({
         bulkPaidTargetWeek?.fullLabel ||
         bulkPaidTargetWeek?.label ||
         targetWeekId,
-      detail:
-        "Launch access only — no real payment is recorded and no payment confirmation will be sent.",
+      detail: isPracticeMode
+        ? "Practice only — no real payment is taken. The player will be treated as paid inside this Practice session."
+        : "Use this for cash, EFT, or another payment you have personally verified.",
       confirmText: "Mark selected as paid",
       variant: "success",
     });
@@ -5499,25 +5051,149 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
       className="page match-signup-page"
       style={{ maxWidth: contentMaxWidth, margin: "0 auto" }}
     >
-      <SignupHeroHeader
-        photoData={photoData}
-        beneficiary={beneficiary}
-        attendanceBadgeText={attendanceBadgeText}
-        attendanceSubtext={attendanceSubtext}
-        isMobile={isMobile}
-        isPracticeMode={isPracticeMode}
-        matchTicketBusy={matchTicketBusy}
-        onPullOut={() => {
-          setMatchTicketWalletMode("cancel");
-          setShowMatchTicketWallet(true);
-        }}
-        onOpenCalendar={() => {
-          setCalendarMonthPage(getDefaultCalendarMonthPage());
-          setShowCalendarPopup(true);
-        }}
-      />
+      <section className="card signup-hero-card">
+        <div className="signup-hero-compact">
+          <div className="signup-hero-left">
+            <div className="signup-player-avatar signup-player-avatar-hero">
+              {photoData ? (
+                <img
+                  src={photoData}
+                  alt={beneficiary.fullName}
+                  className="signup-player-avatar-img"
+                  loading="eager"
+                />
+              ) : (
+                <span className="signup-player-avatar-fallback">
+                  {String(beneficiary.shortName || "P")
+                    .charAt(0)
+                    .toUpperCase()}
+                </span>
+              )}
+            </div>
 
-      <NotificationTicketNotice request={ticketRequest} credit={focusedCredit} loading={matchCreditsLoading} focused={ticketFocus===ticketFocusKey} onUse={()=>{setMatchTicketWalletMode("use");setShowMatchTicketWallet(true);}}/>
+            <div className="signup-hero-copy">
+              <div className="signup-hero-title-row">
+                <h2>Pay for upcoming games</h2>
+              </div>
+
+              <p className="muted signup-hero-subtext">
+                Select the remaining current games, next month games, and any special Challenge fixture.
+              </p>
+
+              <div className="signup-top-meta">
+                <div className="signup-attendance-badge">
+                  <span className="signup-attendance-badge-label">
+                    Attendance Badge 🛡️
+                  </span>
+                  <strong>{attendanceBadgeText}</strong>
+                  {attendanceSubtext ? <small>{attendanceSubtext}</small> : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="signup-hero-actions"
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: isMobile ? "flex-start" : "flex-end",
+              gap: isMobile ? 8 : 10,
+              flexWrap: "wrap",
+            }}
+          >
+            {!beneficiary?.isGuest ? (
+              <button
+                type="button"
+                className={[
+                  "tk-match-pull-out-btn",
+                  isPracticeMode ? "is-practice-ticket" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => {
+                  setMatchTicketWalletMode("cancel");
+                  setShowMatchTicketWallet(true);
+                }}
+                disabled={matchTicketBusy}
+                title={
+                  isPracticeMode
+                    ? "Pull out of an upcoming Practice match"
+                    : "Pull out of an upcoming match"
+                }
+                style={{ touchAction: "manipulation" }}
+              >
+                <span
+                  className="tk-match-pull-out-icon"
+                  aria-hidden="true"
+                >
+                  ↩
+                </span>
+
+                <span className="tk-match-pull-out-copy">
+                  <strong>Match pull out</strong>
+                  <small>Can't make it this week?</small>
+                </span>
+
+                {isPracticeMode ? (
+                  <span className="tk-practice-feature-tag">
+                    Practice
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              className="secondary-btn signup-calendar-btn"
+              onClick={() => {
+                setCalendarMonthPage(getDefaultCalendarMonthPage());
+                setShowCalendarPopup(true);
+              }}
+              aria-label="Open next month calendar"
+              title="Open next month calendar"
+              style={{ touchAction: "manipulation" }}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 2V5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M16 2V5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M3.5 9H20.5"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <rect
+                  x="3"
+                  y="4.5"
+                  width="18"
+                  height="16.5"
+                  rx="3"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
 
       {matchCreditMessage ? (
         <div
@@ -5627,8 +5303,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     ? "Match pull out"
                     : matchTicketWalletMode === "weather"
                     ? "Weather cancellation"
-                    : matchTicketWalletMode === "low-signups"
-                    ? "Low sign-up cancellation"
                     : matchTicketWalletMode === "danger"
                     ? "Danger Zone"
                     : "Use Ticket"}
@@ -5763,10 +5437,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 
                       const redeemedTicket =
                         getRedeemedMatchTicketForWeek(week.id);
-                      const isLateCancelled =
-                        effectiveLateCancelledWeekSet.has(
-                          week.id
-                        );
 
                       return (
                         <button
@@ -5774,35 +5444,32 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                           type="button"
                           className="tk-match-ticket-match"
                           onClick={() => {
+                            if (!eligible) return;
                             setShowMatchTicketWallet(false);
                             setMatchTicketWalletMode("menu");
                             handlePaidMatchCreditCancellation(week);
                           }}
-                          disabled={matchTicketBusy}
+                          disabled={!eligible || matchTicketBusy}
                         >
                           <span>
                             <strong>
                               {week.shortLabel || week.label || week.id}
                             </strong>
                             <small>
-                              {isLateCancelled
-                                ? "Paid spot released — reclaim before kickoff"
-                                : eligible
+                              {eligible
                                 ? redeemedTicket
                                   ? "Ticket returns to wallet"
                                   : "Receive a Match Ticket"
-                                : "Late cancellation — no Match Ticket"}
+                                : "Inside 48 hours"}
                             </small>
                           </span>
 
                           <span className="tk-match-ticket-match-cta">
-                            {isLateCancelled
-                              ? "Reclaim spot →"
-                              : eligible
+                            {eligible
                               ? redeemedTicket
                                 ? "Return Ticket →"
                                 : "Cancel →"
-                              : "Cancel late →"}
+                              : "Locked"}
                           </span>
                         </button>
                       );
@@ -5858,27 +5525,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                         type="button"
                         className="tk-match-ticket-match"
                         onClick={() =>
-                          setMatchTicketWalletMode("low-signups")
-                        }
-                        disabled={adminWeatherBusy || dangerZoneBusy}
-                      >
-                        <span>
-                          <strong>
-                            👥 Low sign-up cancellation
-                          </strong>
-                          <small>
-                            Cancel when too few players have signed up
-                          </small>
-                        </span>
-                        <span className="tk-match-ticket-match-cta">
-                          Open →
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        className="tk-match-ticket-match"
-                        onClick={() =>
                           setMatchTicketWalletMode("danger")
                         }
                         disabled={adminWeatherBusy || dangerZoneBusy}
@@ -5912,17 +5558,11 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               </>
             ) : null}
 
-            {[
-              "weather",
-              "low-signups",
-            ].includes(matchTicketWalletMode) &&
+            {matchTicketWalletMode === "weather" &&
             canManageSignupsAsAdmin ? (
               <>
                 <p className="tk-match-ticket-help">
-                  {matchTicketWalletMode === "weather"
-                    ? "Cancel an entire Match Day because of bad weather or rain."
-                    : "Cancel an entire Match Day because too few players signed up."}
-                  {" "}Every registered player will be notified.
+                  🌧️ Choose the match cancelled because of weather.
                 </p>
 
                 <div className="tk-match-ticket-match-list">
@@ -5936,9 +5576,14 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                         ).length;
 
                       return (
-                        <div
-                          key={`cancellation-${week.id}`}
+                        <button
+                          key={`weather-${week.id}`}
+                          type="button"
                           className="tk-match-ticket-match"
+                          onClick={() =>
+                            handleAdminWeatherCancellation(week)
+                          }
+                          disabled={adminWeatherBusy}
                         >
                           <span>
                             <strong>
@@ -5952,33 +5597,10 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                             </small>
                           </span>
 
-                          <span
-                            className="tk-match-ticket-match-cta"
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              justifyContent: "flex-end",
-                              gap: "0.45rem",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleAdminWeatherCancellation(
-                                  week,
-                                  matchTicketWalletMode === "weather"
-                                    ? "bad_weather"
-                                    : "insufficient_players"
-                                )
-                              }
-                              disabled={adminWeatherBusy}
-                            >
-                              {matchTicketWalletMode === "weather"
-                                ? "🌧️ Cancel for weather"
-                                : "👥 Cancel for low sign-ups"}
-                            </button>
+                          <span className="tk-match-ticket-match-cta">
+                            Cancel →
                           </span>
-                        </div>
+                        </button>
                       );
                     })
                   ) : (
@@ -6280,67 +5902,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           </div>
         ) : null}
       </section>
-
-      {!isPracticeMode && clubBookingSettings.lateBookingFee?.enabled && showBookingDeadlineNotice && (
-        <section className="card signup-summary-card booking-notice">
-          <header className="booking-notice__header">
-            <span className="booking-notice__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="1.6">
-                <rect x="3" y="5" width="18" height="16" rx="4" />
-                <path d="M7 3v4M17 3v4M3 10h18M8 15h3M8 18h7" />
-              </svg>
-            </span>
-            <div>
-              <span className="booking-notice__eyebrow">PLAN YOUR GAMES</span>
-              <h3>Booking deadline</h3>
-            </div>
-          </header>
-
-          <div className="booking-notice__dates">
-            {[...new Set(weeksToPayNow.map(id => {
-              const date = weekById.get(id)?.date;
-              return date instanceof Date
-                ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-                : String(id).slice(0, 7);
-            }))].map(month => {
-              const deadline = bookingDeadline(
-                month, clubBookingSettings.lateBookingFee.deadlineDay ?? 30
-              );
-              const closingDate = new Date(deadline.closesAtMs - 60000);
-              const dateLabel = new Intl.DateTimeFormat("en-ZA", {
-                day: "numeric", month: "long", year: "numeric",
-                timeZone: "Africa/Johannesburg",
-              }).format(closingDate);
-              return (
-                <div key={month} className="booking-notice__date">
-                  <strong>{dateLabel}</strong>
-                  <span>23:59 SAST</span>
-                </div>
-              );
-            })}
-            {weeksToPayNow.length === 0 && (
-              <p>Select games to see their booking deadline.</p>
-            )}
-          </div>
-
-          <p className="booking-notice__copy">
-            Book and pay before the deadline.
-            {" "}R{lateBookingFee.feePerGame.toFixed(2)} per game paid after it.
-            {" "}Late bookings depend on availability.
-          </p>
-
-          {lateBookingFee.amount > 0 && (
-            <div className="booking-notice__total">
-              <div>
-                <span>Late booking fee</span>
-                <small>{lateBookingFee.lateGameCount} late game{lateBookingFee.lateGameCount === 1 ? "" : "s"}</small>
-              </div>
-              <strong>+R{lateBookingFee.amount.toFixed(2)}</strong>
-            </div>
-          )}
-        </section>
-      )}
 
       {canManageSignupsAsAdmin ? (
         <section className="card signup-summary-card" style={{ paddingTop: 14, paddingBottom: 14 }}>
@@ -7587,11 +7148,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         </div>
       </section>
 
-      {!isPracticeMode && canManageSignupsAsAdmin && (
-        <ClubBookingSettings clubId={activeClubId}
-          settings={clubBookingSettings} defaultLimit={MAX_PLAYERS} />
-      )}
-
       <section className="card signup-summary-card">
         {historicalViewMode ? (
           <>
@@ -7728,12 +7284,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 </strong>
               </div>
 
-              {lateBookingFee.amount > 0 && (
-                <div className="summary-row">
-                  <span>Late booking fee ({lateBookingFee.lateGameCount} games)</span>
-                  <strong>R{lateBookingFee.amount.toFixed(2)}</strong>
-                </div>
-              )}
               <div className="summary-row total">
                 <span>Total due now</span>
                 <div style={{ textAlign: "right" }}>

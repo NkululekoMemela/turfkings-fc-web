@@ -225,7 +225,6 @@ export function PlayerMentalitiesPage({
   const [profileFilter, setProfileFilter] = useState("all");
   const [tacticalFilter, setTacticalFilter] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const activeRole = String(
     identity?.actingRole || identity?.role || ""
@@ -236,22 +235,6 @@ export function PlayerMentalitiesPage({
 
   const canEdit =
     !isPracticeMode && canManagePlayerProfiles;
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 6);
-    };
-
-    handleScroll();
-    window.addEventListener(
-      "scroll",
-      handleScroll,
-      { passive: true }
-    );
-
-    return () =>
-      window.removeEventListener("scroll", handleScroll);
-  }, [activeClubId]);
 
   /*
    * Do not retain an administrative Unseeded filter after changing
@@ -692,64 +675,24 @@ export function PlayerMentalitiesPage({
           "Selected team";
 
   return (
-    <main className="page pm-page">
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
-        <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
-            <div
-              className="header-title"
-              style={{ minWidth: 0 }}
-            >
-              <h1 style={{ margin: 0 }}>
-                Mentality &amp; Shooting
-              </h1>
-            </div>
+    <main className="pm-page">
+      <header className="pm-header">
+        <button type="button" className="pm-back" onClick={onBack}>
+          ← Back
+        </button>
 
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
-            >
-              🏠
-            </button>
+        <div className="pm-heading">
+          <div className="pm-title-icon" aria-hidden="true">🧠</div>
+
+          <div>
+            <p>Player behaviour profiles</p>
+            <h1>Mentality &amp; Shooting</h1>
+            <span>
+              Shape how every player naturally fits into the formation.
+            </span>
           </div>
-        </header>
-      </div>
-
-      <div className="pm-page-context">
-        <span aria-hidden="true">🧠</span>
-        <div>
-          <strong>Player behaviour profiles</strong>
-          <small>
-            Shape how every player naturally fits into the formation.
-          </small>
         </div>
-      </div>
+      </header>
 
       <section className="pm-command-centre">
         <div className="pm-progress-copy">
@@ -990,49 +933,76 @@ export function PlayerMentalitiesPage({
 
       <style>{`
         .pm-page {
-          width: 100%;
-          max-width: 1100px;
+          width: min(760px, calc(100% - 18px));
           margin: 0 auto;
-          padding: 0 0 34px;
+          padding: 9px 0 34px;
           color: #edf5ff;
         }
 
-        .pm-page-context {
+        .pm-header {
+          padding: 13px 15px 15px;
+          border: 1px solid rgba(96,165,250,.3);
+          border-radius: 20px;
+          background:
+            radial-gradient(circle at 90% 0%, rgba(37,99,235,.34), transparent 46%),
+            linear-gradient(145deg, #1e3f88, #162c52 64%, #10233f);
+          box-shadow: 0 14px 34px rgba(2,6,23,.3);
+        }
+
+        .pm-back {
+          min-height: 30px;
+          padding: 4px 10px;
+          border: 1px solid rgba(191,219,254,.22);
+          border-radius: 999px;
+          background: rgba(7,18,38,.38);
+          color: #edf6ff;
+          font-size: .72rem;
+          font-weight: 850;
+        }
+
+        .pm-heading {
           display: flex;
           align-items: center;
-          gap: 9px;
-          margin: 10px 5px 0;
-          color: #dbeafe;
+          gap: 11px;
+          margin-top: 8px;
         }
 
-        .pm-page-context > span {
+        .pm-title-icon {
           display: grid;
           place-items: center;
-          width: 34px;
-          height: 34px;
-          flex: 0 0 34px;
-          border-radius: 11px;
-          background:
-            linear-gradient(145deg, #3867ff, #7846ee);
-          box-shadow:
-            0 8px 20px rgba(67,56,202,.25);
-          font-size: 18px;
+          flex: 0 0 46px;
+          width: 46px;
+          height: 46px;
+          border-radius: 15px;
+          background: linear-gradient(145deg, #3867ff, #7846ee);
+          box-shadow: 0 8px 20px rgba(67,56,202,.34);
+          font-size: 24px;
         }
 
-        .pm-page-context strong,
-        .pm-page-context small {
+        .pm-heading > div:last-child {
+          min-width: 0;
+        }
+
+        .pm-heading p {
+          margin: 0 0 2px;
+          color: #9bc7ff;
+          font-size: .58rem;
+          font-weight: 900;
+          letter-spacing: .1em;
+          text-transform: uppercase;
+        }
+
+        .pm-heading h1 {
+          margin: 0;
+          font-size: clamp(1.18rem, 5vw, 1.55rem);
+          line-height: 1.12;
+        }
+
+        .pm-heading span {
           display: block;
-        }
-
-        .pm-page-context strong {
-          font-size: .72rem;
-          color: #edf6ff;
-        }
-
-        .pm-page-context small {
-          margin-top: 2px;
-          color: #9fb3ce;
-          font-size: .63rem;
+          margin-top: 4px;
+          color: #b9c9df;
+          font-size: .69rem;
           line-height: 1.3;
         }
 
@@ -2058,91 +2028,9 @@ export function PlayerMentalitiesPage({
           }
         }
 
-        /*
-         * Desktop readability within the standard 1100px canvas.
-         * Mobile and tablet card dimensions remain unchanged.
-         */
-        @media (min-width: 1000px) {
-          .pm-list {
-            gap: 12px;
-          }
-
-          .pm-card {
-            padding: 14px 16px 16px;
-            border-radius: 19px;
-          }
-
-          .pm-player-head {
-            gap: 12px;
-            margin-bottom: 11px;
-          }
-
-          .pm-avatar {
-            flex-basis: 60px;
-            width: 60px;
-            height: 60px;
-            font-size: .78rem;
-          }
-
-          .pm-player-copy h2 {
-            margin-bottom: 4px;
-            font-size: .98rem;
-          }
-
-          .pm-team-line {
-            gap: 5px;
-            font-size: .66rem;
-          }
-
-          .pm-card-badges {
-            gap: 4px;
-          }
-
-          .pm-tactical-badge,
-          .pm-status {
-            padding: 3px 6px;
-            font-size: .54rem;
-          }
-
-          .pm-profile-controls {
-            gap: 10px;
-          }
-
-          .pm-scale {
-            grid-template-columns:
-              minmax(105px, .64fr)
-              minmax(270px, 1.36fr);
-            gap: 12px;
-          }
-
-          .pm-scale-copy strong {
-            font-size: .73rem;
-          }
-
-          .pm-scale-copy > span {
-            margin-top: 3px;
-            font-size: .65rem;
-          }
-
-          .pm-scale-ends {
-            margin-bottom: 4px;
-            font-size: .54rem;
-          }
-
-          .pm-points {
-            gap: 7px;
-          }
-
-          .pm-points button {
-            height: 34px;
-            border-radius: 10px;
-            font-size: .71rem;
-          }
-        }
-
         @media (max-width: 390px) {
           .pm-page {
-            width: 100%;
+            width: calc(100% - 12px);
           }
 
           .pm-command-centre,

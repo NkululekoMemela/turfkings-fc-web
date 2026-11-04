@@ -1,0 +1,789 @@
+src/App.jsx:447:      players: [],
+src/App.jsx:457:      players: [],
+src/App.jsx:472:    players: Array.isArray(team?.players) ? [...team.players] : [],
+src/App.jsx:486:function isTurfKingsChallengeTeam(team = {}) {
+src/App.jsx:489:    team?.isTurfKingsChallengeTeam === true ||
+src/App.jsx:497:  const slotTurfKingsChallenge = incoming.find(
+src/App.jsx:501:      (team?.isTurfKingsChallengeTeam === true || team?.challengeRole === "home")
+src/App.jsx:513:  // dark  -> Turf Kings
+src/App.jsx:516:  if (slotTurfKingsChallenge && slotGuestOpponent) {
+src/App.jsx:519:        ...slotTurfKingsChallenge,
+src/App.jsx:521:        label: slotTurfKingsChallenge.label || "Turf Kings",
+src/App.jsx:522:        abbrev: slotTurfKingsChallenge.abbrev || "TKG",
+src/App.jsx:524:        isTurfKingsChallengeTeam: true,
+src/App.jsx:540:  const legacyTurfKingsChallenge = incoming.find(
+src/App.jsx:543:      (team?.id !== TURF_KINGS_SLOT_ID && team?.isTurfKingsChallengeTeam === true)
+src/App.jsx:554:  if (legacyTurfKingsChallenge && legacyGuestOpponent) {
+src/App.jsx:557:        ...legacyTurfKingsChallenge,
+src/App.jsx:559:        label: legacyTurfKingsChallenge.label || "Turf Kings",
+src/App.jsx:560:        abbrev: legacyTurfKingsChallenge.abbrev || "TKG",
+src/App.jsx:562:        isTurfKingsChallengeTeam: true,
+src/App.jsx:606:      players: Array.isArray(incomingTeam.players)
+src/App.jsx:607:        ? [...incomingTeam.players]
+src/App.jsx:731:    s.activeSeasonId || s.seasons?.[0]?.seasonId || fallback.activeSeasonId;
+src/App.jsx:733:  const seasons =
+src/App.jsx:734:    Array.isArray(s.seasons) && s.seasons.length
+src/App.jsx:735:      ? s.seasons.map(ensureSeasonSchedulingShape)
+src/App.jsx:736:      : fallback.seasons.map(ensureSeasonSchedulingShape);
+src/App.jsx:742:    seasons,
+src/App.jsx:743:    playerPhotosByName: s.playerPhotosByName || {},
+src/App.jsx:751:    safe.seasons.find((x) => x?.seasonId === safe.activeSeasonId) ||
+src/App.jsx:752:    safe.seasons[0];
+src/App.jsx:756:function nextSeasonIdFromExisting(seasons) {
+src/App.jsx:757:  const safe = Array.isArray(seasons) ? seasons : [];
+src/App.jsx:853:function buildMemberLookup(members = []) {
+src/App.jsx:862:  (Array.isArray(members) ? members : []).forEach((member) => {
+src/App.jsx:931:  const rawPlayers = Array.isArray(team?.players) ? team.players : [];
+src/App.jsx:1010:  members = [],
+src/App.jsx:1014:  const memberLookup = buildMemberLookup(members);
+src/App.jsx:1024:    const players = normalizeTeamPlayersForParticipation(team, memberLookup);
+src/App.jsx:1025:    const squadSize = players.length;
+src/App.jsx:1029:    players.forEach((player) => {
+src/App.jsx:1064:      if (!parsed.players || typeof parsed.players !== "object") continue;
+src/App.jsx:1088:      players: {},
+src/App.jsx:1131:    source: renderedPlayerCardSnapshot?.players
+src/App.jsx:1134:    players: renderedPlayerCardSnapshot?.players || {},
+src/App.jsx:1175:      "seasons",
+src/App.jsx:1443:  const voteRef = doc(db, "matchdays", safeMatchDayId, "highlight_votes", safeUserId);
+src/App.jsx:1464:  const votesRef = collection(db, "matchdays", safeMatchDayId, "highlight_votes");
+src/App.jsx:1534:    const archiveRef = doc(db, "matchdays", safeMatchDayId, "archived_highlights", clipId);
+src/App.jsx:1561:  const rawRef = collection(db, "matchdays", safeMatchDayId, "raw_highlights");
+src/App.jsx:1565:    deleteDoc(doc(db, "matchdays", safeMatchDayId, "raw_highlights", docSnap.id))
+src/App.jsx:1602:  (team?.players || []).forEach((entry) => {
+src/App.jsx:1711:  const appStateRef = doc(db, "appState_v2", "main");
+src/App.jsx:1870:  const members = useMembers();
+src/App.jsx:2060:      const seasons = safePrev.seasons.map((s) => {
+src/App.jsx:2067:      return { ...safePrev, seasons, updatedAt: new Date().toISOString() };
+src/App.jsx:2124:    playerPhotosByName,
+src/App.jsx:2143:      safeV2?.seasons?.[0] || createDefaultStateV2().seasons[0];
+src/App.jsx:2168:    playerPhotosByName = safeV2.playerPhotosByName || {};
+src/App.jsx:2183:      playerPhotosByName = {},
+src/App.jsx:2372:            "[TK CAMERA] Failed to write cameraLiveContext to appState_v2/main:",
+src/App.jsx:2628:        "Please sign in as a Turf Kings player before using payments. This prevents untracked payments."
+src/App.jsx:3753:      if ((safePrev.seasons || []).length <= 1) {
+src/App.jsx:3758:      const remainingSeasons = safePrev.seasons.filter(
+src/App.jsx:3775:        seasons: remainingSeasons,
+src/App.jsx:3869:      members,
+src/App.jsx:4347:      const { seasonId, seasonNo } = nextSeasonIdFromExisting(safePrev.seasons);
+src/App.jsx:4401:        seasons: [
+src/App.jsx:4402:          ...safePrev.seasons.map((season) =>
+src/App.jsx:4487:    // For this camera test, a tap on the TurfKings lens button means the user
+src/App.jsx:4489:    // MainActivity.kt requires sourceApp=TurfKings + matchIsLive=true + matchId.
+src/App.jsx:4490:    // The matchId MUST be the video_highlights document id because Android listens at:
+src/App.jsx:4491:    // video_highlights/{matchId}/capture_requests
+src/App.jsx:4498:      sourceApp: "TurfKings",
+src/App.jsx:4500:      teamName: "Turf Kings FC",
+src/App.jsx:4527:        collectionPath: `video_highlights/${recordingMatchId}/recording_devices`,
+src/App.jsx:4532:        collectionPath: `video_highlights/${recordingMatchId}/capture_requests`,
+src/App.jsx:5134:            if (club?.id === "turf-kings") {
+src/App.jsx:5141:          onEnterTurfKings={(club) => {
+src/App.jsx:5151:          members={members}
+src/App.jsx:5217:          playerPhotosByName={playerPhotosByName}
+src/App.jsx:5226:          members={members}
+src/App.jsx:5273:          playerPhotosByName={playerPhotosByName}
+src/App.jsx:5315:          members={members}
+src/App.jsx:5317:          seasons={USE_V2 ? safeV2ForStats?.seasons || [] : []}
+src/App.jsx:5318:          playerPhotosByName={playerPhotosByName}
+src/App.jsx:5340:          members={members}
+src/App.jsx:5393:          playerPhotosByName={playerPhotosByName}
+src/App.jsx:5407:          members={members}
+src/App.jsx:5425:          playerPhotosByName={playerPhotosByName}
+src/App.jsx:5434:                  const seasons = Array.isArray(safeV2ForStats?.seasons)
+src/App.jsx:5435:                    ? safeV2ForStats.seasons
+src/App.jsx:5437:                  const activeIndex = seasons.findIndex(
+src/App.jsx:5444:                    ? seasons[activeIndex - 1]?.finalPlayerCardSnapshot || null
+src/App.jsx:5456:          playerPhotosByName={playerPhotosByName}
+src/App.jsx:5489:          playerPhotosByName={playerPhotosByName}
+src/hooks/useWhatsAppProfilePrompt.js:92:  ["members", "humanMembers", "players"].forEach((collectionName) => {
+src/hooks/useWhatsAppProfilePrompt.js:133:    collection: "members",
+src/hooks/usePlayerAttendanceBadge.js:58:  const seasons = Array.isArray(state?.seasons) ? state.seasons : [];
+src/hooks/usePlayerAttendanceBadge.js:61:  seasons.forEach((season) => {
+src/hooks/usePlayerAttendanceBadge.js:294:        const seasonSnaps = await getDocs(getClubCollection(db, CLUB_COLLECTIONS.seasons));
+src/hooks/usePlayerAttendanceBadge.js:302:                collection(db, "clubs", "turf-kings", "seasons", seasonDoc.id, "attendance")
+src/hooks/useMembers.js:8: * Live subscription to club-scoped Firestore members collection.
+src/hooks/useMembers.js:11:  const [members, setMembers] = useState([]);
+src/hooks/useMembers.js:34:  return members;
+src/auth/AuthContext.jsx:35:// Special TurfKings emails that are at least captains
+src/auth/AuthContext.jsx:73:        // 1) Try Firestore: members doc matching this email
+src/auth/AuthContext.jsx:75:          const membersRef = getMembersCollection(db);
+src/auth/AuthContext.jsx:76:          const q = query(membersRef, where("email", "==", email));
+src/auth/AuthContext.jsx:94:          console.error("[Auth] Failed to read members doc:", err);
+src/components/YearEndProgramModal.jsx:41:      "Shares a brief background on TurfKings and why we are celebrating.",
+src/components/YearEndProgramModal.jsx:58:      "Official welcoming from Captain Barlo (about 4–5 minutes) – acknowledging teams, new faces and how far TurfKings has come.",
+src/components/YearEndProgramModal.jsx:75:      "Keynote speech (max 10 minutes) from Nkululeko – reflections on the journey, shout-outs, and the vision for TurfKings and next season.",
+src/components/YearEndProgramModal.jsx:80:    title: "Official TurfKings Team Photo",
+src/components/YearEndProgramModal.jsx:83:      "Right after the keynote, MC calls everyone together for the official TurfKings team photo moment to capture the full squad",
+src/components/YearEndProgramModal.jsx:203:        "Make the year-end program visible to ALL players and spectators?\n" +
+src/components/YearEndProgramModal.jsx:207:        "Hide the full program from ordinary players and show 'Program coming soon' again?\n" +
+src/components/YearEndProgramModal.jsx:315:            🗓️ TurfKings Year-End Program
+src/components/YearEndProgramModal.jsx:368:                  players see “Program coming soon”.
+src/components/YearEndProgramModal.jsx:379:          // Ordinary players & spectators BEFORE publish
+src/components/YearEndProgramModal.jsx:560:                    <strong>Program visible to all players</strong>
+src/components/YearEndProgramModal.jsx:563:                      When turned on, ordinary players and spectators will see
+src/components/YearEndProgramModal.jsx:636:                program, even before it is published to players.
+src/components/home/HomeTutorials.jsx:21:          <p>How to register a club, manage players, setup payments and run match nights.</p>
+src/components/home/HomeTutorials.jsx:26:          <h3>For players</h3>
+src/components/home/HomePlatformFeatures.jsx:5:  { icon: "💳", title: "Payments", text: "Direct players to the correct club banking details and payment reference." },
+src/components/home/HomePlatformFeatures.jsx:10:  { icon: "💬", title: "Community", text: "Future members-only chat, plus public questions from unregistered users." },
+src/components/home/HomePlatformFeatures.jsx:22:          The page introduces the bigger 5 Asides Near Me brand while Turf Kings becomes the first club inside it.
+src/components/home/HomeClubSignup.jsx:87:          members: 1,
+src/components/home/HomeClubSignup.jsx:111:        doc(db, "clubs", clubId, "members", captainEmail.trim().toLowerCase()),
+src/components/home/HomeClubSignup.jsx:151:          Set up your club identity and begin inviting players.
+src/components/home/HomeClubSignup.jsx:166:              placeholder="Turf Kings FC"
+src/components/home/HomeClubDiscovery.jsx:40:            placeholder="Cape Town, Claremont, Turf Kings..."
+src/components/home/HomeClubDiscovery.jsx:50:            ["welcome", "New players"],
+src/components/home/HomeClubDiscovery.jsx:68:          <small>Free for captains. Create a club page and invite players.</small>
+src/components/home/HomeHero.jsx:15:          Choose your entry point. Captains run clubs, players find nearby games,
+src/components/home/HomeHero.jsx:74:        <img src={CLUB_PHOTO} alt="5-a-side players after a match" />
+src/components/home/HomeHero.jsx:80:          <strong>Turf Kings FC</strong>
+src/components/home/HomeHero.jsx:92:            <strong>28</strong> players
+src/components/home/HomeOnboardingPreview.jsx:16:    text: "Club registration is free. The platform only charges a small player-side fee of about R5 when players sign up for games.",
+src/components/home/HomeOnboardingPreview.jsx:26:    text: "Add your location, weekly play time, and whether you usually play 5s, 6s or 7s so nearby players can find you.",
+src/components/home/HomeOnboardingPreview.jsx:31:    text: "Your club becomes searchable. When your weekly squad is short, nearby platform players can be notified about open spots.",
+src/components/BottomNav.jsx:72:      <nav className={`tk-bottom-nav-flat ${isHidden || hidden ? "is-hidden" : ""}`} aria-label="Turf Kings navigation">
+src/components/RSVPModal.jsx:318:            people (players + friends)
+src/pages/EntryPage.jsx:3:import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
+src/pages/EntryPage.jsx:4:import TeamPhoto from "../assets/TurfKings.jpg";
+src/pages/EntryPage.jsx:27:const MEMBERS_COLLECTION = "members";
+src/pages/EntryPage.jsx:28:const PLAYERS_COLLECTION = "players";
+src/pages/EntryPage.jsx:29:const PLAYER_PHOTOS_COLLECTION = "playerPhotos";
+src/pages/EntryPage.jsx:30:const WITHDRAWAL_REQUESTS_COLLECTION = "member_withdrawal_requests";
+src/pages/EntryPage.jsx:32:const DEFAULT_CLUB_ID = "turf-kings";
+src/pages/EntryPage.jsx:33:const DEFAULT_CLUB_NAME = "Turf Kings FC";
+src/pages/EntryPage.jsx:51:function membersCollectionRef(clubId) {
+src/pages/EntryPage.jsx:59:function playersCollectionRef(clubId) {
+src/pages/EntryPage.jsx:67:function playerPhotosCollectionRef(clubId) {
+src/pages/EntryPage.jsx:368:      "[EntryPage] Failed to sync member into players collection:",
+src/pages/EntryPage.jsx:464:    logoUrl: TurfKingsLogo,
+src/pages/EntryPage.jsx:472:  const isTurfKingsClub = activeClubId === DEFAULT_CLUB_ID;
+src/pages/EntryPage.jsx:473:  const activeClubLogoSrc = activeClub?.logoUrl || activeClub?.logo || activeClub?.image || (isTurfKingsClub ? TurfKingsLogo : FANM_HOME_LOGO);
+src/pages/EntryPage.jsx:474:  const activeClubHeroImage = activeClub?.heroImage || activeClub?.teamPhoto || activeClub?.image || (isTurfKingsClub ? TeamPhoto : activeClubLogoSrc);
+src/pages/EntryPage.jsx:604:  const [members, setMembers] = useState([]);
+src/pages/EntryPage.jsx:606:  const [membersError, setMembersError] = useState("");
+src/pages/EntryPage.jsx:612:    const colRef = membersCollectionRef(activeClubId);
+src/pages/EntryPage.jsx:637:        console.error("Error loading members:", err);
+src/pages/EntryPage.jsx:638:        setMembersError(`Could not load ${activeClubName} members.`);
+src/pages/EntryPage.jsx:647:    () => members.filter((m) => m.status === "active"),
+src/pages/EntryPage.jsx:648:    [members]
+src/pages/EntryPage.jsx:652:    () => members.filter((m) => m.status === "pending"),
+src/pages/EntryPage.jsx:653:    [members]
+src/pages/EntryPage.jsx:737:    () => members.find((m) => m.id === selectedMemberId) || null,
+src/pages/EntryPage.jsx:738:    [members, selectedMemberId]
+src/pages/EntryPage.jsx:870:    const existingMember = members.find((m) => {
+src/pages/EntryPage.jsx:933:      const requestRef = await addDoc(membersCollectionRef(activeClubId), {
+src/pages/EntryPage.jsx:1254:    const member = members.find((m) => m.id === memberId) || null;
+src/pages/EntryPage.jsx:1584:              There are {activeMembers.length} players on the list – scroll down.
+src/pages/EntryPage.jsx:1720:          {membersError && (
+src/pages/EntryPage.jsx:1722:              {membersError}
+src/pages/EntryPage.jsx:1728:              Loading players…
+src/pages/EntryPage.jsx:1741:                New players can start here. Add your name, Gmail, and optional details in one clean step.
+src/pages/EntryPage.jsx:1978:              You can skip this for now. We will only remind registered players who still have not added it.
+src/pages/3TeamLeagueLiveMatchPage.jsx:27:const PLAYERS_COLLECTION = "players";
+src/pages/3TeamLeagueLiveMatchPage.jsx:95:function buildPlayerResolver(players = []) {
+src/pages/3TeamLeagueLiveMatchPage.jsx:117:  players.forEach((p) => {
+src/pages/3TeamLeagueLiveMatchPage.jsx:893:  players,
+src/pages/3TeamLeagueLiveMatchPage.jsx:901:  const firstSubIndex = players.findIndex(
+src/pages/3TeamLeagueLiveMatchPage.jsx:908:      {players.length === 0 ? (
+src/pages/3TeamLeagueLiveMatchPage.jsx:909:        <p className="muted small">No players available.</p>
+src/pages/3TeamLeagueLiveMatchPage.jsx:912:          {players.map((entry, idx) => {
+src/pages/3TeamLeagueLiveMatchPage.jsx:940:                    title="Divider between on-field players and subs"
+src/pages/3TeamLeagueLiveMatchPage.jsx:1238:          <p className="muted">No bench players available.</p>
+src/pages/3TeamLeagueLiveMatchPage.jsx:1322:  playerPhotosByName = {},
+src/pages/3TeamLeagueLiveMatchPage.jsx:1338:  const [players, setPlayers] = useState([]);
+src/pages/3TeamLeagueLiveMatchPage.jsx:1339:  const [playersLoading, setPlayersLoading] = useState(true);
+src/pages/3TeamLeagueLiveMatchPage.jsx:1402:        console.error("Failed to load players in LiveMatchPage:", err);
+src/pages/3TeamLeagueLiveMatchPage.jsx:1417:  const playersReady = !playersLoading;
+src/pages/3TeamLeagueLiveMatchPage.jsx:1419:  const playerResolver = useMemo(() => buildPlayerResolver(players), [players]);
+src/pages/3TeamLeagueLiveMatchPage.jsx:1439:      playerIds: (t.players || [])
+src/pages/3TeamLeagueLiveMatchPage.jsx:1442:      players: (t.players || [])
+src/pages/3TeamLeagueLiveMatchPage.jsx:1459:    playerPhotosByName || {}
+src/pages/3TeamLeagueLiveMatchPage.jsx:1465:      ...(playerPhotosByName || {}),
+src/pages/3TeamLeagueLiveMatchPage.jsx:1467:  }, [playerPhotosByName]);
+src/pages/3TeamLeagueLiveMatchPage.jsx:1474:        const snap = await getDocs(collection(db, "playerPhotos"));
+src/pages/3TeamLeagueLiveMatchPage.jsx:1594:          teamA?.players || []
+src/pages/3TeamLeagueLiveMatchPage.jsx:1596:        teamA?.players || [],
+src/pages/3TeamLeagueLiveMatchPage.jsx:1612:          teamB?.players || []
+src/pages/3TeamLeagueLiveMatchPage.jsx:1614:        teamB?.players || [],
+src/pages/3TeamLeagueLiveMatchPage.jsx:1650:              teamA?.players || [],
+src/pages/3TeamLeagueLiveMatchPage.jsx:1660:              teamB?.players || [],
+src/pages/3TeamLeagueLiveMatchPage.jsx:1685:      if (!playersReady) return;
+src/pages/3TeamLeagueLiveMatchPage.jsx:1709:    playersReady,
+src/pages/3TeamLeagueLiveMatchPage.jsx:1882:      fallbackPlayers: fallbackTeam?.players || [],
+src/pages/3TeamLeagueLiveMatchPage.jsx:1942:      registeredPlayers: teamA?.players || [],
+src/pages/3TeamLeagueLiveMatchPage.jsx:1952:      registeredPlayers: teamB?.players || [],
+src/pages/3TeamLeagueLiveMatchPage.jsx:2374:                      players={goalRecorderChoices}
+src/pages/3TeamLeagueLiveMatchPage.jsx:2425:                      players={assistOptions}
+src/pages/3TeamLeagueLiveMatchPage.jsx:2537:                if (!playersReady) return;
+src/pages/3TeamLeagueLiveMatchPage.jsx:2540:              disabled={!playersReady}
+src/pages/3TeamLeagueLiveMatchPage.jsx:2589:              {!playersReady ? (
+src/pages/3TeamLeagueLiveMatchPage.jsx:2600:                    registeredPlayers={teamA?.players || []}
+src/pages/3TeamLeagueLiveMatchPage.jsx:2613:                    registeredPlayers={teamB?.players || []}
+src/pages/3TeamLeagueLiveMatchPage.jsx:2646:                  disabled={!playersReady}
+src/pages/LiveMatchPage.jsx:48:    playersPerSide: classification.playersPerSide,
+src/pages/StatsPage.jsx:197:function buildPlayersRegistry(playersSnap) {
+src/pages/StatsPage.jsx:201:  playersSnap.forEach((docSnap) => {
+src/pages/StatsPage.jsx:386:  members = [],
+src/pages/StatsPage.jsx:388:  seasons = [],
+src/pages/StatsPage.jsx:389:  playerPhotosByName = {},
+src/pages/StatsPage.jsx:401:  const safeMembers = Array.isArray(members) ? members : [];
+src/pages/StatsPage.jsx:402:  const safeSeasons = Array.isArray(seasons) ? seasons : [];
+src/pages/StatsPage.jsx:404:    playerPhotosByName && typeof playerPhotosByName === "object"
+src/pages/StatsPage.jsx:405:      ? playerPhotosByName
+src/pages/StatsPage.jsx:486:        const playersSnap = await getDocs(getPlayersCollection(db));
+src/pages/StatsPage.jsx:489:        const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
+src/pages/StatsPage.jsx:494:        console.error("Failed to load players registry for StatsPage:", err);
+src/pages/StatsPage.jsx:1137:    const addPlayersKey = (key, players) => {
+src/pages/StatsPage.jsx:1140:      out[raw] = players;
+src/pages/StatsPage.jsx:1141:      out[raw.toUpperCase()] = players;
+src/pages/StatsPage.jsx:1142:      out[raw.toLowerCase()] = players;
+src/pages/StatsPage.jsx:1146:      const rawPlayers = Array.isArray(t?.players) ? t.players : [];
+src/pages/StatsPage.jsx:1195:      (t?.players || []).forEach((p) => {
+src/pages/StatsPage.jsx:1328:        console.error("Failed to load playerPhotos for StatsPage:", err);
+src/pages/StatsPage.jsx:1354:      if (t?.playerPhotos) {
+src/pages/StatsPage.jsx:1355:        Object.entries(t.playerPhotos).forEach(([k, url]) => {
+src/pages/StatsPage.jsx:1361:      (t?.players || []).forEach((p) => {
+src/pages/StatsPage.jsx:1418:    const players = Array.isArray(teamObj?.players) ? teamObj.players : [];
+src/pages/StatsPage.jsx:1420:    const playerNames = players
+src/pages/StatsPage.jsx:1427:      players.find((p) => p?.isCaptain)?.name ||
+src/pages/StatsPage.jsx:1428:      players.find((p) => p?.role === "captain")?.name ||
+src/pages/StatsPage.jsx:1439:      const matchedPlayerObj = players.find((p) => {
+src/pages/StatsPage.jsx:2439:                        : "No previous seasons yet"
+src/pages/StatsPage.jsx:3043:                title="Show all matchdays in this view"
+src/pages/StatsPage.jsx:4544:        /* TurfKings dark navy table skin — matches Friendly Live Match page */
+src/pages/StatsPage.jsx:4637:        /* TurfKings dark navy card skin for StatsPage sections.
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:37:const PLAYERS_COLLECTION = "players";
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:213:function buildPlayerResolver(players = []) {
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:235:  players.forEach((p) => {
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:388:  // do not wipe the FormationPage lineup. Use the saved formation players
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1071:  players,
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1079:  const firstSubIndex = players.findIndex(
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1086:      {players.length === 0 ? (
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1087:        <p className="muted small">No players available.</p>
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1090:          {players.map((entry, idx) => {
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1118:                    title="Divider between on-field players and subs"
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1468:          <p className="muted">No bench players available.</p>
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1552:  playersPerSide = null,
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1555:  playerPhotosByName = {},
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1609:  const livePlayersPerSide = Number(playersPerSide || formatConfig.playersPerSide || 5);
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1617:  const [players, setPlayers] = useState([]);
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1618:  const [playersLoading, setPlayersLoading] = useState(true);
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1681:        console.error("Failed to load players in LiveMatchPage:", err);
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1696:  const playersReady = !playersLoading;
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1698:  const playerResolver = useMemo(() => buildPlayerResolver(players), [players]);
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1718:      playerIds: (t.players || [])
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1721:      players: (t.players || [])
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1738:    playerPhotosByName || {}
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1744:      ...(playerPhotosByName || {}),
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1746:  }, [playerPhotosByName]);
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1871:      teamA?.players || []
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1875:      teamA?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1905:      teamB?.players || []
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1909:      teamB?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1962:                teamA?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:1978:                teamB?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2010:      if (!playersReady) return;
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2034:    playersReady,
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2207:      fallbackPlayers: fallbackTeam?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2272:        teamA?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2286:        teamB?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2711:                      players={goalRecorderChoices}
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2762:                      players={assistOptions}
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2874:                if (!playersReady) return;
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2877:              disabled={!playersReady}
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2923:            <p className="muted live-verify-note">League • {liveFormatLabel} • verify the selected on-field players before recording goals.</p>
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2926:              {!playersReady ? (
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2938:                      teamA?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2957:                      teamB?.players || [],
+src/pages/ThreeTeamLeague_LiveMatchPage.jsx:2995:                  disabled={!playersReady}
+src/pages/VideoHighlightsPage.jsx:74:  if (!identity || typeof identity !== "object") return "Turf Kings";
+src/pages/VideoHighlightsPage.jsx:80:      "Turf Kings"
+src/pages/VideoHighlightsPage.jsx:320:function buildPlayerOptions({ members = [], teams = [], highlights = [] }) {
+src/pages/VideoHighlightsPage.jsx:323:  (Array.isArray(members) ? members : []).forEach((member) => {
+src/pages/VideoHighlightsPage.jsx:329:    (Array.isArray(team?.players) ? team.players : []).forEach((player) => {
+src/pages/VideoHighlightsPage.jsx:415:    return "Firebase Storage rejected the video upload. Check Storage rules for video_highlights uploads.";
+src/pages/VideoHighlightsPage.jsx:628:          title: highlight.title || "Turf Kings highlight",
+src/pages/VideoHighlightsPage.jsx:629:          text: `${highlight.title || "Turf Kings highlight"} • ${matchupLabel}`,
+src/pages/VideoHighlightsPage.jsx:739:  members = [],
+src/pages/VideoHighlightsPage.jsx:879:    () => buildPlayerOptions({ members, teams, highlights: allHighlights }),
+src/pages/VideoHighlightsPage.jsx:880:    [members, teams, allHighlights]
+src/pages/VideoHighlightsPage.jsx:1074:      setUploadError("Only signed-in players, captains, or admin can upload clips.");
+src/pages/LandingPage.jsx:4:import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
+src/pages/LandingPage.jsx:5:import TeamPhoto1 from "../assets/TurfKings.jpg";
+src/pages/LandingPage.jsx:6:import TeamPhoto2 from "../assets/TurfKings2.jpeg";
+src/pages/LandingPage.jsx:7:import TeamPhoto3 from "../assets/TurfKings3.jpeg";
+src/pages/LandingPage.jsx:1044:                src={TurfKingsLogo}
+src/pages/LandingPage.jsx:1045:                alt="Turf Kings logo"
+src/pages/LandingPage.jsx:1049:                <h1 style={{ margin: 0 }}>Turf Kings 5-A-Side</h1>
+src/pages/LandingPage.jsx:2041:          alt={`Turf Kings team ${photoIndex + 1}`}
+src/pages/PlayerCardPage.jsx:13:import TurfKingsLogo from "../assets/TurfKings_logo_transparent.png";
+src/pages/PlayerCardPage.jsx:139:function isTurfKingsTeamName(teamName = "") {
+src/pages/PlayerCardPage.jsx:200:function buildPlayersRegistry(playersSnap) {
+src/pages/PlayerCardPage.jsx:204:  playersSnap.forEach((docSnap) => {
+src/pages/PlayerCardPage.jsx:361:    (team?.players || []).forEach((playerLike) => {
+src/pages/PlayerCardPage.jsx:447:  const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+src/pages/PlayerCardPage.jsx:450:    seasons.find((s) => s?.seasonId === activeSeasonId) ||
+src/pages/PlayerCardPage.jsx:451:    seasons[0] ||
+src/pages/PlayerCardPage.jsx:844:function buildExactRenderedSnapshotFromPlayers(players = [], activeSeasonId = null) {
+src/pages/PlayerCardPage.jsx:847:  (Array.isArray(players) ? players : []).forEach((p) => {
+src/pages/PlayerCardPage.jsx:876:    players: snapshotPlayers,
+src/pages/PlayerCardPage.jsx:884:    snapshot?.players || snapshot?.playerCards || {},
+src/pages/PlayerCardPage.jsx:1181: * The active season is excluded so stars only count completed seasons.
+src/pages/PlayerCardPage.jsx:1188:  const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+src/pages/PlayerCardPage.jsx:1193:  seasons.forEach((season) => {
+src/pages/PlayerCardPage.jsx:1219:    const players = Array.isArray(championTeam?.players)
+src/pages/PlayerCardPage.jsx:1220:      ? championTeam.players
+src/pages/PlayerCardPage.jsx:1223:    players.forEach((p) => {
+src/pages/PlayerCardPage.jsx:1248:function buildTournamentAwardBadges(players = []) {
+src/pages/PlayerCardPage.jsx:1249:  const safePlayers = Array.isArray(players) ? players : [];
+src/pages/PlayerCardPage.jsx:1349:  playerPhotosByName,
+src/pages/PlayerCardPage.jsx:1378:  const [playersLoaded, setPlayersLoaded] = useState(false);
+src/pages/PlayerCardPage.jsx:1415:        const [playersSnap, mainSnap, baselinesSnap, photosSnap] = await Promise.all([
+src/pages/PlayerCardPage.jsx:1424:        const { mapNameToCanon, mapCanonToShort } = buildPlayersRegistry(playersSnap);
+src/pages/PlayerCardPage.jsx:1442:        const seasons = Array.isArray(mainData?.state?.seasons)
+src/pages/PlayerCardPage.jsx:1443:          ? mainData.state.seasons
+src/pages/PlayerCardPage.jsx:1446:        const activeIndex = seasons.findIndex(
+src/pages/PlayerCardPage.jsx:1450:        const previousSeason = activeIndex > 0 ? seasons[activeIndex - 1] : null;
+src/pages/PlayerCardPage.jsx:1544:    Object.entries(playerPhotosByName || {}).forEach(([k, url]) => {
+src/pages/PlayerCardPage.jsx:1555:      if (t?.playerPhotos) {
+src/pages/PlayerCardPage.jsx:1556:        Object.entries(t.playerPhotos).forEach(([k, url]) => {
+src/pages/PlayerCardPage.jsx:1563:      (t?.players || []).forEach((p) => {
+src/pages/PlayerCardPage.jsx:1576:  }, [playerPhotosByName, cloudPhotosIndex, teams]);
+src/pages/PlayerCardPage.jsx:1648:      (t.players || []).forEach((p) => {
+src/pages/PlayerCardPage.jsx:1658:  const playersWithRatings = useMemo(() => {
+src/pages/PlayerCardPage.jsx:1671:      (t.players || []).forEach((p) => {
+src/pages/PlayerCardPage.jsx:1908:        teamName: playerTeamMap[canonName] || (friendlyCardMode ? "Turf Kings" : "—"),
+src/pages/PlayerCardPage.jsx:1992:    if (!playersLoaded || !participationLoaded || !baselineLoaded) return;
+src/pages/PlayerCardPage.jsx:1994:    if (!Array.isArray(playersWithRatings) || playersWithRatings.length === 0) return;
+src/pages/PlayerCardPage.jsx:1998:        playersWithRatings,
+src/pages/PlayerCardPage.jsx:2016:    playersLoaded,
+src/pages/PlayerCardPage.jsx:2019:    playersWithRatings,
+src/pages/PlayerCardPage.jsx:2040:    if (friendlyCardMode && teamFilter !== "ALL" && teamFilter !== "Turf Kings") {
+src/pages/PlayerCardPage.jsx:2048:    return playersWithRatings.filter((p) => {
+src/pages/PlayerCardPage.jsx:2061:  }, [playersWithRatings, playerViewFilter, teamFilter, searchLower]);
+src/pages/PlayerCardPage.jsx:2064:    if (friendlyCardMode) return ["ALL", "Turf Kings"];
+src/pages/PlayerCardPage.jsx:2228:                Active players
+src/pages/PlayerCardPage.jsx:2270:        {!playersLoaded || !participationLoaded || !baselineLoaded ? (
+src/pages/PlayerCardPage.jsx:2275:              ? "No unrated players found for this filter."
+src/pages/PlayerCardPage.jsx:2276:              : "No active players found for this filter."}
+src/pages/PlayerCardPage.jsx:2310:                  {isTurfKingsTeamName(p.teamName) && (
+src/pages/PlayerCardPage.jsx:2312:                      src={TurfKingsLogo}
+src/pages/NewsPage.jsx:117:function buildPlayersRegistry(playersSnap) {
+src/pages/NewsPage.jsx:134:  playersSnap.forEach((docSnap) => {
+src/pages/NewsPage.jsx:274:  playerPhotosByName,
+src/pages/NewsPage.jsx:279:  members,
+src/pages/NewsPage.jsx:287:  const { normalizeName } = useMemberNameMap(Array.isArray(members) ? members : []);
+src/pages/NewsPage.jsx:303:    (Array.isArray(members) ? members : []).forEach((member) => {
+src/pages/NewsPage.jsx:317:      (team?.players || []).forEach((player) => {
+src/pages/NewsPage.jsx:332:  }, [members, teams, normalizeName]);
+src/pages/NewsPage.jsx:345:        const [playersSnap, photosSnap] = await Promise.all([
+src/pages/NewsPage.jsx:352:        setPlayerCanonicalMap(buildPlayersRegistry(playersSnap));
+src/pages/NewsPage.jsx:388:    const seasons = Array.isArray(state.seasons) ? state.seasons : [];
+src/pages/NewsPage.jsx:390:    const activeIndex = seasons.findIndex(
+src/pages/NewsPage.jsx:393:    const activeSeason = activeIndex >= 0 ? seasons[activeIndex] : seasons[0] || null;
+src/pages/NewsPage.jsx:394:    const previousSeason = activeIndex > 0 ? seasons[activeIndex - 1] : null;
+src/pages/NewsPage.jsx:431:      seasons,
+src/pages/NewsPage.jsx:502:      (t.players || []).forEach((p) => {
+src/pages/NewsPage.jsx:529:    Object.entries(playerPhotosByName || {}).forEach(([name, url]) => {
+src/pages/NewsPage.jsx:545:      if (t.playerPhotos) {
+src/pages/NewsPage.jsx:546:        Object.entries(t.playerPhotos).forEach(([name, url]) => {
+src/pages/NewsPage.jsx:558:      (t.players || []).forEach((p) => {
+src/pages/NewsPage.jsx:578:  }, [effectiveTeams, playerPhotosByName, cloudPhotosIndex]);
+src/pages/NewsPage.jsx:646:    (members || []).forEach((member) => {
+src/pages/NewsPage.jsx:661:      (team?.players || []).forEach((player) => {
+src/pages/NewsPage.jsx:671:  }, [members, effectiveTeams]);
+src/pages/NewsPage.jsx:1333:      const players = Object.values(playerTotals).map((player) => ({
+src/pages/NewsPage.jsx:1338:      const topGoals = players.slice().sort((a, b) => {
+src/pages/NewsPage.jsx:1343:      const mvp = players.slice().sort((a, b) => {
+src/pages/NewsPage.jsx:1366:    return (newsSeasonContext.seasons || [])
+src/pages/NewsPage.jsx:1370:  }, [newsSeasonContext.seasons, normalizeName]);
+src/pages/NewsPage.jsx:2521:          {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from your full TurfKings match history."}
+src/pages/NewsPage.jsx:2951:            <h2 style={{ marginTop: 0 }}>TurfKings jersey orders</h2>
+src/pages/NewsPage.jsx:2954:              We&apos;re about to place an order for the new TurfKings team kit.
+src/pages/NewsPage.jsx:3032:              alt="TurfKings jersey"
+src/pages/NewsPage.jsx:3054:            <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side league.
+src/pages/NewsPage.jsx:3183:                  No stats yet – start a live match to generate your first round of TurfKings news.
+src/pages/NewsPage.jsx:3289:            No streaks yet – once players start scoring and assisting in back-to-back games,
+src/pages/NewsPage.jsx:3401:              <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
+src/pages/NewsPage.jsx:3403:                We&apos;re closing off the season in proper TurfKings style – full
+src/pages/NewsPage.jsx:3485:                  <div style={glassesLabelStyle}>TurfKings Toast</div>
+src/pages/NewsPage.jsx:3532:                From the whole TurfKings family: speedy recovery, bro – your spot is waiting.
+src/pages/PeerReviewPage.jsx:74:  if (key === "all" || key === "all players") return false;
+src/pages/PeerReviewPage.jsx:97:  playerPhotosByName = {},
+src/pages/PeerReviewPage.jsx:178:      if (playerPhotosByName[key]) return playerPhotosByName[key];
+src/pages/PeerReviewPage.jsx:190:        const [membersSnap, photosSnap] = await Promise.all([
+src/pages/PeerReviewPage.jsx:213:        membersSnap.forEach((docSnap) => {
+src/pages/PeerReviewPage.jsx:219:          const teamLabel = isUsefulTeamFilterLabel(rawTeam) ? rawTeam : "Other players";
+src/pages/PeerReviewPage.jsx:277:        console.error("Failed to load PeerReviewPage members/photos:", err);
+src/pages/PeerReviewPage.jsx:291:      (t.players || []).forEach((p) => {
+src/pages/PeerReviewPage.jsx:569:      setStatusMsg("Peer voting is reserved for Turf Kings players.");
+src/pages/PeerReviewPage.jsx:1024:                        <p className="muted small">No players here.</p>
+src/pages/PeerReviewPage.jsx:1031:                      <h3 style={{ marginBottom: "0.55rem" }}>Other players / not in current week</h3>
+src/pages/PeerReviewPage.jsx:1033:                        <p className="muted small">No players here.</p>
+src/pages/PeerReviewPage.jsx:1066:                ? "You are signed in as a spectator. Only Turf Kings players can submit peer ratings."
+src/pages/PeerReviewPage.jsx:1067:                : "You are not signed in as a Turf Kings player."}
+src/pages/PeerReviewPage.jsx:1073:              <p className="muted small">Tap your name from the Turf Kings squads.</p>
+src/pages/SpectatorPage.jsx:172:          <p>Live Turf Kings score tracker</p>
+src/pages/5v5LiveMatchPage.jsx:27:const PLAYERS_COLLECTION = "players";
+src/pages/5v5LiveMatchPage.jsx:82:function buildPlayerResolver(players = []) {
+src/pages/5v5LiveMatchPage.jsx:104:  players.forEach((p) => {
+src/pages/5v5LiveMatchPage.jsx:847:  players,
+src/pages/5v5LiveMatchPage.jsx:855:  const firstSubIndex = players.findIndex(
+src/pages/5v5LiveMatchPage.jsx:862:      {players.length === 0 ? (
+src/pages/5v5LiveMatchPage.jsx:863:        <p className="muted small">No players available.</p>
+src/pages/5v5LiveMatchPage.jsx:866:          {players.map((entry, idx) => {
+src/pages/5v5LiveMatchPage.jsx:894:                    title="Divider between on-field players and subs"
+src/pages/5v5LiveMatchPage.jsx:1192:          <p className="muted">No bench players available.</p>
+src/pages/5v5LiveMatchPage.jsx:1314:  playerPhotosByName = {},
+src/pages/5v5LiveMatchPage.jsx:1329:  const [players, setPlayers] = useState([]);
+src/pages/5v5LiveMatchPage.jsx:1330:  const [playersLoading, setPlayersLoading] = useState(true);
+src/pages/5v5LiveMatchPage.jsx:1413:        console.error("Failed to load players in 5v5LiveMatchPage:", err);
+src/pages/5v5LiveMatchPage.jsx:1428:  const playersReady = !playersLoading;
+src/pages/5v5LiveMatchPage.jsx:1430:  const playerResolver = useMemo(() => buildPlayerResolver(players), [players]);
+src/pages/5v5LiveMatchPage.jsx:1456:      playerIds: (t.players || [])
+src/pages/5v5LiveMatchPage.jsx:1459:      players: (t.players || [])
+src/pages/5v5LiveMatchPage.jsx:1475:    playerPhotosByName || {}
+src/pages/5v5LiveMatchPage.jsx:1481:      ...(playerPhotosByName || {}),
+src/pages/5v5LiveMatchPage.jsx:1483:  }, [playerPhotosByName]);
+src/pages/5v5LiveMatchPage.jsx:1490:        const snap = await getDocs(collection(db, "playerPhotos"));
+src/pages/5v5LiveMatchPage.jsx:1583:          teamA?.players || []
+src/pages/5v5LiveMatchPage.jsx:1585:        teamA?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1601:          teamB?.players || []
+src/pages/5v5LiveMatchPage.jsx:1603:        teamB?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1639:              teamA?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1649:              teamB?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1674:      if (!playersReady) return;
+src/pages/5v5LiveMatchPage.jsx:1693:    playersReady,
+src/pages/5v5LiveMatchPage.jsx:1873:      fallbackPlayers: fallbackTeam?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1906:      fallbackPlayers: fallbackTeam?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1944:      teamA?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1953:      teamB?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1986:      registeredPlayers: teamA?.players || [],
+src/pages/5v5LiveMatchPage.jsx:1996:      registeredPlayers: teamB?.players || [],
+src/pages/5v5LiveMatchPage.jsx:2473:            registeredPlayers={teamA?.players || []}
+src/pages/5v5LiveMatchPage.jsx:2486:            registeredPlayers={teamB?.players || []}
+src/pages/5v5LiveMatchPage.jsx:2503:                  if (!playersReady) return;
+src/pages/5v5LiveMatchPage.jsx:2506:                disabled={!playersReady}
+src/pages/5v5LiveMatchPage.jsx:2636:              {!playersReady ? (
+src/pages/5v5LiveMatchPage.jsx:2647:                    registeredPlayers={teamA?.players || []}
+src/pages/5v5LiveMatchPage.jsx:2660:                    registeredPlayers={teamB?.players || []}
+src/pages/5v5LiveMatchPage.jsx:2693:                  disabled={!playersReady}
+src/pages/5v5LiveMatchPage.jsx:2746:                  players={goalRecorderChoices}
+src/pages/5v5LiveMatchPage.jsx:2789:                  players={assistOptions}
+src/pages/5v5LiveMatchPage.jsx:2874:                  players={shiboboChoices}
+src/pages/5v5LiveMatchPage.jsx:2887:                  players={victimOptions}
+src/pages/FormationsPage.jsx:519:  const players = playerList || [];
+src/pages/FormationsPage.jsx:523:    positions[pos.id] = players[idx] || null;
+src/pages/FormationsPage.jsx:695:  const players = playerPool || [];
+src/pages/FormationsPage.jsx:697:    return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+src/pages/FormationsPage.jsx:702:    return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+src/pages/FormationsPage.jsx:711:        players
+src/pages/FormationsPage.jsx:714:    return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+src/pages/FormationsPage.jsx:725:      players
+src/pages/FormationsPage.jsx:729:  return buildDefaultLineupLocal(players, defaultFormationId, formationsMap);
+src/pages/FormationsPage.jsx:990:const PLAYERS_COLLECTION = "players";
+src/pages/FormationsPage.jsx:1002:  playerPhotosByName = {},
+src/pages/FormationsPage.jsx:1039:  const [players, setPlayers] = useState([]);
+src/pages/FormationsPage.jsx:1113:        console.error("Error loading players for formations:", err);
+src/pages/FormationsPage.jsx:1124:    players.forEach((p) => {
+src/pages/FormationsPage.jsx:1181:  }, [players]);
+src/pages/FormationsPage.jsx:1201:  const [playerPhotos, setPlayerPhotos] = useState(playerPhotosByName || {});
+src/pages/FormationsPage.jsx:1208:    if (!playerPhotosByName) return;
+src/pages/FormationsPage.jsx:1211:      ...playerPhotosByName,
+src/pages/FormationsPage.jsx:1213:  }, [playerPhotosByName]);
+src/pages/FormationsPage.jsx:1286:      if (playerPhotos[candidate]) return playerPhotos[candidate];
+src/pages/FormationsPage.jsx:1287:      const key = Object.keys(playerPhotos).find(
+src/pages/FormationsPage.jsx:1290:      if (key && playerPhotos[key]) return playerPhotos[key];
+src/pages/FormationsPage.jsx:1346:        getClubDoc(db, CLUB_COLLECTIONS.playerPhotos, docId),
+src/pages/FormationsPage.jsx:1381:    return players
+src/pages/FormationsPage.jsx:1386:  }, [players, playerResolver]);
+src/pages/FormationsPage.jsx:1395:      players: (t.players || [])
+src/pages/FormationsPage.jsx:1418:    return uniqueByLower(selectedTeamCanonical?.players || []);
+src/pages/FormationsPage.jsx:1490:      targetGameType === GAME_TYPE_11 ? turfKingsPlayers : targetTeam?.players || [];
+src/pages/FormationsPage.jsx:1657:    // Use the whole selected team, not only the 5 players on the pitch,
+src/pages/FormationsPage.jsx:1659:    const teamPlayers = selectedTeamCanonical?.players || [];
+src/pages/FormationsPage.jsx:1663:      players: teamPlayers,
+src/pages/FormationsPage.jsx:1677:    gameType === GAME_TYPE_11 ? turfKingsPlayers : selectedTeamCanonical?.players || [];
+src/pages/FormationsPage.jsx:2128:                Using full Turf Kings player pool <strong>({turfKingsPlayers.length} players)</strong>.
+src/pages/FormationsPage.jsx:2184:                {isSmallSidedGameType(gameType) ? selectedTeamCanonical?.label || getGameTypeLabel(gameType) : "TurfKings FC"}
+src/pages/FormationsPage.jsx:2387:                        <option value="">No guest players yet</option>
+src/pages/FormationsPage.jsx:2397:                      Guest photos are saved for this temporary opponent list only. They do not create permanent Turf Kings player records.
+src/pages/HomePage.jsx:17:  onEnterTurfKings,
+src/pages/HomePage.jsx:53:    if (club?.id === "turf-kings") {
+src/pages/HomePage.jsx:54:      onEnterTurfKings?.(club);
+src/pages/HomePage.jsx:114:            <small>Football clubs · players · challenges</small>
+src/pages/HomePage.jsx:130:          <button type="button" className="fanm-nav-primary" onClick={() => onEnterTurfKings?.(clubs.find((club) => club.id === "turf-kings") || null)}>
+src/pages/HomePage.jsx:131:            Enter Turf Kings
+src/pages/HomePage.jsx:147:              A club-first platform for weekly football: find clubs, manage players, collect match fees,
+src/pages/HomePage.jsx:177:                handleComingSoon(`${club.name} needs players. The future flow will let you ping that club admin to join as a guest or request full membership.`);
+src/pages/HomePage.jsx:214:                Turf Kings is the founding club, but 5 Asides Near Me is the platform: searchable clubs,
+src/pages/MatchSignupPage.jsx:190:  ["members", "humanMembers", "players"].forEach((collectionName) => {
+src/pages/MatchSignupPage.jsx:231:    collection: "members",
+src/pages/MatchSignupPage.jsx:499:  return { key: "low", label: "needs players", shortLabel: "not filled" };
+src/pages/MatchSignupPage.jsx:537:    const players = Array.isArray(team?.players) ? team.players : [];
+src/pages/MatchSignupPage.jsx:539:    const found = players.some((entry) => {
+src/pages/MatchSignupPage.jsx:582:  const seasons = Array.isArray(state?.seasons) ? state.seasons : [];
+src/pages/MatchSignupPage.jsx:585:  seasons.forEach((season) => {
+src/pages/MatchSignupPage.jsx:846:  const [playerPhotos, setPlayerPhotos] = useState({});
+src/pages/MatchSignupPage.jsx:1176:        console.error("Failed to load players directory in MatchSignupPage:", error);
+src/pages/MatchSignupPage.jsx:1365:        const seasonSnaps = await getDocs(getClubCollection(db, CLUB_COLLECTIONS.seasons));
+src/pages/MatchSignupPage.jsx:1373:                collection(db, "clubs", "turf-kings", "seasons", seasonDoc.id, "attendance")
+src/pages/MatchSignupPage.jsx:1910:        if (playerPhotos[key]) return playerPhotos[key];
+src/pages/MatchSignupPage.jsx:1912:        const matchedKey = Object.keys(playerPhotos).find(
+src/pages/MatchSignupPage.jsx:1915:        if (matchedKey && playerPhotos[matchedKey]) return playerPhotos[matchedKey];
+src/pages/MatchSignupPage.jsx:1920:  }, [playerPhotos]);
+src/pages/MatchSignupPage.jsx:3600:            <option value="existing_player">Another Turf Kings player</option>
+src/pages/MatchSignupPage.jsx:3663:              Use this to remove fake test signups, verify paid weeks quickly, or clear very old unpaid records so real players can use the slots.
+src/pages/MatchSignupPage.jsx:4114:                            {limit} players
+src/pages/MatchSignupPage.jsx:4392:              Add your WhatsApp number so TurfKings can send football-related
+src/pages/MatchSignupPage.jsx:4947:                <span>Unpaid players this month</span>
+src/pages/ClubProfilePage.jsx:237:          <EmptyPanel title="Players" value="0" copy="No approved players yet." />
+src/pages/MigrationPage.jsx:152:            Overwrite mode resets <code>appState_v2/main</code> to a clean Season-1 import.
+src/pages/MigrationPage.jsx:169:              only <strong>writes</strong> to V2 (<code>appState_v2/main</code>).
+src/pages/MigrationPage.jsx:249:                <code>appState_v2/main/state/seasons[0].seasonId</code>
+src/pages/SquadsPage.jsx:30:const PLAYERS_COLLECTION = "players";
+src/pages/SquadsPage.jsx:428:    players: [...(t.players || [])],
+src/pages/SquadsPage.jsx:442:      players: [],
+src/pages/SquadsPage.jsx:452:      players: [],
+src/pages/SquadsPage.jsx:461:  players = [],
+src/pages/SquadsPage.jsx:474:    players: Array.from(
+src/pages/SquadsPage.jsx:476:        (players || [])
+src/pages/SquadsPage.jsx:492:function buildTurfKingsChallengeTeam({ players = [], teamColorName = "Green" } = {}) {
+src/pages/SquadsPage.jsx:495:    label: "Turf Kings",
+src/pages/SquadsPage.jsx:499:    players: Array.from(new Set((players || []).filter(Boolean))),
+src/pages/SquadsPage.jsx:502:    isTurfKingsChallengeTeam: true,
+src/pages/SquadsPage.jsx:507:function isTurfKingsChallengeTeam(team) {
+src/pages/SquadsPage.jsx:508:  return Boolean(team?.isTurfKingsChallengeTeam || team?.id === TURF_KINGS_CHALLENGE_ID);
+src/pages/SquadsPage.jsx:576:    label: "Turf Kings",
+src/pages/SquadsPage.jsx:580:    players: Array.from(new Set((turfKingsPlayers || []).filter(Boolean))),
+src/pages/SquadsPage.jsx:584:    isTurfKingsChallengeTeam: true,
+src/pages/SquadsPage.jsx:599:    players: Array.from(
+src/pages/SquadsPage.jsx:629:      players: Array.isArray(dark?.players) ? dark.players : [],
+src/pages/SquadsPage.jsx:635:      players: [],
+src/pages/SquadsPage.jsx:678:  const playersPerSide = Number(formatConfig?.playersPerSide || 5);
+src/pages/SquadsPage.jsx:698:  const [playersLoading, setPlayersLoading] = useState(true);
+src/pages/SquadsPage.jsx:699:  const [playersError, setPlayersError] = useState("");
+src/pages/SquadsPage.jsx:717:  const existingTurfKingsChallengeTeam = useMemo(
+src/pages/SquadsPage.jsx:735:    Array.isArray(existingGuestTeam?.players) ? existingGuestTeam.players : []
+src/pages/SquadsPage.jsx:740:  const [turfKingsChallengeColorName, setTurfKingsChallengeColorName] = useState(() =>
+src/pages/SquadsPage.jsx:741:    existingTurfKingsChallengeTeam?.teamColorName || "Green"
+src/pages/SquadsPage.jsx:752:  const [turfKingsChallengePlayers, setTurfKingsChallengePlayers] = useState(() =>
+src/pages/SquadsPage.jsx:753:    Array.isArray(existingTurfKingsChallengeTeam?.players)
+src/pages/SquadsPage.jsx:754:      ? existingTurfKingsChallengeTeam.players
+src/pages/SquadsPage.jsx:797:      setGuestOpponentPlayers(Array.isArray(guest.players) ? guest.players : []);
+src/pages/SquadsPage.jsx:805:      setTurfKingsChallengePlayers(Array.isArray(turf.players) ? turf.players : []);
+src/pages/SquadsPage.jsx:806:      setTurfKingsChallengeColorName(turf.teamColorName || "Green");
+src/pages/SquadsPage.jsx:822:        console.error("[Squads] Error loading players:", err);
+src/pages/SquadsPage.jsx:823:        setPlayersError("Could not load players from database.");
+src/pages/SquadsPage.jsx:830:  const playersById = useMemo(() => {
+src/pages/SquadsPage.jsx:837:    const p = playersById.get(playerIdOrLegacy);
+src/pages/SquadsPage.jsx:843:    const p = playersById.get(playerIdOrLegacy);
+src/pages/SquadsPage.jsx:858:        const nextPlayers = (t.players || []).map((entry) => {
+src/pages/SquadsPage.jsx:859:          if (playersById.has(entry)) return entry;
+src/pages/SquadsPage.jsx:879:        return { ...t, players: deduped, captainId };
+src/pages/SquadsPage.jsx:884:  }, [allPlayers, playersById]);
+src/pages/SquadsPage.jsx:964:        setTurfKingsChallengePlayers(Array.isArray(nextTurf.players) ? nextTurf.players : []);
+src/pages/SquadsPage.jsx:965:        setTurfKingsChallengeColorName(nextTurf.teamColorName || "Green");
+src/pages/SquadsPage.jsx:970:        setGuestOpponentPlayers(Array.isArray(nextGuest.players) ? nextGuest.players : []);
+src/pages/SquadsPage.jsx:987:      (t.players || []).forEach((pid) => {
+src/pages/SquadsPage.jsx:988:        if (playersById.has(pid)) s.add(pid);
+src/pages/SquadsPage.jsx:992:  }, [sourceTeams, playersById]);
+src/pages/SquadsPage.jsx:1010:      (t.players || []).forEach((pid) => {
+src/pages/SquadsPage.jsx:1011:        if (!playersById.has(pid)) return;
+src/pages/SquadsPage.jsx:1016:  }, [sourceTeams, playersById]);
+src/pages/SquadsPage.jsx:1026:    nextTurfKingsPlayers = turfKingsChallengePlayers,
+src/pages/SquadsPage.jsx:1030:    nextTurfKingsColorName = turfKingsChallengeColorName,
+src/pages/SquadsPage.jsx:1041:      turfKingsPlayers: nextTurfKingsPlayers,
+src/pages/SquadsPage.jsx:1044:      turfKingsColorName: nextTurfKingsColorName,
+src/pages/SquadsPage.jsx:1105:      setTurfKingsChallengeColorName(value);
+src/pages/SquadsPage.jsx:1124:        const nextPlayers = [...(t.players || [])];
+src/pages/SquadsPage.jsx:1125:        if (captainId && playersById.has(captainId) && !nextPlayers.includes(captainId)) {
+src/pages/SquadsPage.jsx:1132:          players: nextPlayers,
+src/pages/SquadsPage.jsx:1176:      const selectedName = playersById.has(selectedId)
+src/pages/SquadsPage.jsx:1198:    if (!playersById.has(chosenId)) {
+src/pages/SquadsPage.jsx:1210:      (t.players || []).some((pid) => pid === chosenId)
+src/pages/SquadsPage.jsx:1226:          const nextPlayers = (t.players || []).filter((pid) => pid !== chosenId);
+src/pages/SquadsPage.jsx:1228:          return { ...t, players: nextPlayers, captainId: nextCaptainId };
+src/pages/SquadsPage.jsx:1239:      if ((targetTeam.players || []).includes(chosenId)) {
+src/pages/SquadsPage.jsx:1258:          idx === targetIndex ? { ...t, players: [...(t.players || []), chosenId] } : t
+src/pages/SquadsPage.jsx:1280:    if (playersById.has(playerIdOrLegacy)) {
+src/pages/SquadsPage.jsx:1284:          const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
+src/pages/SquadsPage.jsx:1286:          return { ...t, players: nextPlayers, captainId: nextCaptainId };
+src/pages/SquadsPage.jsx:1298:        const nextPlayers = (t.players || []).filter((pid) => pid !== playerIdOrLegacy);
+src/pages/SquadsPage.jsx:1299:        return { ...t, players: nextPlayers };
+src/pages/SquadsPage.jsx:1310:    if (!playersById.has(playerId)) return;
+src/pages/SquadsPage.jsx:1316:            `Remove ${name} from the Turf Kings database?\nThey will disappear from the unseeded pool.`
+src/pages/SquadsPage.jsx:1334:    if (!playersById.has(pendingDeletePlayerId)) return;
+src/pages/SquadsPage.jsx:1562:    if (team.captainId && playersById.has(team.captainId)) {
+src/pages/SquadsPage.jsx:1569:    const ids = (team.players || []).filter((pid) => playersById.has(pid));
+src/pages/SquadsPage.jsx:1647:        {playersLoading && (
+src/pages/SquadsPage.jsx:1648:          <p className="muted small">Loading players from database…</p>
+src/pages/SquadsPage.jsx:1650:        {playersError && <p className="error-text">{playersError}</p>}
+src/pages/SquadsPage.jsx:1651:        {!playersLoading && (
+src/pages/SquadsPage.jsx:1845:                          alt="Turf Kings"
+src/pages/SquadsPage.jsx:1849:                      <strong style={{ color: "#F8FAFC" }}>Turf Kings</strong>
+src/pages/SquadsPage.jsx:1909:            const listId = `players-db-${resolvedGameFormat}-${inputId}`;
+src/pages/SquadsPage.jsx:1912:              team.captainId && playersById.has(team.captainId)
+src/pages/SquadsPage.jsx:1917:            const playerCount = Array.isArray(team.players) ? team.players.length : 0;
+src/pages/SquadsPage.jsx:1918:            const teamReady = playerCount >= playersPerSide;
+src/pages/SquadsPage.jsx:1919:            const playerCountText = `${playerCount}/${playersPerSide}`;
+src/pages/SquadsPage.jsx:1945:                                ? "Database players"
+src/pages/SquadsPage.jsx:1962:                            Players: {playerCountText} • {teamReady ? "Ready" : "Needs players"}
+src/pages/SquadsPage.jsx:1987:                                  nextTurfKingsColorName: turfKingsChallengeColorName,
+src/pages/SquadsPage.jsx:2065:                                ? "Add players to pick a captain"
+src/pages/SquadsPage.jsx:2079:                      {(team.players || []).map((pid, idx) => {
+src/pages/SquadsPage.jsx:2082:                          !isGuestTeamCard && team.captainId && playersById.has(team.captainId)
+src/pages/SquadsPage.jsx:2111:                      {(team.players || []).length === 0 && (
+src/pages/SquadsPage.jsx:2117:                                ? "Type opponent players below."
+src/pages/SquadsPage.jsx:2119:                                ? "Add Turf Kings players from database."
+src/pages/SquadsPage.jsx:2120:                                : "No players yet in this squad."}
+src/pages/SquadsPage.jsx:2168:            "unseeded_players",
+src/pages/SquadsPage.jsx:2216:                    ? `Hide unseeded players (${unseededPlayers.length})`
+src/pages/SquadsPage.jsx:2217:                    : `Show unseeded players (${unseededPlayers.length})`}
+src/pages/SquadsPage.jsx:2256:                        No unseeded players right now.
+src/pages/SquadsPage.jsx:2269:                      list={`players-db-unseeded-${gameFormat}`}
+src/pages/SquadsPage.jsx:2275:                    <datalist id={`players-db-unseeded-${gameFormat}`}>
+src/pages/SquadsPage.jsx:2319:              from the Turf Kings player database.
+src/pages/SquadsPage.jsx:2353:            <p>Enter the Turf Kings admin code to apply squad changes.</p>
+src/pages/Friendly_LiveMatchPage.jsx:34:const PLAYERS_COLLECTION = "players";
+src/pages/Friendly_LiveMatchPage.jsx:99:  const playersPerSide = getGameFormatConfig(gameFormat).playersPerSide;
+src/pages/Friendly_LiveMatchPage.jsx:101:  if (playersPerSide === 7) {
+src/pages/Friendly_LiveMatchPage.jsx:103:      playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:112:  if (playersPerSide === 6) {
+src/pages/Friendly_LiveMatchPage.jsx:114:      playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:124:    playersPerSide: 5,
+src/pages/Friendly_LiveMatchPage.jsx:185:function buildPlayerResolver(players = []) {
+src/pages/Friendly_LiveMatchPage.jsx:207:  players.forEach((p) => {
+src/pages/Friendly_LiveMatchPage.jsx:661:  playersPerSide = 5,
+src/pages/Friendly_LiveMatchPage.jsx:672:    .slice(0, Number(playersPerSide || 5))
+src/pages/Friendly_LiveMatchPage.jsx:731:    playersPerSide: Number(playersPerSide || positionIds.length || 5),
+src/pages/Friendly_LiveMatchPage.jsx:807:  // Example: Turf Kings vs Farmers FC, not Red vs Blue.
+src/pages/Friendly_LiveMatchPage.jsx:883:        playersPerSide: summaryInfo.playersPerSide || 5,
+src/pages/Friendly_LiveMatchPage.jsx:919:      playersPerSide: summaryInfo.playersPerSide || 5,
+src/pages/Friendly_LiveMatchPage.jsx:961:        playersPerSide: summaryInfo.playersPerSide || 5,
+src/pages/Friendly_LiveMatchPage.jsx:990:        playersPerSide: finalSummary?.playersPerSide || 5,
+src/pages/Friendly_LiveMatchPage.jsx:1078:  players,
+src/pages/Friendly_LiveMatchPage.jsx:1086:  const firstSubIndex = players.findIndex(
+src/pages/Friendly_LiveMatchPage.jsx:1093:      {players.length === 0 ? (
+src/pages/Friendly_LiveMatchPage.jsx:1094:        <p className="muted small">No players available.</p>
+src/pages/Friendly_LiveMatchPage.jsx:1097:          {players.map((entry, idx) => {
+src/pages/Friendly_LiveMatchPage.jsx:1125:                    title="Divider between on-field players and subs"
+src/pages/Friendly_LiveMatchPage.jsx:1427:          <p className="muted">No bench players available.</p>
+src/pages/Friendly_LiveMatchPage.jsx:1584:  playerPhotosByName = {},
+src/pages/Friendly_LiveMatchPage.jsx:1603:    playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:1611:  const [players, setPlayers] = useState([]);
+src/pages/Friendly_LiveMatchPage.jsx:1612:  const [playersLoading, setPlayersLoading] = useState(true);
+src/pages/Friendly_LiveMatchPage.jsx:1705:        console.error("Failed to load players in 5v5LiveMatchPage:", err);
+src/pages/Friendly_LiveMatchPage.jsx:1720:  const playersReady = !playersLoading;
+src/pages/Friendly_LiveMatchPage.jsx:1722:  const playerResolver = useMemo(() => buildPlayerResolver(players), [players]);
+src/pages/Friendly_LiveMatchPage.jsx:1748:      playerIds: (t.players || [])
+src/pages/Friendly_LiveMatchPage.jsx:1751:      players: (t.players || [])
+src/pages/Friendly_LiveMatchPage.jsx:1767:    playerPhotosByName || {}
+src/pages/Friendly_LiveMatchPage.jsx:1773:      ...(playerPhotosByName || {}),
+src/pages/Friendly_LiveMatchPage.jsx:1775:  }, [playerPhotosByName]);
+src/pages/Friendly_LiveMatchPage.jsx:1875:          teamA?.players || []
+src/pages/Friendly_LiveMatchPage.jsx:1877:        teamA?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:1895:          teamB?.players || []
+src/pages/Friendly_LiveMatchPage.jsx:1897:        teamB?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:1935:              teamA?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:1947:              teamB?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:1976:      if (!playersReady) return;
+src/pages/Friendly_LiveMatchPage.jsx:1995:    playersReady,
+src/pages/Friendly_LiveMatchPage.jsx:2217:        playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:2221:        teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+src/pages/Friendly_LiveMatchPage.jsx:2237:    playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:2297:      fallbackPlayers: fallbackTeam?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:2334:      fallbackPlayers: fallbackTeam?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:2365:    playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:2369:    teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+src/pages/Friendly_LiveMatchPage.jsx:2390:      teamA?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:2408:      teamB?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:2431:        `${getShortLabel(teamA, "Team A")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
+src/pages/Friendly_LiveMatchPage.jsx:2438:        `${getShortLabel(teamB, "Team B")} lineup is incomplete. Please fill all ${playersPerSide} positions before confirming.`
+src/pages/Friendly_LiveMatchPage.jsx:2451:      registeredPlayers: teamA?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:2454:      playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:2464:      registeredPlayers: teamB?.players || [],
+src/pages/Friendly_LiveMatchPage.jsx:2467:      playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:2524:      "video_highlights",
+src/pages/Friendly_LiveMatchPage.jsx:2727:          ? getTeamDisplayName(teamA, "Turf Kings")
+src/pages/Friendly_LiveMatchPage.jsx:2828:          ? getTeamDisplayName(teamA, "Turf Kings")
+src/pages/Friendly_LiveMatchPage.jsx:2902:      teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+src/pages/Friendly_LiveMatchPage.jsx:2912:      playersPerSide,
+src/pages/Friendly_LiveMatchPage.jsx:3210:                  if (!playersReady) return;
+src/pages/Friendly_LiveMatchPage.jsx:3213:                disabled={!playersReady}
+src/pages/Friendly_LiveMatchPage.jsx:3294:              {!playersReady ? (
+src/pages/Friendly_LiveMatchPage.jsx:3305:                    registeredPlayers={teamA?.players || []}
+src/pages/Friendly_LiveMatchPage.jsx:3320:                    registeredPlayers={teamB?.players || []}
+src/pages/Friendly_LiveMatchPage.jsx:3355:                  disabled={!playersReady}
+src/pages/Friendly_LiveMatchPage.jsx:3408:                  players={goalRecorderChoices}
+src/pages/Friendly_LiveMatchPage.jsx:3451:                  players={assistOptions}
+src/core/clubPaths.js:3:export const DEFAULT_CLUB_ID = "turf-kings";
+src/core/clubPaths.js:22:  players: "players",
+src/core/clubPaths.js:23:  members: "members",
+src/core/clubPaths.js:29:  playerPhotos: "playerPhotos",
+src/core/clubPaths.js:32:  videoHighlights: "video_highlights",
+src/core/clubPaths.js:33:  seasons: "seasons",
+src/core/teams.js:8:// - team.players is now an array of PLAYER IDs (Firestore doc ids).
+src/core/teams.js:15:    players: ["enoch", "uhone", "mark", "barlo", "nkumbuzo", "munya"],
+src/core/teams.js:21:    players: ["mdu", "scott", "chad", "taku", "josh", "humbu"],
+src/core/teams.js:27:    players: ["nkululeko", "zizou", "dayaan", "dr_babs", "kolobe", "anathi"],
+src/core/clubFirestorePaths.js:35:  return getClubCollection(db, CLUB_COLLECTIONS.players, clubId);
+src/core/clubFirestorePaths.js:39:  return getClubDoc(db, CLUB_COLLECTIONS.players, playerId, clubId);
+src/core/clubFirestorePaths.js:43:  return getClubCollection(db, CLUB_COLLECTIONS.members, clubId);
+src/core/clubFirestorePaths.js:66:  return getClubCollection(db, CLUB_COLLECTIONS.playerPhotos, clubId);
+src/core/VideoHighlightCuration.js:4:  Turf Kings Video Highlight Curation Engine
+src/core/VideoHighlightCuration.js:7:  - Current Week / current matchday clips live in video_highlights/{matchId}/raw
+src/core/VideoHighlightCuration.js:8:  - Weekly Winners live in video_highlights/{matchId}/archived
+src/core/membersUtils.js:1:// src/core/membersUtils.js
+src/core/membersUtils.js:8:  // Build lookup maps from members collection
+src/core/membersUtils.js:9:  export function buildMemberMaps(members) {
+src/core/membersUtils.js:15:    (members || []).forEach((m) => {
+src/core/videoHighlightsUtils.js:155:    players:config.players||[],
+src/core/nameMapping.js:5: * Robust alias -> canonical mapping from Firestore `members`.
+src/core/nameMapping.js:16: * First-name-only alias is added ONLY if that first name is UNIQUE across members.
+src/core/nameMapping.js:42:export function useMemberNameMap(members) {
+src/core/nameMapping.js:51:    const rows = (members || [])
+src/core/nameMapping.js:146:  }, [members]);
+src/core/matchDayFormationRatings.js:276:  players = [],
+src/core/matchDayFormationRatings.js:313:  (players || []).forEach((playerEntry) => {
+src/core/lineups.js:262:export function getPlayerPhoto(playerPhotosByName = {}, playerName = "") {
+src/core/lineups.js:277:    if (playerPhotosByName?.[key]) return playerPhotosByName[key];
+src/core/lineups.js:280:  const entries = Object.entries(playerPhotosByName || {});
+src/core/lineups.js:292:  const players = normalizeLineupNames(playerList || []);
+src/core/lineups.js:296:    positions[pos.id] = players[idx] || null;
+src/core/lineups.js:393:  const players = normalizeLineupNames(playerPool || []);
+src/core/lineups.js:396:    return buildDefaultLineup(players, defaultFormationId, formationsMap);
+src/core/lineups.js:401:    return buildDefaultLineup(players, defaultFormationId, formationsMap);
+src/core/lineups.js:411:        players
+src/core/lineups.js:414:    return buildDefaultLineup(players, defaultFormationId, formationsMap);
+src/core/lineups.js:425:      players
+src/core/lineups.js:429:  return buildDefaultLineup(players, defaultFormationId, formationsMap);
+src/core/matchConfig.js:2:// Central source of truth for Turf Kings match modes and game formats.
+src/core/matchConfig.js:20:    playersPerSide: 5,
+src/core/matchConfig.js:26:    playersPerSide: 6,
+src/core/matchConfig.js:32:    playersPerSide: 7,
+src/core/matchConfig.js:98:  return getGameFormatConfig(rawFormat).playersPerSide;
+src/core/matchConfig.js:129:    playersPerSide: getPlayersPerSide(resolvedFormat),
+src/tools/migrateLegacyToV2Season1.js:8: *   Writes -> v2:     appState_v2/main as seasons[0] (Season-1)
+src/tools/migrateLegacyToV2Season1.js:18:  const V2_REF = doc(db, "appState_v2", "main");
+src/tools/migrateLegacyToV2Season1.js:56:      seasons: [season1],
+src/tools/migrateLegacyToV2Season1.js:59:      playerPhotosByName:
+src/tools/migrateLegacyToV2Season1.js:60:        legacyState.playerPhotosByName && typeof legacyState.playerPhotosByName === "object"
+src/tools/migrateLegacyToV2Season1.js:61:          ? legacyState.playerPhotosByName
+src/tools/migrateLegacyToV2Season1.js:80:    v2WrittenTo: "appState_v2/main",
+src/storage/firebaseRepository.js:26:const STATE_COLLECTION_V2 = "appState_v2";
+src/storage/VideoHighlightsRepository.js:27:// video_highlights/{matchId}/
+src/storage/VideoHighlightsRepository.js:178:  return `video_highlights/${matchId}/raw/${source}/${clipId}.${ext}`;
+src/storage/gameRepository.js:8:  saveStateToFirebaseV2, // ✅ V2 mirror (writes to appState_v2/main)
+src/storage/gameRepository.js:41:  // 🔄 MIGRATION: always ensure we use the latest TEAMS (labels, captains, players)
+src/storage/gameRepository.js:87:// V2 (NEW MODEL) — appState_v2/main ONLY
+src/storage/gameRepository.js:126: * { activeSeasonId, seasons: [ { seasonId, seasonNo, ...seasonState } ] }
+src/storage/gameRepository.js:139:    seasons: [
+src/storage/gameRepository.js:161:    playerPhotosByName: {},
+src/storage/gameRepository.js:228:    activeSeasonId: raw.activeSeasonId || raw.seasons?.[0]?.seasonId || DEFAULT_SEASON_ID,
+src/storage/gameRepository.js:229:    seasons: Array.isArray(raw.seasons) ? raw.seasons : [],
+src/storage/gameRepository.js:230:    playerPhotosByName: raw.playerPhotosByName || {},
+src/storage/gameRepository.js:235:  if (!state.seasons.length) {
+src/storage/gameRepository.js:239:  // Normalize seasons
+src/storage/gameRepository.js:240:  state.seasons = state.seasons.map((s, idx) => ensureSeasonFields(s, idx));
+src/storage/gameRepository.js:243:  const found = state.seasons.find((s) => s.seasonId === state.activeSeasonId);
+src/storage/gameRepository.js:245:    state.activeSeasonId = state.seasons[0]?.seasonId || DEFAULT_SEASON_ID;

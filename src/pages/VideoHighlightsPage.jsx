@@ -1,8 +1,6 @@
 // src/pages/VideoHighlightsPage.jsx
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ClipOptions from "../components/ClipOptions.jsx";
-import {HighlightPlaybackProvider,HighlightThumbnail} from "../components/HighlightPlayback.jsx";
 import ReactionUsersSheet from "../components/ReactionUsersSheet.jsx";
 import { createPortal } from "react-dom";
 import VideoHighlightsRepository, {
@@ -750,6 +748,7 @@ function HighlightCard({
     cancelLikeLongPress();
     onShowLikes?.(highlight, likerUsers);
   };
+  const missingBadges = getMissingBadges(highlight);
   const matchupLabel = getMatchupLabel(highlight, teams, matchType);
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   const canDeleteHighlight =
@@ -925,13 +924,57 @@ function HighlightCard({
         </button>
       ) : (
         <>
-          <div className="fanm-clip-surface">
-      <HighlightThumbnail highlight={highlight} onWatched={clip=>{setIsExpanded(true);onWatched?.(clip);}} onFinish={()=>setIsExpanded(false)}/>
+          <div className="tkh-card-progress">
+            <span>
+              Clip {feedPosition || 1} of {feedTotal || 1}
+            </span>
+            <span className={isWatched ? "is-complete" : ""}>
+              {isWatched ? "✓ Watched" : "New"}
+            </span>
+          </div>
+      <div className="tkh-card-top">
+        <div className="tkh-card-title-block">
+          <div className="tkh-player-name">
+  {String(highlight.playerName || "")
+    .trim()
+    .split(" ")[0]}
+</div>
+          <div className="tkh-clip-title">
+            {String(highlight.title || "")
+              .replace(/\bby\s+([A-Za-zÀ-ÿ'-]+)\s+([A-Za-zÀ-ÿ'-]+)/i, "by $1")}
+          </div>
+        </div>
 
-      <span className="fanm-clip-type">{typeBadgeLabel(highlight.normalizedType)}</span>
-      <ClipOptions title={`Clip options · ${highlight.playerName||"Player"}`} onClose={()=>setShowShareMenu(false)}>
+        <div style={{ display: "grid", gap: "0.35rem", justifyItems: "end" }}>
+          {(highlight.highlightEra === "throwback" || highlight.isThrowback) && (
+            <span className="tkh-throwback-badge">Throwback ✨</span>
+          )}
+          {!compactWinner && (
+            <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
+              {statusBadgeLabel(highlight.status)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <video
+        className="tkh-video"
+        controls
+        preload="metadata"
+        playsInline
+        src={highlight.mediaUrl}
+        onPlay={() => {
+          setIsExpanded(true);
+          onWatched?.(highlight);
+        }}
+        onEnded={() => {
+          onWatched?.(highlight);
+          setIsExpanded(false);
+        }}
+      />
+
       <div className="tkh-badge-row">
-
+        <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
 
         <div
           style={{
@@ -954,7 +997,7 @@ function HighlightCard({
                 fontSize: "0.72rem",
               }}
             >
-              ✏️ Edit clip
+              ✏️
             </button>
           )}
 
@@ -971,7 +1014,7 @@ function HighlightCard({
                 fontSize: "0.72rem",
               }}
             >
-              🗑️ Delete clip
+              🗑️
             </button>
           )}
 
@@ -982,7 +1025,6 @@ function HighlightCard({
             >
               <button
                 ref={shareButtonRef}
-                data-keep-clip-options="true"
                 type="button"
                 className="tkh-btn"
                 title="Share highlight"
@@ -995,7 +1037,7 @@ function HighlightCard({
                   fontSize: "0.72rem",
                 }}
               >
-                ↗ Share
+                ↗️
               </button>
 
               {showShareMenu &&
@@ -1076,6 +1118,10 @@ function HighlightCard({
           )}
         </div>
 
+        {!compactWinner && missingBadges.map((badge) => (
+          <span key={badge} className="tkh-missing-badge">{badge}</span>
+        ))}
+
         {!compactWinner && needsPlayer(highlight) && (
           <button
             type="button"
@@ -1089,25 +1135,44 @@ function HighlightCard({
               background: "rgba(14,165,233,0.10)",
             }}
           >
-            Identify player
+            Help identify player
           </button>
         )}
       </div>
 
-      {!compactWinner&&<div className="fanm-clip-details"><h3>Clip details</h3><p>{highlight.clubName} · {matchupLabel}{highlight.assist?` · Assist: ${highlight.assist}`:""}</p>{isModerator&&<p>Uploaded {formatDate(highlight.createdAt)}{highlight.createdByName?` by ${highlight.createdByName}`:""}</p>}</div>}
+      {!compactWinner && (
+        <div className="tkh-meta-row">
+          <span>{highlight.clubName}</span>
+          <span className="tkh-matchup-label">{matchupLabel}</span>
+          {!needsTeam(highlight) && (
+            <span>{highlight.teamName}</span>
+          )}
+        </div>
+      )}
 
-        {isModerator && highlight.status === "pending" && (
-          <>
-            <button type="button" className="tkh-btn tkh-btn-approve" onClick={() => onApprove?.(highlight)}>
-              Approve
-            </button>
-            <button type="button" className="tkh-btn tkh-btn-reject" onClick={() => onReject?.(highlight)}>
-              Reject
-            </button>
-          </>
-        )}
-      </ClipOptions>
-      <div className="tkh-card-actions fanm-clip-social">
+      {!compactWinner && highlight.assist && (
+        <div className="tkh-soft-line">
+  Assist:{" "}
+  <strong>
+    {String(toTitleCaseLoose(highlight.assist) || "")
+      .trim()
+      .split(" ")[0]}
+  </strong>
+</div>
+      )}
+
+      {!compactWinner && isModerator && (
+        <div className="tkh-soft-line">
+          Uploaded {formatDate(highlight.createdAt)}
+          {highlight.createdByName
+            ? ` by ${String(highlight.createdByName)
+                .trim()
+                .split(" ")[0]}`
+            : ""}
+        </div>
+      )}
+
+      <div className="tkh-card-actions">
         {(highlight.status === "approved" ||
           isArchivedTopVotedClip(highlight)) &&
           canLike &&
@@ -1178,16 +1243,24 @@ function HighlightCard({
             className="tkh-btn"
             onClick={() => onAttachToClubChat?.(highlight)}
           >
-            💬 Comment
+            💬 Chat
           </button>
         )}
 
 
 
-
+        {isModerator && highlight.status === "pending" && (
+          <>
+            <button type="button" className="tkh-btn tkh-btn-approve" onClick={() => onApprove?.(highlight)}>
+              Approve
+            </button>
+            <button type="button" className="tkh-btn tkh-btn-reject" onClick={() => onReject?.(highlight)}>
+              Reject
+            </button>
+          </>
+        )}
 
       </div>
-          </div>
         </>
       )}
     </article>
@@ -2349,7 +2422,7 @@ export function VideoHighlightsPage({
     const frame = window.requestAnimationFrame(() => {
       const videos = Array.from(
         document.querySelectorAll(
-          ".video-highlights-page .fanm-clip-preview"
+          ".video-highlights-page .tkh-video"
         )
       ).slice(0, 3);
 
@@ -3347,11 +3420,6 @@ export function VideoHighlightsPage({
             ? "MOM-ish moment"
             : `MOM-ish moment by ${cleanPlayerName}`
           : cleanPlayerName === PENDING_PLAYER ? "Match clip" : `Highlight by ${cleanPlayerName}`,
-      playerMemberId: (() => {
-        const matching = members.filter(member => [member.fullName, member.shortName, ...(member.profileNameAliases || [])]
-          .some(name => String(name || "").trim().toLowerCase() === cleanPlayerName.toLowerCase()));
-        return matching.length === 1 ? matching[0].id : null;
-      })(),
       metadataComplete: cleanPlayerName !== PENDING_PLAYER && cleanTeamName !== PENDING_TEAM,
       needsPlayer: cleanPlayerName === PENDING_PLAYER,
       needsTeam: cleanTeamName === PENDING_TEAM,
@@ -4011,7 +4079,7 @@ export function VideoHighlightsPage({
   };
 
   return (
-    <HighlightPlaybackProvider><div className="page video-highlights-page">
+    <div className="page video-highlights-page">
       <style>{`
         .video-highlights-page {
           padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
@@ -6690,7 +6758,7 @@ export function VideoHighlightsPage({
           </div>
         </div>
       )}
-    </div></HighlightPlaybackProvider>
+    </div>
   );
 }
 

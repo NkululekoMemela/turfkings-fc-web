@@ -1,8 +1,3 @@
-import {saveClubMatchNumber} from "../storage/clubMatchNumberGateway.js";
-import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
-import {buildKitRoster,validateKitTeams,jerseyNumber} from "../core/playerKit.js";
-import SharedSquadTeamsheet from "../components/SharedSquadTeamsheet.jsx";
-import SharedSquadPitchPreview from "../components/SharedSquadPitchPreview.jsx";
 // src/pages/SquadsPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
@@ -39,6 +34,10 @@ import {
   normalizeGameFormat,
 } from "../core/matchConfig.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
+import {
+  isCaptainCode,
+  isAdminCode,
+} from "../core/accessCodes.js";
 
 import {
   FANM_NATIONAL_TEAMS,
@@ -48,6 +47,7 @@ import TeamIdentityPicker from "../components/TeamIdentityPicker/TeamIdentityPic
 
 
 import TeamIdentityEditor from "../components/TeamIdentityEditor";
+const MASTER_CODE = "3333"; // Platform admin fallback
 const UNSEEDED_ID = "__unseeded__";
 const GUEST_OPPONENT_ID = "guest_opponent";
 const TURF_KINGS_CHALLENGE_ID = "turf_kings_challenge";
@@ -792,7 +792,6 @@ export function SquadsPage({
   teams = [],
   fiveVFiveTeams = [],
   onUpdateTeams,
-  onMatchNumberChange,
   onUpdateFiveVFiveTeams,
   onBack,
   identity = null,
@@ -2661,8 +2660,8 @@ export function SquadsPage({
       return;
     }
 
-    if (!isAdmin || deleteCode.trim().toUpperCase() !== "DELETE") {
-      setDeletePlayerError("Type DELETE to confirm. Membership was not terminated.");
+    if (deleteCode.trim() !== MASTER_CODE) {
+      setDeletePlayerError("Invalid admin code. Membership was not terminated.");
       return;
     }
 
@@ -2732,16 +2731,14 @@ export function SquadsPage({
 
   const handleConfirmSave = async () => {
     if (!canEdit) return;
-    try {validateKitTeams(buildKitRoster(sourceTeams.filter(team=>(team.players || []).length>0),allPlayers));}
-    catch(error){setSaveError(error.message);return;}
 
     const trimmedCode = String(saveCode || "").trim();
 
-    const validAdmin = isAdmin;
-    const validCaptain = canEdit && !isAdmin;
+    const validAdmin = isAdminCode(trimmedCode, MASTER_CODE);
+    const validCaptain = isCaptainCode(trimmedCode);
 
-    if (trimmedCode.toUpperCase() !== "CONFIRM") {
-      setSaveError("Type CONFIRM to save squad changes.");
+    if (!validAdmin && !validCaptain) {
+      setSaveError("Invalid access code.");
       return;
     }
 
@@ -3521,63 +3518,361 @@ export function SquadsPage({
     };
 
     return (
-      <SharedSquadTeamsheet
-        headerActions={canEdit&&<label className="squad-number-toggle"><input type="checkbox" checked={sourceTeams.some(team=>team.usePlayerNumbers!==false)} onChange={event=>{const enabled=event.target.checked,apply=list=>list.map(team=>({...team,usePlayerNumbers:enabled}));if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);}}/>Player numbers</label>}
-        matchTeams={matchTeams}
-        isClubChallengeTeamsheet={isClubChallengeTeamsheet}
-        teamsheetCardRef={teamsheetCardRef}
-        handleSaveTeamsheetCardAsImage={handleSaveTeamsheetCardAsImage}
-        activeClubLogo={activeClubLogo}
-        TURF_KINGS_LOGO_URL={TURF_KINGS_LOGO_URL}
-        activeClubName={activeClubName}
-        teamsheetDisplayDateParts={teamsheetDisplayDateParts}
-        getTeamTheme={getTeamTheme}
-        getChallengeTeamLogo={getChallengeTeamLogo}
-        getPreviewTeamName={getPreviewTeamName}
-        getTeamIdentityVisual={getTeamIdentityVisual}
-        resolveSquadTeamIdentity={resolveSquadTeamIdentity}
-        displayNameOf={(pid,teamId)=>{
-          const roster=buildKitRoster(sourceTeams,allPlayers),team=roster.find(t=>t.id===String(teamId)),row=team?.players.find(r=>r.key===pid),enabled=sourceTeams.find(t=>String(t.id)===String(teamId))?.usePlayerNumbers!==false;
-          return <>{enabled&&<CompactPlayerNumber number={row?.number??null} name={displayNameOf(pid)} disabled={!canEdit} onCommit={canEdit&&row?async raw=>{
-            const number=jerseyNumber(raw),next=roster.map(t=>t.id!==String(teamId)?t:{...t,players:t.players.map(r=>r.key===row.key?{...r,number}:r)});validateKitTeams(next.filter(t=>t.players.length));
-            if(onMatchNumberChange)await onMatchNumberChange(teamId,row.key,number,isFiveVFive?"friendly":"league");else if(!isPracticeMode)await saveClubMatchNumber({clubId:activeClubId,seasonId:activeSeasonId,teamId,playerKey:row.key,number,teamKind:isFiveVFive?"friendly":"league"});
-            const apply=list=>list.map(t=>String(t.id)!==String(teamId)?t:{...t,kitNumbers:{...t.kitNumbers,[row.key]:{number,source:"captain"}}});if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);
-            if(isPracticeMode&&!onMatchNumberChange){if(isFiveVFive)onUpdateFiveVFiveTeams?.(apply(sourceTeams));else onUpdateTeams?.(apply(sourceTeams));}
-          }:undefined}/>}<span>{displayNameOf(pid)}</span></>;
-        }}
-      />
+      <div className="teamsheet-export-wrap">
+        <div className="teamsheet-export-actions">
+          <div>
+            <h3>Upcoming game teamsheet</h3>
+            <p className="muted small">
+              Share this with the group after saving squads.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={handleSaveTeamsheetCardAsImage}
+          >
+            Download team-sheet
+          </button>
+        </div>
+
+        <div
+          ref={teamsheetCardRef}
+          className={`teamsheet-card${isClubChallengeTeamsheet ? " teamsheet-card--club-challenge" : ""}`}
+        >
+          <div className="teamsheet-card-head">
+            <div className="teamsheet-card-club">
+              <img
+                src={isClubChallengeTeamsheet ? "/pwa/icon-192.png" : activeClubLogo || TURF_KINGS_LOGO_URL}
+                alt=""
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+              <div>
+                <span>{isClubChallengeTeamsheet ? "5 Asides Near Me" : activeClubName || "Club"}</span>
+                <small>{isClubChallengeTeamsheet ? "Exhibition Fixture Only" : "5 Asides Near Me"}</small>
+              </div>
+            </div>
+
+            <div className="teamsheet-card-date">
+              <strong>{teamsheetDisplayDateParts.dateLabel}</strong>
+              {teamsheetDisplayDateParts.scheduleLabel && (
+                <small>{teamsheetDisplayDateParts.scheduleLabel}</small>
+              )}
+            </div>
+          </div>
+
+          <div className="teamsheet-card-grid">
+            {matchTeams.map((team, index) => {
+              const theme = getTeamTheme(team);
+              const players = Array.isArray(team.players) ? team.players : [];
+              const challengeLogo = getChallengeTeamLogo(team, index);
+
+              return (
+                <div
+                  key={`teamsheet-card-${team.id}`}
+                  className="teamsheet-card-team"
+                  style={{
+                    "--team-accent": theme.accent,
+                    "--team-glow": theme.glow,
+                  }}
+                >
+                  <div className="teamsheet-card-team-head">
+                    <div className="teamsheet-card-team-title">
+                      {challengeLogo ? (
+                        <img
+                          src={challengeLogo}
+                          alt=""
+                          className="teamsheet-card-team-logo"
+                          onError={(event) => {
+                            event.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : null}
+                      <div>
+                        <h4 className="teamsheet-card-team-name-with-identity">
+                          {getTeamIdentityVisual(team)}
+                          <span className="teamsheet-card-team-name-stack">
+                            <span>{getPreviewTeamName(team)}</span>
+                            {resolveSquadTeamIdentity(team) ? (
+                              <small>Fantasy 5s</small>
+                            ) : null}
+                          </span>
+                        </h4>
+                        <p>
+                          Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
+                        </p>
+                      </div>
+                    </div>
+                    <span className="teamsheet-card-team-abbrev">
+                      {resolveSquadTeamIdentity(team)?.abbr ||
+                        team.abbrev ||
+                        ""}
+                    </span>
+                  </div>
+
+                  <ol>
+                    {players.length ? (
+                      players.map((pid) => (
+                        <li key={`teamsheet-${team.id}-${pid}`}>
+                          {displayNameOf(pid)}
+                          {team.captainId === pid ? " (C)" : ""}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="muted">No players selected</li>
+                    )}
+                  </ol>
+                </div>
+              );
+            })}
+          </div>        </div>
+      </div>
     );
   };
 
-  const renderSquadShapePreview = () => (
-    <SharedSquadPitchPreview
-      getSquadPreviewSlots={getSquadPreviewSlots}
-      activeChallengeFixture={activeChallengeFixture}
-      sourceTeams={sourceTeams}
-      resolvedHomeClubName={resolvedHomeClubName}
-      resolvedHomeClubLogo={resolvedHomeClubLogo}
-      resolvedAwayClubName={resolvedAwayClubName}
-      resolvedAwayClubLogo={resolvedAwayClubLogo}
-      isLockedClubChallengeTeam={isLockedClubChallengeTeam}
-      getTeamTheme={getTeamTheme}
-      playersPerSide={playersPerSide}
-      canEdit={canEdit}
-      setTeamIdentityTarget={setTeamIdentityTarget}
-      isCurrentGuestOpponentTeam={isCurrentGuestOpponentTeam}
-      getTeamIdentityVisual={getTeamIdentityVisual}
-      playersById={playersById}
-      handleCaptainChange={handleCaptainChange}
-      captainOptionsForTeam={captainOptionsForTeam}
-      handleTeamColorNameChange={handleTeamColorNameChange}
-      TURF_KINGS_SLOT_ID={TURF_KINGS_SLOT_ID}
-      toTitleCase={toTitleCase}
-      displayShortOf={displayShortOf}
-      displayNameOf={displayNameOf}
-      handlePreviewSlotClick={handlePreviewSlotClick}
-      handlePreviewRemovePlayer={handlePreviewRemovePlayer}
-      getPreviewTeamName={getPreviewTeamName}
-    />
-  );
+  const renderSquadShapePreview = () => {
+    const slots = getSquadPreviewSlots();
+    const isClubChallengePreview = Boolean(activeChallengeFixture);
+
+    const getChallengePreviewMeta = (team) => {
+      const originalIndex = sourceTeams.findIndex(
+        (item) => String(item?.id || "") === String(team?.id || "")
+      );
+
+      if (originalIndex === 0) {
+        return {
+          clubId: activeChallengeFixture?.homeClubId || "",
+          clubName: resolvedHomeClubName,
+          clubLogo: resolvedHomeClubLogo,
+        };
+      }
+
+      return {
+        clubId: activeChallengeFixture?.awayClubId || "",
+        clubName: resolvedAwayClubName,
+        clubLogo: resolvedAwayClubLogo,
+      };
+    };
+
+    const previewTeams = isClubChallengePreview
+      ? [...sourceTeams].sort((a, b) => {
+          const aLocked = isLockedClubChallengeTeam(a.id) ? 1 : 0;
+          const bLocked = isLockedClubChallengeTeam(b.id) ? 1 : 0;
+          return aLocked - bLocked;
+        })
+      : sourceTeams;
+
+    return (
+      <div className="squad-preview-grid">
+        {previewTeams.map((team) => {
+          const theme = getTeamTheme(team);
+          const players = Array.isArray(team.players) ? team.players : [];
+          const challengeMeta = getChallengePreviewMeta(team);
+          const challengeClubName = challengeMeta.clubName;
+          const challengeClubLogo = challengeMeta.clubLogo;
+          const isLockedOpponentPreview = isLockedClubChallengeTeam(team.id);
+
+          return (
+            <div
+              key={`preview-${team.id}`}
+              className={`squad-preview-pitch-card${isLockedOpponentPreview ? " squad-preview-pitch-card--locked-opponent" : ""}`}
+              style={{
+                "--team-accent": theme.accent,
+                "--team-accent-soft": theme.accentSoft,
+                "--team-glow": theme.glow,
+              }}
+            >
+              <div className="squad-preview-team-head">
+                <span className="squad-preview-team-dot" />
+                <div
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 150px)",
+                    gap: "0.55rem",
+                    alignItems: "start",
+                  }}
+                >
+                  <div>
+                    {isClubChallengePreview ? (
+                      <div className="squad-preview-club-challenge-title">
+                        {challengeClubLogo ? (
+                          <img
+                            src={challengeClubLogo}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : null}
+                        <h4>{challengeClubName || getPreviewTeamName(team)}</h4>
+                      </div>
+                    ) : canEdit ? (
+                      <button
+                        type="button"
+                        className="text-input squad-team-identity-button"
+                        onClick={() => setTeamIdentityTarget(team.id)}
+                        disabled={isCurrentGuestOpponentTeam(team)}
+                      >
+                        {getTeamIdentityVisual(team)}
+                        <span>{team.label || "Choose team"}</span>
+                      </button>
+                    ) : (
+                      <h4>{getPreviewTeamName(team)}</h4>
+                    )}
+
+                    <p style={{ marginTop: "0.35rem" }}>
+                      {players.length}/{playersPerSide} selected
+                    </p>
+                  </div>
+
+                  {canEdit ? (
+                    <div style={{ display: "grid", gap: "0.35rem" }}>
+                      <select
+                        className="text-input"
+                        value={
+                          team.captainId && playersById.has(team.captainId)
+                            ? team.captainId
+                            : ""
+                        }
+                        onChange={(event) =>
+                          handleCaptainChange(team.id, event.target.value)
+                        }
+                        disabled={isLockedOpponentPreview || captainOptionsForTeam(team).length === 0}
+                        title="Select captain"
+                        style={{ width: "100%", boxSizing: "border-box" }}
+                      >
+                        <option value="">Captain</option>
+                        {captainOptionsForTeam(team).map((pid) => (
+                          <option key={`preview-captain-${team.id}-${pid}`} value={pid}>
+                            ⭐ {displayNameOf(pid)}
+                          </option>
+                        ))}
+                      </select>
+
+                      <TeamIdentityEditor
+                        team={team}
+                        colourName={
+                          team.teamColorName ||
+                          (team.id === TURF_KINGS_SLOT_ID
+                            ? "Black"
+                            : "White")
+                        }
+                        showName={false}
+                        showAbbreviation={false}
+                        showColour
+                        compact
+                        disabled={isLockedOpponentPreview}
+                        onColourChange={(nextColour) =>
+                          handleTeamColorNameChange(
+                            team.id,
+                            nextColour.teamColorName
+                          )
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="squad-preview-mini-pitch">
+                <div className="squad-preview-centre-circle" />
+                <div className="squad-preview-half-line" />
+                <div className="squad-preview-box top" />
+                <div className="squad-preview-box bottom" />
+
+                {slots.map((slot, index) => {
+                  const pid = players[index];
+                  const label = pid
+                    ? isCurrentGuestOpponentTeam(team)
+                      ? toTitleCase(pid)
+                      : (displayShortOf(pid) || '').split(' ')[0]
+                    : "Empty";
+
+                  const isCaptain =
+                    pid &&
+                    team.captainId &&
+                    playersById.has(team.captainId) &&
+                    team.captainId === pid;
+
+                  return (
+                    <button
+                      type="button"
+                      key={`preview-slot-${team.id}-${index}`}
+                      className={`squad-preview-position ${pid ? "has-player" : "is-empty"}`}
+                      style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+                      onClick={() => handlePreviewSlotClick(team.id, index)}
+                      title={
+                        isLockedOpponentPreview
+                          ? "Opponent lineup is controlled by the other club"
+                          : canEdit
+                            ? "Tap to assign player"
+                            : "Read-only preview"
+                      }
+                    >
+                      <div className="squad-preview-shirt">
+                        {pid ? String(label || "?").charAt(0).toUpperCase() : "+"}
+                      </div>
+                      <div className="squad-preview-label">
+                        <strong>{label}{isCaptain ? " ⭐" : ""}</strong>
+                        <span>{slot.label}</span>
+                      </div>
+
+                      {canEdit && pid && !isLockedOpponentPreview ? (
+                        <div className="squad-preview-mini-actions">
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Remove player"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePreviewRemovePlayer(team.id, pid);
+                            }}
+                          >
+                            ×
+                          </span>
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })}
+
+                {players.length > slots.length && (
+                  <div className="squad-preview-extra-list">
+
+                    {players.slice(slots.length).map((pid, extraIndex) => (
+                      <button
+                        type="button"
+                        key={`preview-extra-${team.id}-${pid}-${extraIndex}`}
+                        className="squad-preview-extra-player"
+                        onClick={() => handlePreviewSlotClick(team.id, slots.length + extraIndex)}
+                        disabled={isLockedOpponentPreview}
+                      >
+                        {String(displayShortOf(pid) || displayNameOf(pid) || '').split(' ')[0]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {canEdit && players.length >= playersPerSide && (
+                  <button
+                    type="button"
+                    className="squad-preview-add-extra-btn"
+                    onClick={() => handlePreviewSlotClick(team.id, players.length)}
+                  >
+                    + Extra\nplayer
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   const renderCardShell = (cardId, label, theme, children) => (
     <div
@@ -3649,9 +3944,6 @@ export function SquadsPage({
           </div>
         </header>
       </div>
-
-
-
 
       {canEdit && (
         <div
@@ -3750,7 +4042,7 @@ export function SquadsPage({
                   <strong style={{ color: "#ffffff" }}>Captain edit control</strong>
                   <div style={{ marginTop: "0.25rem" }}>
                     This is your admin control. Keep captains locked when you do not want them changing squads.
-                    Unlock captains when you want them to help set teams, edit squads, and save using a typed confirmation.
+                    Unlock captains when you want them to help set teams, edit squads, and save using a captain code.
                   </div>
                   </div>
                 </div>
@@ -4358,16 +4650,16 @@ export function SquadsPage({
             </p>
 
             <div className="field-row">
-              <label>Type DELETE to confirm</label>
+              <label>Admin code</label>
               <input
-                type="text"
+                type="password"
                 className="text-input"
                 value={deleteCode}
                 onChange={(e) => {
                   setDeleteCode(e.target.value);
                   setDeletePlayerError("");
                 }}
-                placeholder="Type DELETE to confirm"
+                placeholder="Enter admin code to confirm"
               />
             </div>
 
@@ -4407,12 +4699,12 @@ export function SquadsPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Squad Changes</h3>
-            <p>Type CONFIRM to apply squad changes.</p>
+            <p>Enter the ${activeClubName} admin code to apply squad changes.</p>
 
             <div className="field-row">
-              <label>Type CONFIRM to save</label>
+              <label>Admin code</label>
               <input
-                type="text"
+                type="password"
                 className="text-input"
                 value={saveCode}
                 onChange={(e) => {

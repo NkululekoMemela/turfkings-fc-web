@@ -1,6 +1,0 @@
-.fanm-chat-notification-control{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:8px 0;padding:0;border:0;background:transparent;flex-shrink:0}
-.fanm-chat-notification-control button{border:1px solid #7ab4a666!important;border-radius:20px!important;padding:7px 12px!important;min-height:36px!important;background:#164c451f!important;color:inherit!important;font:600 12px system-ui!important;cursor:pointer}
-.fanm-chat-notification-control button[aria-pressed=true]{border-color:#d5b56899!important;background:#d5b56814!important}
-.fanm-chat-notification-control button:disabled{opacity:.6;cursor:default}
-.fanm-chat-notification-control small{font:11px/1.4 system-ui;color:inherit;opacity:.8;flex:1;min-width:140px}
-.fanm-chat-notification-control [role=alert]{width:100%;font-size:12px;color:#e49d89}

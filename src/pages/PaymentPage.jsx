@@ -1,5 +1,3 @@
-import { calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
-import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 // src/pages/PaymentPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -100,7 +98,32 @@ function derivePaymentStatus(amountDue, amountPaid, fallbackStatus = "unpaid") {
 }
 
 function getFunctionsBaseUrl() {
-  return getActiveFirebaseFunctionsBaseUrl({});
+  const viteEnv =
+    typeof import.meta !== "undefined" && import.meta.env
+      ? import.meta.env
+      : {};
+
+  const explicit = String(viteEnv.VITE_FUNCTIONS_BASE_URL || "").trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  const projectId = String(
+    viteEnv.VITE_FIREBASE_PROJECT_ID || activeFirebaseProjectId || ""
+  ).trim();
+  if (!projectId) return "";
+
+  const useFunctionsEmulator =
+    String(viteEnv.VITE_USE_FUNCTIONS_EMULATOR || "").trim() === "true";
+
+  if (
+    useFunctionsEmulator &&
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1")
+  ) {
+    return `http://127.0.0.1:5001/${projectId}/${FUNCTIONS_REGION}`;
+  }
+
+  return `https://${FUNCTIONS_REGION}-${projectId}.cloudfunctions.net`;
 }
 
 async function postJson(url, body) {
@@ -492,14 +515,7 @@ export default function PaymentPage({
       ? recomputedFullAmount
       : Number(signup?.amountDue ?? contextAmountDue ?? 0);
 
-  const lateBookingFee = calculateLateBookingFee({
-    policy: clubProfile?.bookingSettings?.lateBookingFee || {},
-    games: [
-      ...unpaidPrimaryWeeks.map(id => ({ id: `primary:${id}`, monthKey: String(id).slice(0, 7) })),
-      ...unpaidSecondWeeks.map(id => ({ id: `second:${id}`, monthKey: String(id).slice(0, 7) })),
-    ],
-  });
-  const amountToPayNow = unpaidTotalGames * costPerGame + lateBookingFee.amount;
+  const amountToPayNow = unpaidTotalGames * costPerGame;
   const captainContributionToPayNow = unpaidTotalGames * captainContributionPerGame;
   const platformUpliftToPayNow = unpaidTotalGames * platformUpliftPerGame;
   const fanmBookingFee = platformUpliftToPayNow;
@@ -675,7 +691,6 @@ export default function PaymentPage({
           unpaidSecondWeeks,
           costPerGame: captainContributionPerGame,
           serviceFeePerGame: platformUpliftPerGame,
-          quotedLateBookingFee: lateBookingFee.amount,
           paymentReference: buildReferenceLabel(primaryDisplayName),
           returnUrl,
           successUrl: returnUrl
@@ -828,15 +843,6 @@ export default function PaymentPage({
         {
           amountPaid: verifiedAmount,
           paymentStatus: nextStatus,
-
-          // This is genuine manual confirmation that money was received.
-          // Launch access overrides and Practice simulations use separate
-          // payment methods and must never produce payment notifications.
-          paymentMethod: "manual_admin_verify",
-          paymentSimulation: false,
-          paymentActuallyReceived: true,
-          paymentProviderContacted: false,
-
           adminNote: note,
           verifiedBy: verifier,
           verifiedAt: serverTimestamp(),
@@ -946,12 +952,6 @@ export default function PaymentPage({
                       <strong>{formatCurrency(fanmBookingFee)}</strong>
                     </div>
                   ) : null}
-                  {lateBookingFee.amount > 0 && (
-                    <div className="summary-row">
-                      <span>Late booking fee ({lateBookingFee.lateGameCount} games)</span>
-                      <strong>{formatCurrency(lateBookingFee.amount)}</strong>
-                    </div>
-                  )}
                   <div className="summary-row">
                     <span>Paid so far</span>
                     <strong>{formatCurrency(amountPaid)}</strong>

@@ -1,12 +1,3 @@
-import RefereeEventList from "../components/RefereeEventList.jsx";
-import RefereeReplacementAlert from "../components/RefereeReplacementAlert.jsx";
-import RefereePlayerLabel from "../components/RefereePlayerLabel.jsx";
-import {confirmsRefereeAction} from "../core/refereeActions.mjs";
-import DigitalRefereeCard from "../components/DigitalRefereeCard.jsx";
-import {futsalCardDecision} from "../core/fieldFutsalDiscipline.mjs";
-import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
-import {splitNumberDisplay} from "../core/playerNumberDisplay.mjs";
-import {usePlayerNumberLabel,InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
 // src/pages/Friendly_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getTeamById } from "../core/teams.js";
@@ -60,6 +51,7 @@ import {
   FANM_PRO_CLUBS,
 } from "../data/fanm/fanmTeamLibrary.js";
 
+const CAPTAIN_PASSWORDS = ["11", "22", "3333"];
 const MATCH_DOC_ID = "current";
 
 function resolveLiveMatchDoc(
@@ -1199,7 +1191,6 @@ async function writeFinalSummaryToFirestore(
 
 function PlayerBenchChip({
   name,
-  numberBelow=false,
   isSelected,
   onClick,
   photoData,
@@ -1208,7 +1199,6 @@ function PlayerBenchChip({
   isSub = false,
   roleTag = "",
 }) {
-  const separated=numberBelow?splitNumberDisplay(name):{name,number:""};
   const roleStyle = getRoleBadgeStyle(roleTag, isSub);
 
   return (
@@ -1276,7 +1266,8 @@ function PlayerBenchChip({
       </span>
 
       <span className={isSub ? "live-bench-chip-text is-sub" : ""}>
-        {numberBelow?<><span className="live-chip-player-name">{separated.name}{suffix}</span>{separated.number&&<span className="live-chip-player-number">{separated.number}</span>}</>:<>{name}{suffix}</>}
+        {name}
+        {suffix}
       </span>
     </button>
   );
@@ -1316,7 +1307,7 @@ function PlayerChoiceGrid({
       {players.length === 0 ? (
         <p className="muted small">No players available.</p>
       ) : (
-        <div className="live-player-choice-grid live-scorer-choice-grid">
+        <div className="live-player-choice-grid">
           {players.map((entry, idx) => {
             const rawName =
               typeof entry === "string" ? entry : entry?.name || "";
@@ -1335,7 +1326,6 @@ function PlayerChoiceGrid({
 
             return (
               <PlayerBenchChip
-                    numberBelow
                 key={`${rawName}-${isSub ? "sub" : "field"}-${
                   roleTag || "norole"
                 }`}
@@ -1850,7 +1840,6 @@ function LineupBoard({
                     </>
                   ) : (
                     <>
-                      <div className="live-lineup-number-pin"><InlineLineupNumber raw={name} teamId={team?.id}/></div>
                       <div
                         className={`player-shirt ${
                           photoData
@@ -1869,7 +1858,11 @@ function LineupBoard({
 
                       <div className="live-player-meta">
                         <span className="player-name">
-                          {name?<>{displayCompactPlayerName(name).replace(/^\((?:\d+|-)\)\s*/,"")}</>:"Empty"}
+                          {name
+                            ? displayCompactPlayerName(
+                                name
+                              )
+                            : "Empty"}
                         </span>
 
                         <span className="position-tag">
@@ -1904,8 +1897,8 @@ function LineupBoard({
 
               return (
                 <li key={p} className="live-bench-item">
-                  <InlineLineupNumber raw={p} teamId={team?.id}/><PlayerBenchChip
-                    name={displayCompactPlayerName(p).replace(/^\((?:\d+|-)\)\s*/,"")}
+                  <PlayerBenchChip
+                    name={displayCompactPlayerName(p)}
                     isSelected={isSelected}
                     onClick={() => handleBenchClick(p)}
                     photoData={photoData}
@@ -2373,11 +2366,9 @@ export function FriendlyLiveMatchPage({
     [playerResolver]
   );
 
-  const numberLabel=usePlayerNumberLabel();
-
   const displayCompactPlayerName = useMemo(
-    () => (raw,teamId="") => numberLabel(raw,playerResolver.compactName(raw),teamId),
-    [playerResolver,numberLabel]
+    () => (raw) => playerResolver.compactName(raw),
+    [playerResolver]
   );
 
   const playerKeyFor = useMemo(
@@ -2526,10 +2517,113 @@ export function FriendlyLiveMatchPage({
     teamBId
   );
 
-  const [mergedPlayerPhotos,setMergedPlayerPhotos]=useState(playerPhotosByName||{});
-  useEffect(()=>setMergedPlayerPhotos(playerPhotosByName||{}),[safeActiveClubId,playerPhotosByName]);
-  useEffect(()=>{let cancelled=false;getDocs(getPlayerPhotosCollection(db,safeActiveClubId)).then(snapshot=>{if(!cancelled){const loaded=indexPlayerPortraits(snapshot.docs.map(doc=>({id:doc.id,data:doc.data()||{}})));setMergedPlayerPhotos(old=>({...old,...loaded}));}}).catch(error=>console.warn("[Player portraits] Could not refresh",error.code||error.name));return()=>{cancelled=true;};},[safeActiveClubId]);
-  const getPlayerPhoto=useMemo(()=>raw=>resolvePlayerPortrait(raw,players||[],mergedPlayerPhotos),[players,mergedPlayerPhotos]);
+  const [mergedPlayerPhotos, setMergedPlayerPhotos] = useState(
+    playerPhotosByName || {}
+  );
+
+  useEffect(() => {
+    setMergedPlayerPhotos((prev) => ({
+      ...prev,
+      ...(playerPhotosByName || {}),
+    }));
+  }, [playerPhotosByName]);
+
+  useEffect(() => {
+    const alreadyLoaded =
+      playerPhotosByName &&
+      Object.keys(playerPhotosByName).length > 20;
+
+    if (alreadyLoaded) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPhotos() {
+      try {
+        const snap = await getDocs(getPlayerPhotosCollection(db, safeActiveClubId));
+        if (cancelled) return;
+
+        const loaded = {};
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const photoData = data?.photoData || "";
+          const rawName = data?.name || docSnap.id || "";
+          if (!photoData) return;
+
+          const canonical = canonicalName(rawName);
+          const compact = displayCompactPlayerName(rawName);
+          const slug = slugFromLooseName(canonical || rawName);
+          const firstCanon = firstNameOf(canonical);
+          const firstCompact = firstNameOf(compact);
+
+          [
+            rawName,
+            toTitleCaseLoose(rawName),
+            canonical,
+            compact,
+            slug,
+            firstCanon,
+            firstCompact,
+          ]
+            .map((x) => String(x || "").trim())
+            .filter(Boolean)
+            .forEach((key) => {
+              loaded[key] = photoData;
+            });
+        });
+
+        setMergedPlayerPhotos((prev) => ({
+          ...loaded,
+          ...prev,
+        }));
+      } catch (err) {
+        console.error("Failed to load player photos in 5v5LiveMatchPage:", err);
+      }
+    }
+
+    loadPhotos();
+    return () => {
+      cancelled = true;
+    };
+  }, [canonicalName, displayCompactPlayerName]);
+
+  const getPlayerPhoto = useMemo(() => {
+    return (playerName = "") => {
+      const raw = String(playerName || "").trim();
+      if (!raw) return null;
+
+      const canonical = canonicalName(raw);
+      const compact = displayCompactPlayerName(raw);
+      const slug = slugFromLooseName(canonical || raw);
+      const firstCanonical = firstNameOf(canonical);
+      const firstCompact = firstNameOf(compact);
+
+      const candidates = [
+        raw,
+        toTitleCaseLoose(raw),
+        canonical,
+        compact,
+        slug,
+        firstCanonical,
+        firstCompact,
+      ]
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
+
+      for (const key of candidates) {
+        if (mergedPlayerPhotos[key]) return mergedPlayerPhotos[key];
+        const matchedKey = Object.keys(mergedPlayerPhotos).find(
+          (k) => normKey(k) === normKey(key)
+        );
+        if (matchedKey && mergedPlayerPhotos[matchedKey]) {
+          return mergedPlayerPhotos[matchedKey];
+        }
+      }
+
+      return null;
+    };
+  }, [mergedPlayerPhotos, canonicalName, displayCompactPlayerName]);
 
   const defaultTeamALineup = useMemo(
     () =>
@@ -3655,16 +3749,31 @@ export function FriendlyLiveMatchPage({
     persistDisciplineLineups(nextSnapshots);
   };
 
-  const [digitalCard,setDigitalCard]=useState(null);
   const issueDisciplineCard = (cardType, player) => {
     if (!canControlMatch || !player?.name || !player?.teamId) {
       return;
     }
 
+    const normalizedType =
+      cardType === "red_card"
+        ? "red_card"
+        : "yellow_card";
+
     const status = getDisciplineStatus(player);
-    const decision=futsalCardDecision(cardType,status.yellowEvents.length,status.redEvents.length>0);
-    if(!decision)return;
-    const normalizedType=decision.type;
+
+    if (
+      normalizedType === "yellow_card" &&
+      status.yellowEvents.length > 0
+    ) {
+      return;
+    }
+
+    if (
+      normalizedType === "red_card" &&
+      status.redEvents.length > 0
+    ) {
+      return;
+    }
 
     const cardTeam =
       player.teamId === teamAId
@@ -3686,8 +3795,6 @@ export function FriendlyLiveMatchPage({
         .toString(36)
         .slice(2, 8)}`,
       type: normalizedType,
-      secondCaution: decision.secondCaution,
-      cautionNumber: decision.secondCaution ? 2 : normalizedType === "yellow_card" ? 1 : null,
       teamId: player.teamId,
       teamLabel: getTeamDisplayName(
         cardTeam,
@@ -3709,7 +3816,11 @@ export function FriendlyLiveMatchPage({
         dismissalDetails.removedPositionId || null,
       wasSubstitute:
         dismissalDetails.wasSubstitute,
-      timeSeconds: getActualElapsedFootballSeconds(),
+      timeSeconds: Math.max(
+        Number(matchSeconds || 0) -
+          Number(displaySeconds || 0),
+        0
+      ),
       issuedBy:
         getIdentityDisplayName(identity),
       issuedById:
@@ -3726,7 +3837,6 @@ export function FriendlyLiveMatchPage({
     };
 
     onAddEvent?.(event);
-    setDigitalCard({type:event.type,name:displayCompactPlayerName(player.name,player.teamId),secondCaution:event.secondCaution});
     setSelectedDisciplinePlayer(null);
   };
 
@@ -3739,7 +3849,6 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    if(cardEvent.type==="yellow_card" && getDisciplineStatus({name:cardEvent.playerName,teamId:cardEvent.teamId}).redEvents.some(event=>event.secondCaution)){window.alert("Undo the second-yellow dismissal first.");return;}
     if (cardEvent?.type === "red_card") {
       restoreDismissedPlayerToLineup(cardEvent);
     }
@@ -3791,7 +3900,11 @@ export function FriendlyLiveMatchPage({
   const dismissedPlayersB =
     dismissedPlayersForTeam(teamBId);
 
-  const currentDisciplineMatchSeconds = getActualElapsedFootballSeconds();
+  const currentDisciplineMatchSeconds = Math.max(
+    Number(matchSeconds || 0) -
+      Number(displaySeconds || 0),
+    0
+  );
 
   const protectedVacanciesForTeam = (teamId) => {
     const vacancies = {};
@@ -4354,7 +4467,7 @@ export function FriendlyLiveMatchPage({
     defaultFormationId,
   ]);
 
-  const handleConfirmLineups = async () => {
+  const handleConfirmLineups = () => {
     if (!canControlMatch) {
       window.alert("Only captains or admin can confirm match lineups.");
       return;
@@ -4408,16 +4521,11 @@ export function FriendlyLiveMatchPage({
       [teamBId]: snapshotB,
     };
 
-    let checkedSnapshot;
-    try { checkedSnapshot=await onConfirmPreMatchLineups?.(merged); }
-    catch(error){window.alert(error.message || "Kit verification failed.");return;}
-    if(checkedSnapshot===false)return;
-    if(checkedSnapshot)Object.assign(merged,checkedSnapshot);
     setLocalConfirmedSnapshots(merged);
 
     const confirmationTimeSeconds =
       friendlyLineupTimeline.length === 0 &&
-      !running &&
+      !isRunning &&
       !additionalTimeRunning
         ? 0
         : getActualElapsedFootballSeconds();
@@ -4427,7 +4535,7 @@ export function FriendlyLiveMatchPage({
       confirmationTimeSeconds
     );
 
-
+    onConfirmPreMatchLineups?.(merged);
     setShowVerifyModal(false);
   };
 
@@ -5139,8 +5247,9 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    if (!confirmsRefereeAction(deletePassword, "DELETE")) {
-      setDeleteError("Type DELETE to confirm.");
+    const password = deletePassword.trim();
+    if (!CAPTAIN_PASSWORDS.includes(password)) {
+      setDeleteError("Invalid captain password.");
       return;
     }
 
@@ -5153,9 +5262,7 @@ export function FriendlyLiveMatchPage({
         newEvents,
         basicSummary,
         displaySeconds,
-        matchSeconds,
-        dataScope,
-        activeClubId
+        matchSeconds
       );
     }
 
@@ -5185,8 +5292,9 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    if (!confirmsRefereeAction(backPassword, "CANCEL")) {
-      setBackError("Type CANCEL to confirm.");
+    const password = backPassword.trim();
+    if (!CAPTAIN_PASSWORDS.includes(password)) {
+      setBackError("Invalid captain password.");
       return;
     }
 
@@ -5233,8 +5341,9 @@ export function FriendlyLiveMatchPage({
       return;
     }
 
-    if (!confirmsRefereeAction(undoPassword, "CONFIRM")) {
-      setUndoError("Type CONFIRM to confirm.");
+    const password = undoPassword.trim();
+    if (!CAPTAIN_PASSWORDS.includes(password)) {
+      setUndoError("Invalid captain password.");
       return;
     }
 
@@ -5438,12 +5547,6 @@ export function FriendlyLiveMatchPage({
         transition: "opacity 0.8s ease",
       }}
     >
-      <RefereeReplacementAlert enabled={canControlMatch} teams={[
-        {teamId:teamAId,label:teamA?.name||teamA?.label||"Team A",positions:verifiedLineupA?.positions||{},vacancies:protectedVacanciesA},
-        {teamId:teamBId,label:teamB?.name||teamB?.label||"Team B",positions:verifiedLineupB?.positions||{},vacancies:protectedVacanciesB}
-      ]} onOpenLineups={()=>{openLiveLineupEditor()}}/>
-      <DigitalRefereeCard card={digitalCard} onClose={()=>setDigitalCard(null)}/>
-
       {showRotationModal && (
         <div
           className="fanm-finish-time-backdrop fanm-rotation-backdrop"
@@ -5909,7 +6012,130 @@ export function FriendlyLiveMatchPage({
             <p className="muted">No live events yet.</p>
           )}
 
-          <RefereeEventList events={currentEvents} getTeam={id=>id===teamAId?effectiveTeamA:id===teamBId?effectiveTeamB:null} getTeamAbbrev={team=>team.teamIdentity?.abbr||team.abbrev||team.label||""} getTeamTheme={getTeamAccent} displayPlayer={displayCompactPlayerName} formatClock={formatSeconds} canEdit={canControlMatch} onEdit={index=>{const event=currentEvents[index];if(event?.type==="goal")handleEditGoal(index);else{setSelectedDisciplinePlayer({name:event.playerName,teamId:event.teamId,positionId:event.positionId,isSubstitute:event.wasSubstitute});setShowCardRecorder(true);}}} onDelete={handleRequestDelete}/>
+          <ul>
+            {currentEvents.map((e, idx) => {
+              if (
+                e.type === "yellow_card" ||
+                e.type === "red_card"
+              ) {
+                const isRed =
+                  e.type === "red_card";
+
+                return (
+                  <li
+                    key={e.id || idx}
+                    className={`event-item fanm-discipline-event ${
+                      isRed
+                        ? "is-red"
+                        : "is-yellow"
+                    }`}
+                  >
+                    <span
+                      className="fanm-discipline-event-card"
+                      aria-hidden="true"
+                    >
+                      {isRed ? "🟥" : "🟨"}
+                    </span>
+
+                    <span className="fanm-discipline-event-copy">
+                      <strong>
+                        {e.playerName ||
+                          "Unknown player"}
+                      </strong>
+
+                      <small>
+                        {formatSeconds(
+                          Number(e.timeSeconds || 0)
+                        )}{" "}
+                        · {e.teamLabel || "TEAM"}
+                      </small>
+                    </span>
+
+                    {canControlMatch ? (
+                      <button
+                        type="button"
+                        className="fanm-discipline-event-undo"
+                        onClick={() =>
+                          reverseDisciplineCard({
+                            ...e,
+                            eventIndex: idx,
+                          })
+                        }
+                      >
+                        Undo
+                      </button>
+                    ) : null}
+                  </li>
+                );
+              }
+
+              if (e.type === "goal") {
+                const teamForEvent =
+                  e.teamId === teamAId
+                    ? effectiveTeamA
+                    : e.teamId === teamBId
+                    ? effectiveTeamB
+                    : null;
+                const label = eventLabel(e.teamId, teamAId, teamBId, teamA, teamB);
+                const teamAbbrev =
+                  teamForEvent?.teamIdentity?.abbr || teamForEvent?.abbrev || label;
+                const goalTheme = getTeamAccent(teamForEvent || {});
+                return (
+                  <li
+                    key={e.id || idx}
+                    className="event-item premium-goal-event"
+                    style={{
+                      "--goal-team-soft": goalTheme.soft,
+                      "--goal-team-border": goalTheme.border,
+                      "--goal-team-dot": goalTheme.dot,
+                    }}
+                  >
+                    <div className="premium-goal-main">
+                      <span className="premium-goal-icon">⚽</span>
+                      <div className="premium-goal-text">
+                        <div className="premium-goal-topline">
+                          <span className="premium-goal-clock">
+                            {formatEventClock(matchSeconds, displaySeconds, e.timeSeconds)}
+                          </span>
+                        </div>
+                        <div className="premium-goal-scorer">
+                          {displayCompactPlayerName(e.scorer)} <span className="premium-goal-abbrev">({teamAbbrev})</span>
+                        </div>
+                        {e.assist ? (
+                          <div className="premium-goal-assist">
+                            Assist: {displayCompactPlayerName(e.assist)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {canControlMatch && (
+                      <div className="event-actions premium-goal-actions">
+                        <button
+                          className="link-btn premium-goal-edit"
+                          type="button"
+                          onClick={() => handleEditGoal(idx)}
+                          title="Edit goal"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          className="link-btn premium-goal-delete"
+                          type="button"
+                          onClick={() => handleRequestDelete(idx)}
+                          title="Delete goal"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              }
+
+              return null;
+            })}
+          </ul>
         </div>
 
         <div className="actions-row">
@@ -5975,8 +6201,7 @@ export function FriendlyLiveMatchPage({
               </div>
             </div>
 
-            <details className="fanm-discipline-rules field-futsal-rules">
-              <summary>Competition rules · cards &amp; replacements</summary>
+            <section className="fanm-discipline-rules">
               <div className="fanm-discipline-rules-heading">
                 <span aria-hidden="true">⚖️</span>
                 <div>
@@ -6043,7 +6268,7 @@ export function FriendlyLiveMatchPage({
               <p className="fanm-discipline-rules-default">
                 Permanent dismissal is the default unless changed.
               </p>
-            </details>
+            </section>
 
             <div className="fanm-discipline-teams">
               {[
@@ -6168,7 +6393,7 @@ export function FriendlyLiveMatchPage({
                                   </span>
 
                                   <span className="fanm-discipline-player-copy">
-                                    <RefereePlayerLabel player={player} peers={[...disciplinePlayersA.onField,...disciplinePlayersA.substitutes,...disciplinePlayersB.onField,...disciplinePlayersB.substitutes].filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>
+                                    <strong>{player.name}</strong>
                                     <small>{player.roleLabel}</small>
                                   </span>
 
@@ -6220,8 +6445,7 @@ export function FriendlyLiveMatchPage({
 
                                 {selected ? (
                                   <div className="fanm-discipline-actions">
-                                      <p className="field-referee-full-name" style={{gridColumn:"1 / -1"}}>{player.name}</p>
-                                    {!redEvent ? (
+                                    {!yellowEvent && !redEvent ? (
                                       <button
                                         type="button"
                                         className="fanm-discipline-yellow"
@@ -6234,7 +6458,7 @@ export function FriendlyLiveMatchPage({
                                         }}
                                       >
                                         <span aria-hidden="true">🟨</span>
-                                        {yellowEvent ? "Second yellow → red" : "Yellow card"}
+                                        Yellow card
                                       </button>
                                     ) : null}
 
@@ -6345,7 +6569,7 @@ export function FriendlyLiveMatchPage({
                       className="fanm-dismissed-lineup-lock"
                     >
                       <span aria-hidden="true">🟥</span>
-                      <RefereePlayerLabel player={player} peers={[...disciplinePlayersA.onField,...disciplinePlayersA.substitutes,...disciplinePlayersB.onField,...disciplinePlayersB.substitutes].filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>
+                      <strong>{player.name}</strong>
                       <small>{player.teamLabel} · Sent off</small>
                     </span>
                   ))}
@@ -6845,18 +7069,18 @@ export function FriendlyLiveMatchPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Confirm Delete Event</h3>
-            <p>Type DELETE to delete this event.</p>
+            <p>To delete an event, enter any team captain&apos;s password.</p>
             <div className="field-row">
-              <label>Type DELETE to confirm</label>
+              <label>Captain password</label>
               <input
-                type="text"
+                type="password"
                 className="text-input"
                 value={deletePassword}
                 onChange={(e) => {
                   setDeletePassword(e.target.value);
                   setDeleteError("");
                 }}
-                maxLength={7}
+                maxLength={4}
               />
               {deleteError && <p className="error-text">{deleteError}</p>}
             </div>
@@ -6890,16 +7114,16 @@ export function FriendlyLiveMatchPage({
               Only leave if you intend to discard this game.
             </p>
             <div className="field-row">
-              <label>Type CANCEL to confirm</label>
+              <label>Captain password</label>
               <input
-                type="text"
+                type="password"
                 className="text-input"
                 value={backPassword}
                 onChange={(e) => {
                   setBackPassword(e.target.value);
                   setBackError("");
                 }}
-                maxLength={7}
+                maxLength={4}
               />
               {backError && <p className="error-text">{backError}</p>}
             </div>
@@ -6927,18 +7151,18 @@ export function FriendlyLiveMatchPage({
         <div className="modal-backdrop">
           <div className="modal">
             <h3>Undo last event?</h3>
-            <p>Type CONFIRM to undo the last event.</p>
+            <p>To undo the last event, enter any team captain&apos;s password.</p>
             <div className="field-row">
-              <label>Type CONFIRM to confirm</label>
+              <label>Captain password</label>
               <input
-                type="text"
+                type="password"
                 className="text-input"
                 value={undoPassword}
                 onChange={(e) => {
                   setUndoPassword(e.target.value);
                   setUndoError("");
                 }}
-                maxLength={7}
+                maxLength={4}
               />
               {undoError && <p className="error-text">{undoError}</p>}
             </div>

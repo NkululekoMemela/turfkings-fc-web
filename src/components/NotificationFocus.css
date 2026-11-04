@@ -1,6 +1,0 @@
-.fanm-notification-focus{outline:3px solid #fb923c;outline-offset:3px;box-shadow:0 0 0 7px #fb923c1a,0 0 34px #fb923c66;scroll-margin-top:110px;transition:outline-color .2s,box-shadow .2s}
-.fanm-ticket-notice{margin:16px 0;padding:18px 20px;border:1px solid #f59e0b88;border-radius:18px;background:linear-gradient(120deg,#3b2818,#172d29);color:#fff3da;scroll-margin-top:110px}.fanm-ticket-notice h2{font-size:18px;margin:0 0 6px}.fanm-ticket-notice p{margin:6px 0;font-size:14px;line-height:1.5}.fanm-ticket-notice button{margin-top:10px;border-radius:12px;padding:10px 15px;background:#fbbf24;border:0;color:#241b0a;font-weight:800}.fanm-ticket-notice small{display:block;opacity:.8}
-
-@keyframes fanm-story-focus-pulse{0%,100%{outline-color:#fb923c;box-shadow:0 0 0 7px #fb923c1a,0 0 34px #fb923c66}50%{outline-color:transparent;box-shadow:none}}
-.fanm-notification-focus.fanm-story-focus,.fanm-notification-focus.fanm-ticket-focus{animation:fanm-story-focus-pulse 1s ease-in-out 5!important}
-@media(prefers-reduced-motion:reduce){.fanm-notification-focus.fanm-story-focus,.fanm-notification-focus.fanm-ticket-focus{animation:none!important;transition:none}}

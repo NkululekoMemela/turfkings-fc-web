@@ -1,4 +1,3 @@
-import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 import {
   auth,
   activeFirebaseProjectId,
@@ -9,7 +8,24 @@ function safeString(value = "") {
 }
 
 function getFunctionsBaseUrl() {
-  return getActiveFirebaseFunctionsBaseUrl({ allowEmulator: false });
+  const explicit = safeString(
+    import.meta.env.VITE_FUNCTIONS_BASE_URL
+  );
+
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+
+  const projectId =
+    safeString(activeFirebaseProjectId);
+
+  if (!projectId) {
+    throw new Error(
+      "[CameraHandoffGateway] Active Firebase project ID is unavailable."
+    );
+  }
+
+  return `https://us-central1-${projectId}.cloudfunctions.net`;
 }
 
 async function readJsonResponse(response) {
@@ -26,18 +42,16 @@ async function readJsonResponse(response) {
 
 export async function createCameraHandoff({
   clubId,
-  venueId,
   matchId,
   fixtureContext = {},
   dataScope = "official",
 } = {}) {
   const safeClubId = safeString(clubId);
-  const safeVenueId = safeString(venueId);
   const safeMatchId = safeString(matchId);
 
-  if (Boolean(safeClubId) === Boolean(safeVenueId)) {
+  if (!safeClubId) {
     throw new Error(
-      "[CameraHandoffGateway] Supply one clubId or venueId."
+      "[CameraHandoffGateway] clubId is required."
     );
   }
 
@@ -82,9 +96,7 @@ export async function createCameraHandoff({
         Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify({
-        ...(safeVenueId
-          ? { venueId: safeVenueId }
-          : { clubId: safeClubId }),
+        clubId: safeClubId,
         matchId: safeMatchId,
         fixtureContext:
           fixtureContext &&
@@ -128,9 +140,7 @@ export function buildAuthorizedCameraDeepLink({
   }
 
   return (
-    (activeFirebaseProjectId === "five-asides-near-me-staging"
-      ? "fiveasidesnearmecamera-staging://open"
-      : "fiveasidesnearmecamera://open") +
+    "fiveasidesnearmecamera://open" +
     `?handoff=${encodeURIComponent(safeHandoffId)}`
   );
 }

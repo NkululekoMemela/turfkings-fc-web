@@ -1,4 +1,3 @@
-import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 // src/storage/practiceSessionGateway.js
 //
 // Client gateway for Practice v2 server-controlled operations.
@@ -18,7 +17,39 @@ function safeString(value = "") {
 }
 
 function getFunctionsBaseUrl() {
-  return getActiveFirebaseFunctionsBaseUrl({ allowExplicit: false });
+  /*
+   * Practice Functions must follow the Firebase app that supplied
+   * authentication and Firestore. Never inherit the legacy generic
+   * Functions URL used elsewhere in the application.
+   */
+  const projectId = safeString(
+    app?.options?.projectId
+  );
+
+  if (!projectId) {
+    throw new Error(
+      "[PracticeSessionGateway] Active Firebase project ID is missing."
+    );
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    ) &&
+    import.meta.env.VITE_USE_FUNCTIONS_EMULATOR === "true"
+  ) {
+    return (
+      `http://127.0.0.1:5001/` +
+      `${projectId}/${FUNCTIONS_REGION}`
+    );
+  }
+
+  return (
+    `https://${FUNCTIONS_REGION}-` +
+    `${projectId}.cloudfunctions.net`
+  );
 }
 
 async function readJsonResponse(response) {

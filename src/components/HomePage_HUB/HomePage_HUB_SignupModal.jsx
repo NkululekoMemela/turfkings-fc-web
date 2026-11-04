@@ -40,7 +40,7 @@ function isValidEmail(value) {
 export default function HomePage_HUB_SignupModal({
   isOpen,
   onClose,
-  onRequestCompanyClub,
+  onJoinExistingClub,
   onClubCreated,
 }) {
   const [mode, setMode] = useState("choice");
@@ -275,7 +275,7 @@ export default function HomePage_HUB_SignupModal({
         <header className="hub-modal__header">
           <div>
             <span>Free signup</span>
-            <h2>{mode === "register" ? "Create a Community Club" : "Start a club"}</h2>
+            <h2>{mode === "register" ? "Register your club" : "Start playing"}</h2>
           </div>
 
           <button
@@ -290,19 +290,19 @@ export default function HomePage_HUB_SignupModal({
 
         {mode === "choice" ? (
           <div className="hub-choice-grid">
-            <button type="button" className="hub-company-choice" onClick={() => {resetAndClose();onRequestCompanyClub?.();}}>
+            <button type="button" onClick={() => onJoinExistingClub?.()}>
               <span>⚽</span>
-              <strong>Create a Company Club</strong>
+              <strong>Join a football club</strong>
               <small>
-                Company-funded football. Send a join request and FANM will help set up your club.
+                Discover nearby clubs, verify yourself and become matchday ready.
               </small>
             </button>
 
             <button type="button" onClick={() => setMode("register")}>
               <span>🏟️</span>
-              <strong>Create a Community Club</strong>
+              <strong>Create your own club</strong>
               <small>
-                Run your community club, customise its badge and invite your players.
+                Launch your club, customise your badge and start inviting players.
               </small>
             </button>
           </div>

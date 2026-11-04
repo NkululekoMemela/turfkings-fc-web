@@ -1,0 +1,163 @@
+src/App.jsx:83:const MATCH_SECONDS_STORAGE_KEY = "tk_match_seconds_by_type_v1";
+src/App.jsx:486:function isTurfKingsChallengeTeam(team = {}) {
+src/App.jsx:489:    team?.isTurfKingsChallengeTeam === true ||
+src/App.jsx:497:  const slotTurfKingsChallenge = incoming.find(
+src/App.jsx:501:      (team?.isTurfKingsChallengeTeam === true || team?.challengeRole === "home")
+src/App.jsx:513:  // dark  -> Turf Kings
+src/App.jsx:516:  if (slotTurfKingsChallenge && slotGuestOpponent) {
+src/App.jsx:519:        ...slotTurfKingsChallenge,
+src/App.jsx:521:        label: slotTurfKingsChallenge.label || "Turf Kings",
+src/App.jsx:522:        abbrev: slotTurfKingsChallenge.abbrev || "TKG",
+src/App.jsx:524:        isTurfKingsChallengeTeam: true,
+src/App.jsx:540:  const legacyTurfKingsChallenge = incoming.find(
+src/App.jsx:543:      (team?.id !== TURF_KINGS_SLOT_ID && team?.isTurfKingsChallengeTeam === true)
+src/App.jsx:554:  if (legacyTurfKingsChallenge && legacyGuestOpponent) {
+src/App.jsx:557:        ...legacyTurfKingsChallenge,
+src/App.jsx:559:        label: legacyTurfKingsChallenge.label || "Turf Kings",
+src/App.jsx:560:        abbrev: legacyTurfKingsChallenge.abbrev || "TKG",
+src/App.jsx:562:        isTurfKingsChallengeTeam: true,
+src/App.jsx:1054:    ? [`tk_player_card_snapshot_${safeSeasonId}`, "tk_player_card_snapshot_latest"]
+src/App.jsx:1055:    : ["tk_player_card_snapshot_latest"];
+src/App.jsx:1863:      const raw = window.localStorage.getItem("tk_identity_v1");
+src/App.jsx:1880:          "tk_identity_v1",
+src/App.jsx:1884:        window.localStorage.removeItem("tk_identity_v1");
+src/App.jsx:1907:      const raw = window.localStorage.getItem("tk_smart_offset_v1");
+src/App.jsx:2085:      window.localStorage.setItem("tk_smart_offset_v1", String(smartOffset));
+src/App.jsx:2420:      if (!incoming.toLowerCase().startsWith("turfkings://camera-return")) return;
+src/App.jsx:2482:      window.localStorage.setItem("tk_identity_v1", JSON.stringify(nextIdentity));
+src/App.jsx:2628:        "Please sign in as a Turf Kings player before using payments. This prevents untracked payments."
+src/App.jsx:4487:    // For this camera test, a tap on the TurfKings lens button means the user
+src/App.jsx:4489:    // MainActivity.kt requires sourceApp=TurfKings + matchIsLive=true + matchId.
+src/App.jsx:4498:      sourceApp: "TurfKings",
+src/App.jsx:4500:      teamName: "Turf Kings FC",
+src/App.jsx:4537:      returnUrl: "turfkings://camera-return",
+src/App.jsx:5134:            if (club?.id === "turf-kings") {
+src/App.jsx:5141:          onEnterTurfKings={(club) => {
+src/hooks/usePlayerAttendanceBadge.js:302:                collection(db, "clubs", "turf-kings", "seasons", seasonDoc.id, "attendance")
+src/auth/AuthContext.jsx:35:// Special TurfKings emails that are at least captains
+src/components/YearEndProgramModal.jsx:41:      "Shares a brief background on TurfKings and why we are celebrating.",
+src/components/YearEndProgramModal.jsx:58:      "Official welcoming from Captain Barlo (about 4–5 minutes) – acknowledging teams, new faces and how far TurfKings has come.",
+src/components/YearEndProgramModal.jsx:75:      "Keynote speech (max 10 minutes) from Nkululeko – reflections on the journey, shout-outs, and the vision for TurfKings and next season.",
+src/components/YearEndProgramModal.jsx:80:    title: "Official TurfKings Team Photo",
+src/components/YearEndProgramModal.jsx:83:      "Right after the keynote, MC calls everyone together for the official TurfKings team photo moment to capture the full squad",
+src/components/YearEndProgramModal.jsx:315:            🗓️ TurfKings Year-End Program
+src/components/home/HomePlatformFeatures.jsx:22:          The page introduces the bigger 5 Asides Near Me brand while Turf Kings becomes the first club inside it.
+src/components/home/HomeClubSignup.jsx:166:              placeholder="Turf Kings FC"
+src/components/home/HomeClubDiscovery.jsx:40:            placeholder="Cape Town, Claremont, Turf Kings..."
+src/components/home/HomeHero.jsx:80:          <strong>Turf Kings FC</strong>
+src/components/BottomNav.jsx:72:      <nav className={`tk-bottom-nav-flat ${isHidden || hidden ? "is-hidden" : ""}`} aria-label="Turf Kings navigation">
+src/pages/EntryPage.jsx:3:import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
+src/pages/EntryPage.jsx:4:import TeamPhoto from "../assets/TurfKings.jpg";
+src/pages/EntryPage.jsx:32:const DEFAULT_CLUB_ID = "turf-kings";
+src/pages/EntryPage.jsx:33:const DEFAULT_CLUB_NAME = "Turf Kings FC";
+src/pages/EntryPage.jsx:464:    logoUrl: TurfKingsLogo,
+src/pages/EntryPage.jsx:472:  const isTurfKingsClub = activeClubId === DEFAULT_CLUB_ID;
+src/pages/EntryPage.jsx:473:  const activeClubLogoSrc = activeClub?.logoUrl || activeClub?.logo || activeClub?.image || (isTurfKingsClub ? TurfKingsLogo : FANM_HOME_LOGO);
+src/pages/EntryPage.jsx:474:  const activeClubHeroImage = activeClub?.heroImage || activeClub?.teamPhoto || activeClub?.image || (isTurfKingsClub ? TeamPhoto : activeClubLogoSrc);
+src/pages/EntryPage.jsx:508:      return JSON.parse(window.localStorage.getItem("tk_dismissedPendingNoticeIds") || "[]");
+src/pages/EntryPage.jsx:531:        window.localStorage.getItem("tk_lastSeenWithdrawal_ts") || 0
+src/pages/EntryPage.jsx:541:          "tk_lastSeenWithdrawal_ts",
+src/pages/EntryPage.jsx:1321:          window.localStorage.setItem("tk_dismissedPendingNoticeIds", JSON.stringify(next));
+src/pages/StatsPage.jsx:4544:        /* TurfKings dark navy table skin — matches Friendly Live Match page */
+src/pages/StatsPage.jsx:4637:        /* TurfKings dark navy card skin for StatsPage sections.
+src/pages/VideoHighlightsPage.jsx:74:  if (!identity || typeof identity !== "object") return "Turf Kings";
+src/pages/VideoHighlightsPage.jsx:80:      "Turf Kings"
+src/pages/VideoHighlightsPage.jsx:628:          title: highlight.title || "Turf Kings highlight",
+src/pages/VideoHighlightsPage.jsx:629:          text: `${highlight.title || "Turf Kings highlight"} • ${matchupLabel}`,
+src/pages/LandingPage.jsx:4:import TurfKingsLogo from "../assets/TurfKings_logo.jpeg";
+src/pages/LandingPage.jsx:5:import TeamPhoto1 from "../assets/TurfKings.jpg";
+src/pages/LandingPage.jsx:6:import TeamPhoto2 from "../assets/TurfKings2.jpeg";
+src/pages/LandingPage.jsx:7:import TeamPhoto3 from "../assets/TurfKings3.jpeg";
+src/pages/LandingPage.jsx:1044:                src={TurfKingsLogo}
+src/pages/LandingPage.jsx:1045:                alt="Turf Kings logo"
+src/pages/LandingPage.jsx:1049:                <h1 style={{ margin: 0 }}>Turf Kings 5-A-Side</h1>
+src/pages/LandingPage.jsx:2041:          alt={`Turf Kings team ${photoIndex + 1}`}
+src/pages/PlayerCardPage.jsx:13:import TurfKingsLogo from "../assets/TurfKings_logo_transparent.png";
+src/pages/PlayerCardPage.jsx:139:function isTurfKingsTeamName(teamName = "") {
+src/pages/PlayerCardPage.jsx:143:    key === "turfkings" ||
+src/pages/PlayerCardPage.jsx:145:    key.includes("turfkings")
+src/pages/PlayerCardPage.jsx:1908:        teamName: playerTeamMap[canonName] || (friendlyCardMode ? "Turf Kings" : "—"),
+src/pages/PlayerCardPage.jsx:2003:        `tk_player_card_snapshot_${activeSeasonId}`,
+src/pages/PlayerCardPage.jsx:2007:        "tk_player_card_snapshot_latest",
+src/pages/PlayerCardPage.jsx:2040:    if (friendlyCardMode && teamFilter !== "ALL" && teamFilter !== "Turf Kings") {
+src/pages/PlayerCardPage.jsx:2064:    if (friendlyCardMode) return ["ALL", "Turf Kings"];
+src/pages/PlayerCardPage.jsx:2310:                  {isTurfKingsTeamName(p.teamName) && (
+src/pages/PlayerCardPage.jsx:2312:                      src={TurfKingsLogo}
+src/pages/NewsPage.jsx:2521:          {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from your full TurfKings match history."}
+src/pages/NewsPage.jsx:2951:            <h2 style={{ marginTop: 0 }}>TurfKings jersey orders</h2>
+src/pages/NewsPage.jsx:2954:              We&apos;re about to place an order for the new TurfKings team kit.
+src/pages/NewsPage.jsx:3032:              alt="TurfKings jersey"
+src/pages/NewsPage.jsx:3054:            <strong>{totalGoals || 0}</strong> goals in the TurfKings 5-a-side league.
+src/pages/NewsPage.jsx:3183:                  No stats yet – start a live match to generate your first round of TurfKings news.
+src/pages/NewsPage.jsx:3401:              <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
+src/pages/NewsPage.jsx:3403:                We&apos;re closing off the season in proper TurfKings style – full
+src/pages/NewsPage.jsx:3485:                  <div style={glassesLabelStyle}>TurfKings Toast</div>
+src/pages/NewsPage.jsx:3532:                From the whole TurfKings family: speedy recovery, bro – your spot is waiting.
+src/pages/PeerReviewPage.jsx:569:      setStatusMsg("Peer voting is reserved for Turf Kings players.");
+src/pages/PeerReviewPage.jsx:1066:                ? "You are signed in as a spectator. Only Turf Kings players can submit peer ratings."
+src/pages/PeerReviewPage.jsx:1067:                : "You are not signed in as a Turf Kings player."}
+src/pages/PeerReviewPage.jsx:1073:              <p className="muted small">Tap your name from the Turf Kings squads.</p>
+src/pages/SpectatorPage.jsx:172:          <p>Live Turf Kings score tracker</p>
+src/pages/FormationsPage.jsx:2128:                Using full Turf Kings player pool <strong>({turfKingsPlayers.length} players)</strong>.
+src/pages/FormationsPage.jsx:2184:                {isSmallSidedGameType(gameType) ? selectedTeamCanonical?.label || getGameTypeLabel(gameType) : "TurfKings FC"}
+src/pages/FormationsPage.jsx:2397:                      Guest photos are saved for this temporary opponent list only. They do not create permanent Turf Kings player records.
+src/pages/HomePage.jsx:17:  onEnterTurfKings,
+src/pages/HomePage.jsx:53:    if (club?.id === "turf-kings") {
+src/pages/HomePage.jsx:54:      onEnterTurfKings?.(club);
+src/pages/HomePage.jsx:130:          <button type="button" className="fanm-nav-primary" onClick={() => onEnterTurfKings?.(clubs.find((club) => club.id === "turf-kings") || null)}>
+src/pages/HomePage.jsx:131:            Enter Turf Kings
+src/pages/HomePage.jsx:214:                Turf Kings is the founding club, but 5 Asides Near Me is the platform: searchable clubs,
+src/pages/MatchSignupPage.jsx:1373:                collection(db, "clubs", "turf-kings", "seasons", seasonDoc.id, "attendance")
+src/pages/MatchSignupPage.jsx:3600:            <option value="existing_player">Another Turf Kings player</option>
+src/pages/MatchSignupPage.jsx:4392:              Add your WhatsApp number so TurfKings can send football-related
+src/pages/SquadsPage.jsx:29:const TURF_KINGS_LOGO_URL = `${import.meta.env.BASE_URL}turfkings-share.jpeg`;
+src/pages/SquadsPage.jsx:492:function buildTurfKingsChallengeTeam({ players = [], teamColorName = "Green" } = {}) {
+src/pages/SquadsPage.jsx:495:    label: "Turf Kings",
+src/pages/SquadsPage.jsx:496:    abbrev: "TKG",
+src/pages/SquadsPage.jsx:502:    isTurfKingsChallengeTeam: true,
+src/pages/SquadsPage.jsx:507:function isTurfKingsChallengeTeam(team) {
+src/pages/SquadsPage.jsx:508:  return Boolean(team?.isTurfKingsChallengeTeam || team?.id === TURF_KINGS_CHALLENGE_ID);
+src/pages/SquadsPage.jsx:576:    label: "Turf Kings",
+src/pages/SquadsPage.jsx:577:    abbrev: "TKG",
+src/pages/SquadsPage.jsx:584:    isTurfKingsChallengeTeam: true,
+src/pages/SquadsPage.jsx:717:  const existingTurfKingsChallengeTeam = useMemo(
+src/pages/SquadsPage.jsx:740:  const [turfKingsChallengeColorName, setTurfKingsChallengeColorName] = useState(() =>
+src/pages/SquadsPage.jsx:741:    existingTurfKingsChallengeTeam?.teamColorName || "Green"
+src/pages/SquadsPage.jsx:752:  const [turfKingsChallengePlayers, setTurfKingsChallengePlayers] = useState(() =>
+src/pages/SquadsPage.jsx:753:    Array.isArray(existingTurfKingsChallengeTeam?.players)
+src/pages/SquadsPage.jsx:754:      ? existingTurfKingsChallengeTeam.players
+src/pages/SquadsPage.jsx:805:      setTurfKingsChallengePlayers(Array.isArray(turf.players) ? turf.players : []);
+src/pages/SquadsPage.jsx:806:      setTurfKingsChallengeColorName(turf.teamColorName || "Green");
+src/pages/SquadsPage.jsx:964:        setTurfKingsChallengePlayers(Array.isArray(nextTurf.players) ? nextTurf.players : []);
+src/pages/SquadsPage.jsx:965:        setTurfKingsChallengeColorName(nextTurf.teamColorName || "Green");
+src/pages/SquadsPage.jsx:1026:    nextTurfKingsPlayers = turfKingsChallengePlayers,
+src/pages/SquadsPage.jsx:1030:    nextTurfKingsColorName = turfKingsChallengeColorName,
+src/pages/SquadsPage.jsx:1041:      turfKingsPlayers: nextTurfKingsPlayers,
+src/pages/SquadsPage.jsx:1044:      turfKingsColorName: nextTurfKingsColorName,
+src/pages/SquadsPage.jsx:1105:      setTurfKingsChallengeColorName(value);
+src/pages/SquadsPage.jsx:1316:            `Remove ${name} from the Turf Kings database?\nThey will disappear from the unseeded pool.`
+src/pages/SquadsPage.jsx:1845:                          alt="Turf Kings"
+src/pages/SquadsPage.jsx:1849:                      <strong style={{ color: "#F8FAFC" }}>Turf Kings</strong>
+src/pages/SquadsPage.jsx:1987:                                  nextTurfKingsColorName: turfKingsChallengeColorName,
+src/pages/SquadsPage.jsx:2119:                                ? "Add Turf Kings players from database."
+src/pages/SquadsPage.jsx:2319:              from the Turf Kings player database.
+src/pages/SquadsPage.jsx:2353:            <p>Enter the Turf Kings admin code to apply squad changes.</p>
+src/pages/Friendly_LiveMatchPage.jsx:807:  // Example: Turf Kings vs Farmers FC, not Red vs Blue.
+src/pages/Friendly_LiveMatchPage.jsx:2221:        teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+src/pages/Friendly_LiveMatchPage.jsx:2369:    teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+src/pages/Friendly_LiveMatchPage.jsx:2540:        captureSource: "turfkings_live_match_page",
+src/pages/Friendly_LiveMatchPage.jsx:2727:          ? getTeamDisplayName(teamA, "Turf Kings")
+src/pages/Friendly_LiveMatchPage.jsx:2828:          ? getTeamDisplayName(teamA, "Turf Kings")
+src/pages/Friendly_LiveMatchPage.jsx:2902:      teamALabel: getTeamDisplayName(teamA, "Turf Kings"),
+src/core/clubPaths.js:3:export const DEFAULT_CLUB_ID = "turf-kings";
+src/core/VideoHighlightCuration.js:4:  Turf Kings Video Highlight Curation Engine
+src/core/lineups.js:12:export const LOCAL_KEY = "turfkings_lineups_v2";
+src/core/matchConfig.js:2:// Central source of truth for Turf Kings match modes and game formats.
+src/firebaseConfig.js:18:  authDomain: "turfkings-fc.firebaseapp.com",
+src/firebaseConfig.js:19:  projectId: "turfkings-fc",
+src/firebaseConfig.js:20:  storageBucket: "turfkings-fc.firebasestorage.app",
+src/firebaseConfig.js:28:  authDomain: "turfkings-staging.firebaseapp.com",
+src/firebaseConfig.js:29:  projectId: "turfkings-staging",
+src/firebaseConfig.js:30:  storageBucket: "turfkings-staging.firebasestorage.app",
+src/storage/localStorageClient.js:3:const STORAGE_KEY = "turfkings-5aside-state-v1";
+src/storage/gameRepository.js:92:const V2_LOCAL_KEY = "turfkings_state_v2";
