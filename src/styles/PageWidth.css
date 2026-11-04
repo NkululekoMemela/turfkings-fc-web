@@ -212,3 +212,34 @@ body #fanm-welcome-hero .fanm-hero__actions {
     order:2!important;
   }
 }
+
+/* FANM shared lineup width */
+body .modal.live-verify-modal {
+  box-sizing: border-box;
+  width: min(1180px, calc(100vw - 12px)) !important;
+  max-width: calc(100vw - 12px) !important;
+  padding-inline: clamp(8px, 1.4vw, 20px) !important;
+}
+body .live-verify-modal .live-lineup-columns {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: clamp(8px, 1.2vw, 16px) !important;
+  width: 100% !important;
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+  box-sizing: border-box;
+}
+body .live-verify-modal .live-lineup-column {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+  box-sizing: border-box;
+}
+body .live-verify-modal .pitch-wrapper,
+body .live-verify-modal .pitch {
+  width: 100% !important;
+  max-width: none !important;
+  margin-inline: 0 !important;
+  box-sizing: border-box;
+}
