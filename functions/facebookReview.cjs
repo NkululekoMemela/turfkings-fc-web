@@ -4,20 +4,24 @@ const QUEUE='facebookHighlightQueue';
 const OWNER='nkululekolerato@gmail.com';
 const str=v=>typeof v==='string'?v.trim():'';
 function operator(user){return user?.email_verified===true&&str(user.email).toLowerCase()===OWNER;}
-function eligible(h){return h&&h.archiveCategory==='goal'&&Number(h.archiveRank)===1&&Number(h.voteCount)>0&&h.status==='archived'&&h.isPracticeMode!==true&&h.environment!=='practice'&&h.mode!=='practice';}
+function eligible(h){
+ if(!h||h.status!=="archived"||h.isPracticeMode===true||h.environment==="practice"||h.mode==="practice")return false;
+ if(h.archiveCategory!=null||h.archiveRank!=null)return h.archiveCategory==="goal"&&Number(h.archiveRank)===1&&Number(h.voteCount)>0;
+ return h.weeklyWinner===true&&h.weeklyVotingClosed===true&&h.winnerCategory==="goal"&&Number(h.weeklyWinnerRank)===1&&Number(h.frozenWeeklyVoteCount??h.weeklyVoteCount??h.voteCount)>0;
+}
 function queueId(path){return createHash('sha256').update(path).digest('hex');}
 function mediaURL(h){return str(h.downloadUrl||h.videoUrl||h.mediaUrl||h.fileUrl||h.publicUrl||h.url);}
 function validMedia(value){try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&['firebasestorage.googleapis.com','storage.googleapis.com'].includes(u.hostname);}catch{return false;}}
 function caption({playerName,clubName,fieldName}){return `🔥 WHAT A MOMENT! ${playerName} brings the heat for ${clubName} at ${fieldName}! ⚽\n\nYour voted goal of the night. Watch it again and give the scorer some love!\n\n#5AsidesNearMe #GoalOfTheNight #CapeTownFootball`;}
 function validateDraft(d){for(const key of ['playerName','clubName','fieldName'])if(!str(d[key])||d[key].length>160)throw Error('Enter the scorer, Club and Field names.');if(!validMedia(d.videoUrl))throw Error('This clip needs a playable Firebase Storage video URL.');if(!str(d.caption)||d.caption.length>4000)throw Error('Enter a caption of 1–4000 characters.');for(const key of ['playerName','clubName','fieldName'])if(!d.caption.toLowerCase().includes(d[key].toLowerCase()))throw Error('The caption must include the scorer, Club and Field names.');}
-async function capture({db,path,h}){
+async function capture({db,path,h,historical=false}){
  if(!eligible(h))return;
  const parts=path.split('/');if(parts.length!==6||!['clubs','leagueVenues'].includes(parts[0])||parts[2]!=='video_highlights'||parts[4]!=='archived')return;
  const parent=await db.doc(`${parts[0]}/${parts[1]}`).get();const info=parent.data()||{};
  const field=parts[0]==='leagueVenues';
- const draft={playerName:str(h.playerName||h.goalScorerName||h.scorerName||(typeof h.scorer==='string'?h.scorer:'')),clubName:str(field?h.teamName||h.scoringClubName:h.clubName||info.name),fieldName:str(field?info.name||info.venueName:h.fieldName||h.venueName),videoUrl:mediaURL(h)};
+ const draft={playerName:str(h.playerName||h.goalScorerName||h.scorerName||(typeof h.scorer==='string'?h.scorer:'')),clubName:str(field?h.teamName||h.scoringClubName:h.clubName||info.name),fieldName:str(field?info.name||info.venueName:h.fieldName||h.venueName||info.locationDetails?.venueName||info.venueName),videoUrl:mediaURL(h)};
  const ref=db.collection(QUEUE).doc(queueId(path));
- await db.runTransaction(async tx=>{const old=await tx.get(ref);if(old.exists)return;tx.create(ref,{...draft,caption:caption(draft),sourcePath:path,scope:field?'field':'club',matchId:parts[3],clipId:parts[5],status:'pending',revision:1,createdAt:Date.now(),updatedAt:Date.now(),pageId:PAGE_ID});});
+ await db.runTransaction(async tx=>{const old=await tx.get(ref);if(old.exists)return;tx.create(ref,{...draft,caption:historical?`⚽ Throwback: ${draft.playerName}’s voted winning goal for ${draft.clubName} at ${draft.fieldName}.\n\n#5AsidesNearMe #FootballHighlights`:caption(draft),historical,sourcePath:path,scope:field?'field':'club',matchId:parts[3],clipId:parts[5],status:'pending',revision:1,createdAt:Date.now(),updatedAt:Date.now(),pageId:PAGE_ID});});
 }
 async function meta(token,path,body){
  const response=await fetch(`https://graph.facebook.com/v26.0/${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/x-www-form-urlencoded'}:{})},...(body?{body:new URLSearchParams(body)}:{}),signal:AbortSignal.timeout(90000)});
@@ -27,7 +31,7 @@ async function handle({db,user,body,token,liveEnabled=false}){
  if(!operator(user))throw Error('Only the verified 5 Asides Near Me owner can review Facebook posts.');
  const action=body.action;
  if(action==='count'){const result=await db.collection(QUEUE).where('status','==','pending').count().get();return {pending:result.data().count};}
- if(action==='list'){const snap=await db.collection(QUEUE).orderBy('createdAt','desc').limit(60).get();const items=snap.docs.map(d=>({id:d.id,...d.data()}));if(/^[a-f0-9]{64}$/.test(body.draftId||'')&&!items.some(d=>d.id===body.draftId)){const requested=await db.collection(QUEUE).doc(body.draftId).get();if(requested.exists)items.unshift({id:requested.id,...requested.data()});}return {items,liveEnabled,pageId:PAGE_ID};}
+ if(action==='list'){const discovery=await require('./facebookArchiveDiscovery.cjs').discover({db});const snap=await db.collection(QUEUE).orderBy('createdAt','desc').limit(60).get();const items=snap.docs.map(d=>({id:d.id,...d.data()}));if(/^[a-f0-9]{64}$/.test(body.draftId||'')&&!items.some(d=>d.id===body.draftId)){const requested=await db.collection(QUEUE).doc(body.draftId).get();if(requested.exists)items.unshift({id:requested.id,...requested.data()});}return {items,liveEnabled,pageId:PAGE_ID,discovery};}
  if(action==='connection'){const result=await meta(token,'me?fields=id,name');if(result.id!==PAGE_ID)throw Error('The secret is not the expected Page token.');return {connected:true,name:result.name,pageId:result.id,liveEnabled};}
  if(!/^[a-f0-9]{64}$/.test(body.id||''))throw Error('Choose a valid draft.');
  const ref=db.collection(QUEUE).doc(body.id);
