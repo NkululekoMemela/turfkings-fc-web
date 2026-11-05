@@ -3,13 +3,13 @@ import FieldResultsStrip from "../components/FieldResultsStrip.jsx";
 import FieldScheduleFixtures from "../components/FieldScheduleFixtures.jsx";
 
 export default function VenueFixturesPage({
-  venue, season, teams = [], myClubId = "", onBack,
+  venue, season, teams = [], myClubId = "", onBack, onShareReport, onStandings,
 }) {
   return (
     <div className="page field-fixtures-page"
       style={{width: "100%", minWidth: 0}}>
 
-      <FieldResultsStrip season={season} teams={teams} />
+      <FieldResultsStrip season={season} teams={teams} onStandings={onStandings} venueId={venue?.id} onShareReport={onShareReport} />
 
       <section className="card" style={{minWidth: 0}}>
         {season ? (

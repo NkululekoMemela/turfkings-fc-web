@@ -1,7 +1,8 @@
-import React,{useEffect,useRef,useState} from "react";
+import React,{useCallback,useEffect,useRef,useState} from "react";
 import {fieldRecentResults} from "../core/fieldResultsStrip.mjs";
 import {buildClubIdentity,DEFAULT_PLATFORM_LOGO} from "../core/clubIdentity.js";
 import "./FieldResultsStrip.css";
+import FieldMatchReport from "./FieldMatchReport.jsx";
 
 function ResultBadge({team,name}){
  const logo=team?.transparentLogoUrl||team?.logoUrl||team?.logo||"";
@@ -15,8 +16,10 @@ const dateLabel=value=>{
  const date=new Date(`${value}T12:00:00Z`);
  return /^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(date.getTime())?new Intl.DateTimeFormat("en-ZA",{day:"numeric",month:"short",timeZone:"UTC"}).format(date):"Final result";
 };
-export default function FieldResultsStrip({season,teams=[]}){
+export default function FieldResultsStrip({season,teams=[],venueId,onShareReport,onStandings}){
  const results=fieldRecentResults(season),track=useRef(null);
+ const [selected,setSelected]=useState(null);
+ const closeReport=useCallback(()=>setSelected(null),[]);
  const [edges,setEdges]=useState({previous:false,next:false});
  const measure=()=>{const el=track.current;if(el)setEdges({previous:el.scrollLeft>2,next:el.scrollLeft+el.clientWidth<el.scrollWidth-2});};
  useEffect(()=>{
@@ -42,11 +45,14 @@ export default function FieldResultsStrip({season,teams=[]}){
    {results.map(result=>{
     const a=club(result.teamAId,result.teamAName),b=club(result.teamBId,result.teamBName);
     return <article key={result.id} className="field-results-strip__card" role="listitem" aria-label={`${a.name} ${result.goalsA}, ${b.name} ${result.goalsB}. Full time. ${dateLabel(result.dateLocal)}`}>
+     <button type="button" className="field-results-strip__open" onClick={()=>setSelected(result.id)} aria-label={`View ${a.name} versus ${b.name} match lineups`}>
      <div className="field-results-strip__card-top"><span title={`${a.name} vs ${b.name}`}>{short(a,a.name)} <small>vs</small> {short(b,b.name)}</span><span className="field-results-strip__ft">FT</span></div>
      <div className="field-results-strip__score"><ResultBadge team={a} name={a.name}/><strong>{result.goalsA}<span>–</span>{result.goalsB}</strong><ResultBadge team={b} name={b.name}/></div>
      <time dateTime={result.dateLocal||undefined}>{dateLabel(result.dateLocal)}</time>
+     </button>
     </article>;
    })}
   </div>
+ {selected&&<FieldMatchReport season={season} resultId={selected} teams={teams} venueId={venueId} onShareReport={onShareReport} onStandings={onStandings} onClose={closeReport}/>}
  </section>;
 }

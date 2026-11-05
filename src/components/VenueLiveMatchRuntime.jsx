@@ -94,6 +94,8 @@ export default function VenueLiveMatchRuntime({
   const currentEventsRef =
     useRef(currentEvents);
 
+  const [loadAttempt,setLoadAttempt]=useState(0);
+
   const canUseRefereeControls =
     canOperateMatch && !viewerOnly;
 
@@ -117,13 +119,19 @@ export default function VenueLiveMatchRuntime({
       return undefined;
     }
 
-    return subscribeVenueLiveMatch({
+    setLoadError("");
+    const timeout=window.setTimeout(()=>setLoadError("The match is taking too long to load. Retry or return to the Field."),15000);
+    const unsubscribe=subscribeVenueLiveMatch({
       scope,
-      onData: (nextState) => {
+      onData: (nextState, metadata) => {
+        if(nextState || !metadata?.fromCache)window.clearTimeout(timeout);
         setLiveState(nextState);
         setLoadError("");
 
-        if (!nextState) return;
+        if (!nextState) {
+          if(!metadata?.fromCache)setLoadError("No live match was found. Return to the Field and start the fixture again.");
+          return;
+        }
 
         setCurrentEvents(
           safeArray(nextState.currentEvents)
@@ -155,13 +163,16 @@ export default function VenueLiveMatchRuntime({
         );
       },
       onError: (error) => {
+        window.clearTimeout(timeout);
         setLoadError(
           error?.message ||
           "The live Field match could not be loaded."
         );
       },
     });
+    return ()=>{window.clearTimeout(timeout);unsubscribe();};
   }, [
+    loadAttempt,
     scope.venueId,
     scope.seasonId,
   ]);
@@ -673,6 +684,7 @@ export default function VenueLiveMatchRuntime({
               currentEventsRef.current,
             confirmedLineupSnapshot,
             lineupTimeline: safeArray(snapshot?.lineupTimeline),
+            playedSeconds: Math.max(0,Number(snapshot?.matchSeconds||0)-Number(snapshot?.secondsLeft||0)),
           });
 
           await markVenueLiveMatchCompleted({
@@ -709,6 +721,7 @@ export default function VenueLiveMatchRuntime({
         role="alert"
       >
         <p>{loadError}</p>
+        <button type="button" onClick={()=>setLoadAttempt(value=>value+1)}>Retry</button>
 
         <button
           type="button"

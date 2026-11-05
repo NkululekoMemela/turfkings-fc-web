@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./FieldBottomNav.css";
 
 const items = [
@@ -15,6 +15,42 @@ const items = [
 export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false }) {
   const visibleItems = items.filter(item => !["settings","hireStock"].includes(item.key) || canAccessSettings);
   const navScroller = useRef(null);
+  const [isHidden,setIsHidden]=useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    let hideTimer = null;
+
+    const showThenScheduleHide = () => {
+      setIsHidden(false);
+      if (hideTimer) window.clearTimeout(hideTimer);
+
+      hideTimer = window.setTimeout(() => {
+        setIsHidden(true);
+      }, 5000);
+    };
+
+    showThenScheduleHide();
+
+    const events = ["touchstart", "mousedown", "keydown", "scroll"];
+
+    events.forEach((eventName) => {
+      window.addEventListener(eventName, showThenScheduleHide, {
+        passive: true,
+        capture: true,
+      });
+    });
+
+    return () => {
+      if (hideTimer) window.clearTimeout(hideTimer);
+      events.forEach((eventName) => {
+        window.removeEventListener(eventName, showThenScheduleHide, {
+          capture: true,
+        });
+      });
+    };
+  }, [currentPage]);
+
 
   useEffect(() => {
     const scroller = navScroller.current;
@@ -32,7 +68,7 @@ export default function FieldBottomNav({ currentPage, onNavigate, canAccessSetti
 
   return (
     <nav
-      className="field-bottom-nav"
+      className={`field-bottom-nav ${isHidden?"is-hidden":""}`}
       aria-label="Field navigation"
     >
       <div ref={navScroller} className="field-bottom-nav__inner"

@@ -28,7 +28,7 @@ function project({scope, day, fixture, candidates, saved, carried = []}) {
     new Set(selected).size === selected.length && selected.every(id => byId.has(id));
   const currentSelection = validSelection && saved?.fingerprint === revision;
   const draftIds = validSelection ? selected : carried.length ? carried :
-    candidates.length <= 6 ? candidates.map(player => player.memberId) : [];
+    candidates.slice(0, 6).map(player => player.memberId);
   const numbers = currentSelection ? saved?.kitNumbers || {} : {};
   const allocated = applyMatchBibs(draftIds.map(id=>byId.get(id)),currentSelection ? saved?.kitAssignments || {} : {});
   const players = allocated.map(player => {
@@ -85,7 +85,7 @@ async function loadDay({tx, db, scope, matchDayId}) {
     season: context.season, clubId: scope.clubId, matchDayId,
     liveMatch: live.data() || null,
   });
-  const base = await loadSeasonStartSquad({transaction: tx, db, scope});
+  const base = await loadSeasonStartSquad({transaction: tx, db, scope, includeRegistered: true});
   const availability = context.squad?.matchDayAvailability?.[matchDayId] || {};
   const replacements = context.squad?.matchDayReplacements?.[matchDayId] || {};
   const candidates = [];
@@ -155,11 +155,16 @@ async function loadDay({tx, db, scope, matchDayId}) {
   const planned=automaticFixtureBibs(candidates,matchColour);
   candidates.splice(0,candidates.length,...planned);
   candidates.sort((a, b) => a.fullName.localeCompare(b.fullName));
-  const submission = project({
+  let submission = project({
     scope, day, fixture, candidates,
     saved: context.squad?.matchDaySubmissions?.[matchDayId],
     carried: require("./rollingFieldSquad.cjs").carriedMemberIds({season:context.season,squad:context.squad,day,clubId:scope.clubId,candidates}),
   });
+  if (!submission.ready && submission.players.length >= 5) {
+    const selectedPlayers = automaticFixtureBibs(submission.players, matchColour);
+    submission = project({scope, day, fixture, candidates: selectedPlayers});
+    submission.rosterSource = "season";
+  }
   submission.matchColour=matchColour;
   submission.automaticKit=true;
   if(teamBibColours(submission.players).some(c=>c!==kitColourKey(matchColour))){submission.ready=false;submission.confirmed=false;}
@@ -364,7 +369,7 @@ async function getFieldDay({db, user, body}) {
       const squad = data.submission;
       return {...club, ...squad,
         status: squad.confirmed ? "confirmed" : squad.ready ? "season_roster" : "needs_attention",
-        candidateCount: data.candidates.length, vacancies: data.vacancies.length};
+        availablePlayers: data.candidates, candidateCount: data.candidates.length, vacancies: data.vacancies.length};
     }));
     return {matchDayId, dateLocal: day.dateLocal, clubs: result};
   });

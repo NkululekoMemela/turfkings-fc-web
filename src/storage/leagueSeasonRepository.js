@@ -1,3 +1,4 @@
+import {fieldMatchStatEvents} from "../core/fieldDefensiveStats.mjs";
 import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
 import { selectDatedFieldPairing } from "../core/fieldDatedPairing.js";
 import { rescheduleRemainingKickoffs } from "../core/fieldRemainingKickoffs.js";
@@ -142,6 +143,16 @@ export async function chooseVenueFixturePairing({
   const practice = scope?.environment === "practice";
   if (scope && (scope.venueId !== venueId || scope.seasonId !== seasonId)) {
     throw new Error("Pairing session scope mismatch.");
+  }
+  if (!practice) {
+    const token = await user.getIdToken();
+    const response = await fetch(`${startFunctionsUrl().replace(/\/$/, "")}/chooseFieldMatchPairing`, {
+      method: "POST", headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
+      body: JSON.stringify({venueId,seasonId,clubAId,clubBId,confirmed:true}),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.fixtureId) throw new Error(result.error || "Could not change pairing.");
+    return result.fixtureId;
   }
   const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
   const venueRef = doc(db, root);
@@ -648,15 +659,14 @@ export async function scheduleVenueFixture({
 }
 
 export async function startVenueFixture({
-  venueId, fixtureId, teams = [], matchSeconds = 3600,
+  venueId, fixtureId, seasonId = "", teams = [], matchSeconds = 3600,
   currentMatchNo = 1, controller = null, earlyStartConfirmed = false,
 }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the field manager.");
   if (!venueId || !fixtureId) throw new Error("Select a scheduled fixture.");
   const ref = doc(db, "leagueVenues", venueId);
-  const preliminary = await startGetDoc(ref);
-  const approvalSeasonId = preliminary.data()?.league?.activeSeason?.id;
+  const approvalSeasonId = seasonId || (await startGetDoc(ref)).data()?.league?.activeSeason?.id;
   if (!approvalSeasonId) throw new Error("The active season is missing.");
   const token = await user.getIdToken();
   const response = await fetch(
@@ -668,6 +678,7 @@ export async function startVenueFixture({
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({venueId, seasonId: approvalSeasonId, fixtureId, earlyStartConfirmed: earlyStartConfirmed === true}),
+      signal: AbortSignal.timeout(20000),
     }
   );
   const approvalResponse = await response.json();
@@ -890,6 +901,7 @@ export async function completeVenueFixture({
   currentEvents = [],
   confirmedLineupSnapshot = null,
   lineupTimeline = [],
+  playedSeconds = null,
 }) {
   const user = auth.currentUser;
 
@@ -1059,21 +1071,11 @@ export async function completeVenueFixture({
         gameFormat,
         matchMode: "scheduled_target",
       };
-      const committedEvents = normalizedEventList(currentEvents)
+      const rawCommittedEvents = normalizedEventList(currentEvents)
         .map((event) => ({ ...event, ...matchMeta, matchNo }));
-      const cleanSheetEvents = buildCleanSheetEventsForMatch({
-        matchNo,
-        teamAId,
-        teamBId,
-        goalsA,
-        goalsB,
-        verifiedLineups: confirmedLineupSnapshot,
-        formationMap,
-      }).map((event) => ({ ...event, ...matchMeta }));
-      const allCommittedEvents = [
-        ...committedEvents,
-        ...cleanSheetEvents,
-      ];
+      const confirmedPlayedSeconds=Number.isFinite(playedSeconds)&&playedSeconds>=0?playedSeconds:null;
+      const committedEvents=fieldMatchStatEvents({id:fixtureId,fixtureId,matchNo,teamAId,teamBId,goalsA,goalsB,gameFormat,playedSeconds:confirmedPlayedSeconds,confirmedLineupSnapshot,lineupTimeline},rawCommittedEvents);
+      const allCommittedEvents=committedEvents;
 
       const result = {
         ...matchMeta,
@@ -1105,6 +1107,7 @@ export async function completeVenueFixture({
         timezone:
           fixture.timezone ||
           "Africa/Johannesburg",
+        playedSeconds: confirmedPlayedSeconds,
         events: committedEvents,
         confirmedLineupSnapshot:
           confirmedLineupSnapshot || null,
@@ -1727,6 +1730,8 @@ export async function correctVenueRecordedGoal({
       matchMode: "scheduled_target",
     })));
 
+    nextMatchEvents=fieldMatchStatEvents({...result,goalsA,goalsB,gameFormat},nextMatchEvents);
+
     const winnerId = goalsA === goalsB ? null
       : goalsA > goalsB ? result.teamAId : result.teamBId;
     const nextResult = {
@@ -1735,7 +1740,7 @@ export async function correctVenueRecordedGoal({
       scoreA: goalsA, scoreB: goalsB,
       winnerId,
       isDraw: goalsA === goalsB,
-      events: nextMatchEvents,
+      events: fieldMatchStatEvents({...result,goalsA,goalsB,gameFormat},nextMatchEvents),
       correctedAtMs: Date.now(),
       correctedByUid: user.uid,
     };

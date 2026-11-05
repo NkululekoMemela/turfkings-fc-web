@@ -21,12 +21,12 @@ export default function FacebookHighlightReview(){
  },[isOwner,user?.uid]);
  useEffect(()=>{if(!open||!view)return;const id=new URLSearchParams(window.location.search).get('facebookReview');if(!/^[a-f0-9]{64}$/.test(id||''))return;const card=document.getElementById(`facebook-draft-${id}`);if(card){card.scrollIntoView({block:'center',behavior:'smooth'});card.focus({preventScroll:true});}},[open,view]);
  async function enableAlerts(){setBusy(true);setError('');try{await enablePoolAlerts();setAlertsEnabled(true);setNotice('Phone alerts enabled on this device. New highlights will notify you here.');}catch(e){setError(e.message);}finally{setBusy(false);}}
- if(!isOwner)return null;
  useEffect(()=>{
-  if(!open||busy||!view?.discovery?.more)return;
+  if(!isOwner||!open||busy||!view?.discovery?.more)return;
   const timer=setTimeout(()=>run({action:'list'}),1500);
   return()=>clearTimeout(timer);
- },[open,busy,view]);
+ },[isOwner,open,busy,view]);
+ if(!isOwner)return null;
  return <><FacebookReviewEntry pending={pending} onOpen={()=>{setOpen(true);run({action:'list'});}}/>{open&&createPortal(<div className="fb-review-backdrop"><FacebookReviewPanel view={view} busy={busy} error={error} notice={notice} alertsEnabled={alertsEnabled} onClose={()=>setOpen(false)} onRefresh={()=>run({action:'list'})} onConnect={()=>run({action:'connection'})} onAlerts={enableAlerts}>{view?.items.map(item=><Draft key={`${item.id}-${item.revision}`} item={item} busy={busy} live={view.liveEnabled} run={run}/>)}</FacebookReviewPanel></div>,document.body)}</>;
 
 }

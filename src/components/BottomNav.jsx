@@ -1,3 +1,4 @@
+import ClubTicketPeek from "./ClubTicketPeek.jsx";
 // src/components/BottomNav.jsx
 // Flat integrated footer version with NO rounded outer edges.
 // Keeps every navigation item visible, highlights the current page in green,
@@ -21,6 +22,7 @@ const items = [
 
 export default function BottomNav({
   currentPage,
+  ticketClubId="", ticketMemberId="", ticketEnabled=false,
   onNavigate,
   activeClub = null,
   activeClubName = "Club",
@@ -34,6 +36,7 @@ export default function BottomNav({
 }) {
   const [isHidden, setIsHidden] = useState(false);
   const navScroller = useRef(null);
+  const payButtonRef=useRef(null);
   useEffect(() => {
     const scroller = navScroller.current;
     const current = scroller?.querySelector('[aria-current="page"]');
@@ -110,6 +113,7 @@ export default function BottomNav({
 
               return (
                 <button
+                  ref={item.key==="match-signup"?payButtonRef:undefined}
                   key={item.key}
                   type="button"
                   onClick={() => {
@@ -145,6 +149,7 @@ export default function BottomNav({
           </div>
         </div>
       </nav>
+      <ClubTicketPeek buttonRef={payButtonRef} clubId={ticketClubId} memberId={ticketMemberId} enabled={ticketEnabled&&canAccessPayments&&!locked} navHidden={isHidden||hidden}/>
 
       <style>{`
         .app-root {

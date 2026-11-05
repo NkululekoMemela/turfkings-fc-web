@@ -1056,7 +1056,7 @@ export default function VenueLandingPage({
     if (!canStartMatch) return;
 
     if (
-      isThreeTeamLeague &&
+      pairingRequiresCode && isThreeTeamLeague &&
       resolvedLeagueMode === "scheduled_target"
     ) {
       return;
@@ -1135,7 +1135,8 @@ export default function VenueLandingPage({
   const optionsForTeamB = teams.filter((t) => t.id !== teamAId);
 
   const renderOptionLabel = (team) =>
-    isMobile ? team.label : matchTeamCaption(team);
+    <><span>{team.label || team.name || "Club"}</span>
+      {team.captain && <small className="field-pairing-captain">Captain: {typeof team.captain === "string" ? team.captain : team.captain.fullName || team.captain.name || ""}</small>}</>;
 
   const handleSpectatorLiveClick = () => {
     onGoToLiveAsSpectator();
@@ -1648,7 +1649,7 @@ export default function VenueLandingPage({
               teams={optionsForTeamA}
               renderLabel={renderOptionLabel}
               onChange={handleTeamAChange}
-              disabled={!canSeeCaptainStyleControls || fixturedMode}
+              disabled={!canStartMatch || hasLiveMatch}
               side="a"
             />
 
@@ -1660,7 +1661,7 @@ export default function VenueLandingPage({
               teams={optionsForTeamB}
               renderLabel={renderOptionLabel}
               onChange={handleTeamBChange}
-              disabled={!canSeeCaptainStyleControls || fixturedMode}
+              disabled={!canStartMatch || hasLiveMatch}
               side="b"
             />
           </div>

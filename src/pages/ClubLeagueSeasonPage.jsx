@@ -351,7 +351,8 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
               <div style={{flex: "1 1 180px", minWidth: 0}}>
                 <strong>{entry.fullName}</strong>
                 <p className="muted small" style={{margin: "5px 0"}}>
-                  {companyFunded?"Company funded":money(entry.contributionCents)} · {entry.invitationStatus}
+                  {companyFunded?"Company funded":money(entry.contributionCents)} · {entry.invitationStatus === "expired" ? "Place expired" : entry.invitationStatus}
+                  {!companyFunded && entry.invitationStatus === "accepted" && entry.paymentStatus !== "paid" && Number.isFinite(entry.paymentDueAtMs) && <span> · Pay by {new Intl.DateTimeFormat("en-ZA",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Johannesburg"}).format(entry.paymentDueAtMs)} SAST</span>}
                   {companyFunded?(entry.fundingStatus==="authorised"?" · Authorised":" · Awaiting FANM funding"):entry.paymentStatus !== "paid" && " · Unpaid"}
                 </p>
               </div>
@@ -367,7 +368,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
                     )) return;
                     act(confirmSeasonPayment, {memberId: entry.memberId},
                       "Season payment confirmed.");
-                  }}>Confirm paid</button>
+                  }}>Record payment</button>
               )}
             </div>
           ))}

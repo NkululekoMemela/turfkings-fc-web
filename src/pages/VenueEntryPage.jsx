@@ -5623,6 +5623,8 @@ export default function VenueEntryPage({
     if (venuePage === "fixtures") {
       return (
         <VenueFixturesPage
+          onStandings={() => setVenuePage("stats")}
+          onShareReport={draft=>{setFormationChatDraft(draft);setVenuePage("chat");}}
           venue={venue}
           season={venueSeason}
           teams={teams}
@@ -5654,6 +5656,7 @@ export default function VenueEntryPage({
         <FieldChatBoundary key={venue?.id}
           onBack={() => setVenuePage("landing")}>
         <VenueFieldChatPage
+          chatClubId={activeClubId}
           initialPrivateChat={fieldNavTarget?.privateChat||null}
           initialFormation={formationChatDraft?.venueId===venue.id&&formationChatDraft?.ownerUid===currentUser?.uid?formationChatDraft:null}
           onFormationConsumed={()=>setFormationChatDraft(null)}
@@ -5853,6 +5856,7 @@ export default function VenueEntryPage({
             }
             startStep = "Start Field fixture";
             await startVenueFixture({
+              seasonId: venueSeason.id,
               venueId: venue?.id,
               fixtureId, earlyStartConfirmed,
               controller: buildVenueRefereeController({

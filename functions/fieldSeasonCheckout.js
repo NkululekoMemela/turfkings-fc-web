@@ -36,6 +36,10 @@ exports.checkout = async ({
         !player.exists || (player.data().status || "active") !== "active") {
       throw new Error("Only the invited Club member can pay this booking.");
     }
+    const {seasonPaymentExpired} = await import("./fieldSeasonSquadPolicy.mjs");
+    if (seasonPaymentExpired(entry)) {
+      throw new Error("Place expired. Contact your captain before paying.");
+    }
     if (entry.seasonCheckoutPaymentId) {
       const previous = await tx.get(db.collection("payments")
         .doc(entry.seasonCheckoutPaymentId));
@@ -104,7 +108,7 @@ exports.checkout = async ({
     await db.runTransaction(async tx => {
       const saved = await tx.get(paymentRef);
       tx.update(paymentRef, {
-        status: saved.data()?.status === "paid" ? "paid" : "checkout_created",
+        status: ["paid", "paid_requires_review"].includes(saved.data()?.status) ? saved.data().status : "checkout_created",
         yocoCheckoutId: result.id || result.checkoutId || "",
         redirectUrl, updatedAt: FieldValue.serverTimestamp(),
       });
@@ -113,7 +117,7 @@ exports.checkout = async ({
   } catch (error) {
     await db.runTransaction(async tx => {
       const saved = await tx.get(paymentRef);
-      if (saved.data()?.status !== "paid") {
+      if (!["paid", "paid_requires_review"].includes(saved.data()?.status)) {
         tx.update(paymentRef, {
           status: "failed", updatedAt: FieldValue.serverTimestamp(),
         });
@@ -130,7 +134,7 @@ exports.settle = async ({db, paymentRef, receivedCents, FieldValue}) =>
     if (!payment || payment.purpose !== "field_season") {
       throw new Error("Invalid season payment.");
     }
-    if (payment.status === "paid") return;
+    if (["paid", "paid_requires_review"].includes(payment.status)) return;
     if (!Number.isSafeInteger(receivedCents) ||
         receivedCents !== payment.totalCents) {
       throw new Error("Verified payment does not match the season bill.");
@@ -144,6 +148,26 @@ exports.settle = async ({db, paymentRef, receivedCents, FieldValue}) =>
     const squadSnap = await tx.get(squadRef);
     const squad = squadSnap.data();
     const entry = squad?.entries?.[payment.memberId];
+    const {seasonPaymentExpired} = await import("./fieldSeasonSquadPolicy.mjs");
+    if (seasonPaymentExpired(entry) || !entry ||
+        entry.sourcePlayerId !== payment.sourcePlayerId ||
+        entry.seasonCheckoutPaymentId !== paymentRef.id ||
+        entry.invitationStatus !== "accepted") {
+      // Record real money received without restoring a released place.
+      tx.update(paymentRef, {
+        status: "paid_requires_review", verifiedBy: "yoco_webhook",
+        amountReceived: receivedCents / 100,
+        reviewReason: "season_place_unavailable",
+        settledAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      tx.set(squadRef.collection("paymentDeadlineNotices").doc(paymentRef.id), {
+        kind: "late_payment", memberId: payment.memberId,
+        ...scope, paymentRecordId: paymentRef.id,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return;
+    }
     if (!entry || entry.sourcePlayerId !== payment.sourcePlayerId ||
         entry.seasonCheckoutPaymentId !== paymentRef.id ||
         entry.invitationStatus !== "accepted") {

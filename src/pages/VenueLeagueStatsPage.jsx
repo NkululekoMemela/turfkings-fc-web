@@ -1,3 +1,4 @@
+import {fieldMatchStatEvents} from "../core/fieldDefensiveStats.mjs";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import "./VenueStatsToggles.css";
 import {
@@ -35,6 +36,7 @@ const TABS = [
   ["results", "Match Results"],
   ["goals", "Top Scorers"],
   ["assists", "Playmakers"],
+  ["defensiveBlocks", "Defensive Blocks"],
   ["cleansheets", "Clean Sheets"],
   ["combined", "Summary Player Stats"],
 ];
@@ -329,7 +331,7 @@ export default function VenueLeagueStatsPage({
   const playerStats = useMemo(() => {
     const rows = [];
     const events = visibleResults.flatMap((result) =>
-      Array.isArray(result.events) ? result.events : []
+      fieldMatchStatEvents({...result,gameFormat:result.gameFormat||season?.gameFormat})
     );
     const teamIds = new Set(events.map((event) => event.teamId).filter(Boolean));
 
@@ -338,6 +340,7 @@ export default function VenueLeagueStatsPage({
         events: events.filter((event) => event.teamId === teamId),
       }).map((player) => ({
         ...player,
+        total: Number(player.goals||0)+Number(player.assists||0)+Number(player.defensiveBlocks||0),
         teamId,
         teamName: clubNames[teamId] || teamId,
       })));
@@ -355,6 +358,8 @@ export default function VenueLeagueStatsPage({
     : activeTab === "assists"
     ? [...playerStats].filter((p) => p.assists)
         .sort((a, b) => b.assists - a.assists || a.name.localeCompare(b.name))
+    : activeTab === "defensiveBlocks"
+    ? [...playerStats].filter(p=>p.defensiveBlocks).sort((a,b)=>b.defensiveBlocks-a.defensiveBlocks||a.name.localeCompare(b.name))
     : activeTab === "cleansheets"
     ? [...playerStats].filter((p) => p.cleanSheets)
         .sort((a, b) => b.cleanSheets - a.cleanSheets
@@ -918,11 +923,11 @@ export default function VenueLeagueStatsPage({
                   <th>#</th><th>Player</th><th>Club</th>
                   {activeTab === "combined" ? (
                     <>
-                      <th>Goals</th><th>Assists</th><th>Clean sheets</th><th>Total</th>
+                      <th>Goals</th><th>Assists</th><th>DB</th><th>Clean sheets</th><th>Total</th>
                     </>
                   ) : (
                     <th>{activeTab === "goals" ? "Goals"
-                      : activeTab === "assists" ? "Assists" : "Clean sheets"}</th>
+                      : activeTab === "assists" ? "Assists" : activeTab === "defensiveBlocks" ? "DB" : "Clean sheets"}</th>
                   )}
                 </tr>
               </thead>
@@ -969,12 +974,12 @@ export default function VenueLeagueStatsPage({
                     {activeTab === "combined" ? (
                       <>
                         <td>{player.goals}</td><td>{player.assists}</td>
-                        <td>{player.cleanSheets}</td><td>{player.total}</td>
+                        <td>{player.defensiveBlocks}</td><td>{player.cleanSheets}</td><td>{player.total}</td>
                       </>
                     ) : (
                       <td>{activeTab === "goals" ? player.goals
                         : activeTab === "assists" ? player.assists
-                        : player.cleanSheets}</td>
+                        : activeTab === "defensiveBlocks" ? player.defensiveBlocks : player.cleanSheets}</td>
                     )}
                   </tr>
                 ))}

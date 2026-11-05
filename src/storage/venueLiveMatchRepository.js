@@ -329,7 +329,8 @@ export function subscribeVenueLiveMatch({
               id: snapshot.id,
               ...snapshot.data(),
             }
-          : null
+          : null,
+        {fromCache:snapshot.metadata.fromCache}
       );
     },
     (error) => {
