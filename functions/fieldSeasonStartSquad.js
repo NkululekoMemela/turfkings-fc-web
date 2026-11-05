@@ -1,4 +1,4 @@
-async function loadSeasonStartSquad({transaction, db, scope}) {
+async function loadSeasonStartSquad({transaction, db, scope, includeRegistered = false}) {
   const {venueId, seasonId, clubId} = scope;
   const {seasonPaidManifest} = await import("./fieldSeasonManifest.mjs");
   const squadRef = db.doc(
@@ -7,6 +7,10 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
   const snapshot = await transaction.get(squadRef);
   if (!snapshot.exists) return null;
   const squad = snapshot.data();
+  if (squad.version !== 1 || squad.status !== "active" ||
+      ["venueId","seasonId","clubId"].some(key=>squad[key]!==scope[key])) {
+    throw new Error("The tournament roster does not match this Club and Field.");
+  }
 
   if (!squad.updatedAt) throw new Error("The season squad needs a valid revision.");
 
@@ -23,7 +27,16 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
 
   const companyMode=club.clubType==="company";
   const sponsored=await require("./companyClubs.cjs").sponsoredMembers({db,tx:transaction,club,scope,squad});
-  const manifest=seasonPaidManifest({scope,squad,sponsoredMembers:sponsored,companyMode});
+  const {seasonPaymentExpired} = await import("./fieldSeasonSquadPolicy.mjs");
+  const manifest = includeRegistered
+    ? Object.values(squad.entries || {}).filter(p => p.invitationStatus === "accepted" && (companyMode || !seasonPaymentExpired(p))).map(p => ({...p, clubId}))
+    : seasonPaidManifest({scope,squad,sponsoredMembers:sponsored,companyMode});
+  if (manifest.length > 30 || manifest.some(p =>
+      ![p.memberId,p.sourcePlayerId].every(id => typeof id === "string" && /^[A-Za-z0-9_-]{1,150}$/.test(id))) ||
+      new Set(manifest.map(p=>p.memberId)).size !== manifest.length ||
+      new Set(manifest.map(p=>p.sourcePlayerId)).size !== manifest.length) {
+    throw new Error("Correct duplicate or invalid tournament player links.");
+  }
   const eligible = [];
   const playerRefs = manifest.flatMap(player => [
     clubRef.collection("members").doc(player.memberId),
@@ -44,7 +57,7 @@ async function loadSeasonStartSquad({transaction, db, scope}) {
     }
     const receipt = receiptSnap.data();
     const entry = squad.entries[player.memberId];
-    if (player.fundingType!=="company" && (!entry || !receipt ||
+    if (!includeRegistered && player.fundingType!=="company" && (!entry || !receipt ||
         ["venueId", "seasonId", "clubId"].some(key => receipt[key] !== scope[key]) ||
         receipt.memberId !== player.memberId ||
         receipt.sourcePlayerId !== player.sourcePlayerId ||

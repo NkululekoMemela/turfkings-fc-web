@@ -8,6 +8,9 @@ export default function FieldSeasonPayment({scope,invitation,paymentPage=false,o
  const working=useRef(false);
  if(invitation?.fundingType==="company")return <section className="card"><h2>Company-funded season</h2><p>{invitation.fundingStatus==="authorised"?"Your company funding is authorised. No personal payment is required.":"Your company covers this season. FANM will confirm funding with your company contact. No personal payment is required."}</p>{error&&<p role="alert">{error}</p>}{invitation.invitationStatus==="pending"&&<button className="primary-btn" disabled={busy} onClick={async()=>{setBusy(true);setError("");try{await respondSeasonInvitation({...scope,memberId:invitation.memberId,response:"accepted"});onCommitted?.();}catch(e){setError(e.message);}finally{setBusy(false);}}}>Accept season invitation</button>}{onBack&&<button className="secondary-btn" onClick={onBack}>Back</button>}</section>;
  if(!invitation)return null;
+ const expired=invitation.paymentStatus!=="paid"&&(invitation.invitationStatus==="expired"||(Number.isFinite(invitation.paymentDueAtMs)&&Date.now()>=invitation.paymentDueAtMs));
+ if(expired)return <section className="card"><p role="status">Place expired · Contact your captain before paying.</p>{onBack&&<button className="secondary-btn" onClick={onBack}>Back</button>}</section>;
+ const due=Number.isFinite(invitation.paymentDueAtMs)?new Intl.DateTimeFormat("en-ZA",{dateStyle:"medium",timeStyle:"short",timeZone:"Africa/Johannesburg"}).format(invitation.paymentDueAtMs):null;
  const booked=paid||invitation.paymentStatus==="paid",online=scope.clubId==="turf-kings";
  const balance=seasonBalance(invitation),eligible=["pending","accepted"].includes(invitation.invitationStatus);
  async function proceed(){
@@ -25,11 +28,11 @@ export default function FieldSeasonPayment({scope,invitation,paymentPage=false,o
  if(!paymentPage){
   if(booked)return <p role="status">✓ Season booked</p>;
   if(!eligible)return null;
-  return <button type="button" className="primary-btn" onClick={onOpenPayment}>{invitation.invitationStatus==="accepted"?"Continue season booking":"Join season"} · {money(online?balance.total:balance.contribution)}</button>;
+  return <button type="button" className="primary-btn" onClick={onOpenPayment}>{invitation.invitationStatus==="accepted"?"Pay now":"Join season"} · {money(online?balance.total:balance.contribution)}</button>;
  }
  return <main className="page club-league-season-page league-join-review">
   <div className="landing-header-sticky"><header className="header"><div className="league-studio-header"><div className="header-title"><h1>Your season place</h1><div className="league-studio-context">Review &amp; confirm</div></div><button type="button" className="secondary-btn" disabled={busy} onClick={onBack}>← Back</button></div></header></div>
-  <section className="card league-commit-card"><h2>{invitation.fullName}</h2>{booked?<p role="status">✓ Season booked · Your club contribution is confirmed.</p>:committed?<p role="status">Commitment saved. Arrange payment with your captain; your place awaits payment confirmation.</p>:<>
+  <section className="card league-commit-card"><h2>{invitation.fullName}</h2>{!booked&&<p className="muted small">{due?`Pay by ${due} SAST to keep your place.`:"Accept to hold your place for 48 hours. We’ll remind you after 24 hours."}</p>}{booked?<p role="status">✓ Season booked · Your club contribution is confirmed.</p>:committed?<p role="status">Accepted · Pay within 48 hours to keep your place.</p>:<>
    <dl className="league-join-price"><dt>Club season contribution</dt><dd>{money(balance.contribution)}</dd><dt>Platform fee · whole season</dt><dd>{money(balance.fee)}</dd><dt><strong>{online?"Total payable":"Season total"}</strong></dt><dd><strong>{money(balance.total)}</strong></dd></dl>
    {!online&&<p className="muted small">Online payment is not enabled for this club. Pay your captain as instructed; the platform fee is handled separately.</p>}
    <details className="league-review-dates"><summary>Season dates &amp; known absences{games.length?` (${games.length} match day${games.length===1?"":"s"})`:""}</summary><p className="muted small">You are available by default. Tick only games you already know you will miss. Existing absences remain saved.</p>{!games.length&&<p>Fixtures have not been published yet.</p>}{games.map(({day,fixture,editable})=><label key={day.id}><input type="checkbox" disabled={busy||!editable} checked={absences.includes(day.id)} onChange={e=>setAbsences(old=>e.target.checked?[...old,day.id]:old.filter(id=>id!==day.id))}/><span>Unavailable · {(fixture.scheduledLocal||day.dateLocal||day.label||day.id).replace("T"," · ")}</span></label>)}</details>

@@ -6,7 +6,9 @@ export function fixtureColours(home={},away={}){
  const homeChoices=a.length?a:['Blue','Orange'];
  const awayChoices=b.length?[...b].reverse():['Orange','Blue'];
  for(const first of homeChoices)for(const second of awayChoices)if(kitColourKey(first)!==kitColourKey(second))return {home:first,away:second};
- throw Error('The Clubs’ saved Home/Away colours clash. One Club needs a distinct Away colour.');
+ // Field-assigned match bibs keep play possible when saved Club colours clash.
+ const first=homeChoices[0];
+ return {home:first,away:kitColourKey(first)===kitColourKey('Orange')?'Blue':'Orange'};
 }
 export function automaticFixtureBibs(players,color){
  const ordered=[...players].sort((a,b)=>a.sourcePlayerId.localeCompare(b.sourcePlayerId)),used=new Set(),kept=new Set();

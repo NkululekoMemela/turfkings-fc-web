@@ -11698,6 +11698,9 @@ export default function App() {
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
+          ticketClubId={activeClubId}
+          ticketMemberId={identity?.memberId||""}
+          ticketEnabled={canAccessPlayerFeatures&&!isPracticeMode}
           persistent={activeRole==="spectator"}
           currentPage={page}
           activeClub={activeClubIdentity}

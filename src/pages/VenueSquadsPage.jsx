@@ -1,4 +1,4 @@
-import {fieldMatchDays,fieldDateLabel} from "../core/fieldRouteSafety.mjs";
+import {fieldOpenMatchDays,fieldDateLabel} from "../core/fieldRouteSafety.mjs";
 import {subscribeFieldManifest} from "../storage/fieldManifestSubscription.js";
 import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
 import "./VenueSquadsPage.css";
@@ -19,9 +19,7 @@ const today = () => new Intl.DateTimeFormat("en-CA", {
 export default function VenueSquadsPage({
   venue = {}, season = null, onBack, scope = null,
 }) {
-  const days = fieldMatchDays(season).filter(day =>
-    day.status === "scheduled" && day.dateLocal >= today()
-  ).sort((a,b) => a.dateLocal.localeCompare(b.dateLocal));
+  const days = fieldOpenMatchDays(season);
   const [dayId,setDayId] = useState(days[0]?.id || "");
   const memoryKey = fieldPageKey("squads", venue?.id, season?.id, dayId,scope?.environment||"official",scope?.practiceSessionId||"");
   const [data,setData] = useState(() => readFieldPage(memoryKey));
@@ -80,10 +78,9 @@ export default function VenueSquadsPage({
 
           {error && <p role="alert" className="muted small">{error}</p>}
           {!data && !error && <p role="status" className="muted small">
-            Preparing the upcoming teamsheet…
+            Preparing the match-day teamsheet…
           </p>}
 
-          {data&&<p className="muted small">Fixture colours and numbers assigned automatically. Check the bibs on the pitch.</p>}
           {data && <SharedSquadTeamsheet
             fieldTeamsheet
             matchTeams={teams}

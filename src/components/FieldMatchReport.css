@@ -1,0 +1,211 @@
+.field-match-report__overlay{position:fixed;inset:0;z-index:12000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;background:#020814dd;backdrop-filter:blur(8px);padding:16px 8px;box-sizing:border-box}
+.field-match-report{width:min(100%,640px);box-sizing:border-box;background:#0d1928;color:#f1f5f9;border:1px solid #49647c;border-radius:22px;box-shadow:0 24px 70px #0008;overflow:hidden}
+.field-match-report>header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;position:sticky;top:0;z-index:5;background:#102033}
+.field-match-report>header h2{font-size:18px;margin:0}.field-match-report>header button{width:38px;height:38px;min-height:38px;padding:0;border:1px solid #7792ad66;border-radius:50%;background:#21344b;color:white;font-size:26px;cursor:pointer}
+.field-match-report button:focus-visible{outline:3px solid #67e8f9;outline-offset:2px}
+.field-match-report__score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;text-align:center;padding:20px 12px;font-size:13px;font-weight:700}.field-match-report__score strong{font-size:30px;white-space:nowrap}.field-match-report__score small{display:block;color:#a8bacb;font-size:9px;letter-spacing:.12em;margin-top:5px}
+.field-match-report__team{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;background:#294f43;font-size:14px}.field-match-report__team span{font-size:11px;border-radius:20px;padding:4px 8px;background:#0b2f21}
+.field-match-report__pitch{position:relative;width:100%;aspect-ratio: .64;background:repeating-linear-gradient(0deg,#365e46 0%,#365e46 10%,#3d694f 10%,#3d694f 20%);border:2px solid #b1d1b07a;box-sizing:border-box}
+.field-match-report__half-line{position:absolute;top:50%;width:100%;border-top:2px solid #bed8bb66}.field-match-report__centre{position:absolute;left:50%;top:50%;width:24%;aspect-ratio:1;border:2px solid #bed8bb66;transform:translate(-50%,-50%);border-radius:50%}
+.field-match-report__box{position:absolute;left:25%;width:50%;height:12%;border:2px solid #bed8bb66;box-sizing:border-box}.field-match-report__box.is-top{top:0;border-top:0}.field-match-report__box.is-bottom{bottom:0;border-bottom:0}
+.field-match-report__player{position:absolute;width:29%;transform:translate(-50%,-40%);z-index:2;text-align:center}.field-match-report__player-content{position:relative;display:flex;align-items:center;flex-direction:column;gap:4px;color:white;font-size:11px;line-height:1.2;min-width:0}
+.field-match-report__portrait{position:relative;display:grid;place-items:center;width:clamp(34px,9vw,55px);height:clamp(38px,10vw,62px);background:linear-gradient(140deg,#cad8e4,#638278);border:1px solid #e6f3e188;border-radius:12px;color:#15312b;font-size:15px;font-weight:800;box-shadow:0 3px 8px #0003}
+.field-match-report__portrait img{width:100%;height:100%;object-fit:cover;border-radius:11px}.field-match-report__rating{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);background:#e4c744;color:#17241b;padding:2px 5px;border-radius:12px;font-size:10px;border:1px solid #e5efcd}.field-match-report__rating.is-good{background:#53cf84}.field-match-report__rating.is-low{background:#ee7868}
+.field-match-report__name{text-align:center;max-width:100%;overflow-wrap:anywhere;text-shadow:0 1px 3px #0008;padding-top:3px}.field-match-report__name .compact-player-number{margin-right:3px;font-size:inherit}
+.field-match-report__badges{position:absolute;top:0;left:calc(50% + 16px);display:flex;flex-wrap:wrap;gap:2px;max-width:60px;font-size:10px;text-shadow:0 1px 3px #000}.field-match-report__badges>span{background:#102b24df;padding:2px;border-radius:6px;white-space:nowrap}
+.field-match-report__missing{position:absolute;left:10%;width:80%;text-align:center;font-size:13px}.field-match-report__benches{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}.field-match-report__benches h3{font-size:12px;margin:0 0 14px}.field-match-report__benches p,.field-match-report__note{font-size:11px;color:#a6bac9}.field-match-report__benches section{display:flex;align-items:center;flex-direction:column;gap:12px}.field-match-report__note{padding:0 16px 14px;line-height:1.5}
+@media(min-width:700px){.field-match-report__player-content{font-size:13px}.field-match-report__pitch{aspect-ratio:.78}}
+
+.field-match-report__team strong{display:flex;align-items:center;gap:8px}.field-match-report__team strong img{width:27px;height:27px;object-fit:contain}
+
+/* FANM dark match report and separate rating rows */
+.field-match-report__pitch {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(40,180,255,.2), transparent 60%),
+    linear-gradient(180deg, #020617, #020716);
+  border-color: rgba(148,163,184,.35);
+  min-height: 580px;
+}
+.field-match-report__team { background: #102438; }
+.field-match-report__team > span { background: #071628; }
+.field-match-report__half-line,
+.field-match-report__centre,
+.field-match-report__box {
+  border-color: rgba(148,163,184,.4);
+}
+.field-match-report__portrait { margin-bottom: 22px; }
+.field-match-report__rating {
+  top: calc(100% + 5px);
+  bottom: auto;
+}
+.field-match-report__player {
+  transform: translate(-50%, -50%);
+}
+
+/* FANM ratings beside portraits */
+.field-match-report__portrait {
+  margin-bottom: 0;
+}
+.field-match-report__rating {
+  top: -3px;
+  bottom: auto;
+  left: calc(100% + 5px);
+  transform: none;
+  white-space: nowrap;
+}
+.field-match-report__badges {
+  top: 18px;
+  left: calc(50% + clamp(17px, 4.5vw, 27.5px) + 5px);
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  max-width: none;
+}
+
+/* FANM full-screen match recap */
+.field-match-report__overlay {
+  display: block;
+  padding: 0;
+  background: #020617;
+  backdrop-filter: none;
+}
+.field-match-report {
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.field-match-report > header {
+  padding-top: max(14px, env(safe-area-inset-top));
+}
+.field-match-report__pitch {
+  width: 100%;
+  aspect-ratio: auto;
+  height: clamp(760px, 150vw, 1300px);
+  min-height: 760px;
+}
+.field-match-report__note {
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+/* FANM screenshot-sized match recap v2 */
+.field-match-report__overlay{display:block;padding:0;background:#020617;backdrop-filter:none}
+.field-match-report{width:100%;max-width:none;min-height:100svh;border:0;border-radius:0;margin:0;box-shadow:none;padding-top:env(safe-area-inset-top);background:#020617}
+.field-match-report>header{height:40px;box-sizing:border-box;padding:3px 10px;position:relative}
+.field-match-report>header h2{font-size:13px}
+.field-match-report__tools{display:flex;gap:8px;align-items:center}
+.field-match-report>header button{width:30px;height:30px;min-height:30px;font-size:18px}
+.field-match-report__capture{height:calc(100svh - 68px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:0;display:flex;flex-direction:column;background:#020617}
+.field-match-report__score{flex:none;height:52px;box-sizing:border-box;padding:4px 10px;gap:8px;font-size:10px}
+.field-match-report__score strong{font-size:25px}
+.field-match-report__score small{font-size:7px;margin-top:1px}
+.field-match-report__team{flex:none;height:31px;box-sizing:border-box;padding:3px 10px;font-size:11px}
+.field-match-report__team strong img{height:23px;width:23px}
+.field-match-report__team>span{font-size:8px;padding:3px 6px}
+.field-match-report__pitch{flex:1;min-height:0;height:auto;aspect-ratio:auto;width:100%;background:radial-gradient(circle at 50% 50%,rgba(40,180,255,.2),transparent 60%),linear-gradient(180deg,#020617,#020716)}
+.field-match-report__player{width:29%;transform:translate(-50%,-50%)}
+.field-match-report__player-content{font-size:clamp(8px,1.3svh,11px);gap:2px;line-height:1.05}
+.field-match-report__portrait{width:clamp(23px,4.7svh,38px);height:clamp(25px,5svh,40px);box-sizing:border-box;margin-bottom:0;border-radius:9px;font-size:12px}
+.field-match-report__portrait img{border-radius:8px}
+.field-match-report__rating{top:-3px;bottom:auto;left:calc(100% + 5px);transform:none;white-space:nowrap;font-size:clamp(7px,1.2svh,9px);padding:1px 4px;line-height:1.1}
+.field-match-report__badges{top:14px;left:calc(50% + clamp(11.5px,2.35svh,19px) + 5px);max-width:none;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:flex-start;gap:3px;font-size:clamp(7px,1.05svh,9px);line-height:1.1}
+.field-match-report__badges>span{padding:0;background:none;border-radius:0;display:flex;flex-direction:column;gap:2px}
+.field-match-report__badges>span>span{height:11px;box-sizing:border-box;white-space:nowrap;background:#102b24df;border-radius:4px;padding:0 1px}
+.field-match-report__name{display:block;padding-top:0;width:100%;max-width:100%;height:2.1em;line-height:1.05;overflow:hidden}
+.field-match-report__name>span{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.field-match-report__name .compact-player-number{display:inline;font-size:inherit}
+.field-match-report__details>summary{height:24px;box-sizing:border-box;padding:5px 12px;font-size:10px;color:#a6bac9;cursor:pointer}
+.field-match-report__share-error{font-size:11px;margin:5px 12px}
+@media(min-width:700px){.field-match-report__capture{max-width:700px;margin:0 auto}.field-match-report__player-content{font-size:11px}}
+.field-match-report__portrait{margin-bottom:max(2px,calc(40px - clamp(25px,5svh,40px)))}
+.field-match-report__badges>.field-match-report__extra-stats{transform:translateY(-17px)}
+
+.field-match-report>header .field-match-report__standings{width:auto;border-radius:14px;padding:0 9px;font-size:11px;font-weight:700}
+
+/* FANM inside-pitch team labels */
+.field-match-report__capture {
+  position: relative;
+}
+.field-match-report__capture > .field-match-report__team {
+  position: absolute;
+  top: 55px;
+  left: 0;
+  right: 0;
+  height: 28px;
+  padding: 2px 8px;
+  z-index: 4;
+  background: transparent;
+  pointer-events: none;
+}
+.field-match-report__capture > .field-match-report__pitch + .field-match-report__team {
+  top: auto;
+  bottom: 3px;
+}
+.field-match-report__team strong {
+  max-width: 72%;
+  font-size: 11px;
+  gap: 5px;
+}
+.field-match-report__team strong img {
+  width: 23px;
+  height: 23px;
+}
+.field-match-report__team > span {
+  font-size: 10px;
+  background: #102438dd;
+}
+.field-match-report__player-content {
+  font-size: 11px;
+  line-height: 1.1;
+  gap: 2px;
+}
+.field-match-report__portrait {
+  width: 38px;
+  height: 40px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+.field-match-report__rating {
+  font-size: 10px;
+  padding: 1px 4px;
+}
+.field-match-report__badges {
+  top: 18px;
+  left: calc(50% + 24px);
+  font-size: 9px;
+}
+.field-match-report__badges > span > span {
+  height: 12px;
+}
+.field-match-report__badges > .field-match-report__extra-stats {
+  transform: translateY(-21px);
+}
+.field-match-report__name {
+  height: 2.2em;
+  line-height: 1.1;
+}
+/* FANM standalone rating and nonempty event badges */
+.field-match-report__rating.is-excellent{background:#2385ed;color:#fff;border-color:#7db8ff}
+.field-match-report__rating.is-low{background:#dc6670;color:#fff;border-color:#f0a0a7}
+.field-match-report__badges{top:18px;left:calc(50% + 24px);display:grid;grid-template-columns:repeat(2,max-content);grid-template-rows:none;grid-auto-flow:row;gap:3px;align-items:start;font-size:9px}
+.field-match-report__badges>.field-match-report__event{display:block;transform:none;height:12px;padding:0 2px;line-height:12px;background:#102b24df;border-radius:4px;white-space:nowrap}
+.field-match-report__badges>.is-yellow{background:#e6c63c;color:#17241b;font-weight:800}
+.field-match-report__badges>.is-red{background:#d94e5c;color:white;font-weight:800}
+.field-match-report__badges>.is-injury{color:#ffbdc3;font-weight:700}
+.field-match-report__badges>.is-db{color:#9ddcfb;font-weight:700}
+.field-match-report__portrait{margin-bottom:20px}
+
+/* FANM neutral ratings and plain event symbols */
+.field-match-report__rating{background:#586b83;color:white;border-color:#a6b7cc}
+.field-match-report__rating.is-good{background:#53cf84;color:#17241b}
+.field-match-report__rating.is-excellent{background:#2385ed;color:white}
+.field-match-report__rating.is-low{background:#dc6670;color:white}
+.field-match-report__badges>.is-yellow,
+.field-match-report__badges>.is-red,
+.field-match-report__badges>.is-injury{background:transparent;color:inherit;font-weight:400;border:0;padding:0;box-shadow:none}
+
+/* FANM closer player names */
+.field-match-report__portrait{margin-bottom:10px}
+.field-match-report__player-content:has(.field-match-report__event:nth-child(5)) .field-match-report__portrait{margin-bottom:20px}

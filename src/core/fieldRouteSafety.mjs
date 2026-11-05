@@ -19,3 +19,9 @@ export function fieldEmptyRouteMessage(page,season){
  if(['squads','formations','live'].includes(page)&&!season?.fixtures?.length&&!season?.results?.length&&!season?.matchDayHistory?.length)return 'Fixtures are not published yet';
  return '';
 }
+
+export function fieldOpenMatchDays(season) {
+ const closed=new Set((season?.matchDayHistory||[]).map(day=>day.scheduledMatchDayId||day.id));
+ return fieldMatchDays(season).filter(day=>day.status==="scheduled"&&!closed.has(day.id))
+   .sort((a,b)=>a.dateLocal.localeCompare(b.dateLocal));
+}

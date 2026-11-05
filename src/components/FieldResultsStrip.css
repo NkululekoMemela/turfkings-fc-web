@@ -19,3 +19,7 @@
 .field-results-strip__card time {display:block;text-align:center;font-size:10px;color:#94a3b8;}
 @media(max-width:480px){.field-results-strip__card{flex-basis:204px;padding:12px 13px 9px;}}
 @media(prefers-reduced-motion:reduce){.field-results-strip__track{scroll-behavior:auto;}}
+
+.field-results-strip__card > .field-results-strip__open {all:unset;display:block;box-sizing:border-box;width:100%;cursor:pointer;color:inherit;font:inherit;text-align:inherit;}
+.field-results-strip__open:focus-visible {outline:2px solid #67e8f9;outline-offset:6px;border-radius:8px;}
+.field-results-strip__card:has(.field-results-strip__open:hover){border-color:#67e8f999;}

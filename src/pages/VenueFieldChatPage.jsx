@@ -45,7 +45,7 @@ function fieldChatDateLabel(date) {
 }
 
 export default function VenueFieldChatPage({
-  venue, season, identity, currentUser, staff, isAdmin, onBack, initialPrivateChat=null, initialFormation=null,onFormationConsumed=null,
+  venue, season, identity, currentUser, staff, isAdmin, onBack, chatClubId="", initialPrivateChat=null, initialFormation=null,onFormationConsumed=null,
 }) {
   const venueId = venue?.id || "";
   const uid = currentUser?.uid || "";
@@ -478,7 +478,7 @@ export default function VenueFieldChatPage({
         </div>
 
 
-        {actor&&<div className="fanm-chat-actions"><ChatNotificationToggle scope="field" groupId={venueId}/><TeamChatLauncher venueId={venueId} clubId={actor.clubId||initialPrivateChat?.clubId||""} initialRequest={initialPrivateChat}/></div>}
+        {actor&&<div className="fanm-chat-actions"><ChatNotificationToggle scope="field" groupId={venueId}/><TeamChatLauncher venueId={venueId} clubId={actor.clubId||identity?.clubId||initialPrivateChat?.clubId||chatClubId||""} initialRequest={initialPrivateChat}/></div>}
         {accessError && <p className="field-chat-error" role="alert">{accessError}</p>}
         {muted && <p className="field-chat-muted">You can read chat, but sending and reactions are restricted.</p>}
 

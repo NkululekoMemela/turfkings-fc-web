@@ -2001,6 +2001,7 @@ export function FormationsPage({
     const teamPlayers = (selectedTeamCanonical?.players || []).filter(name=>!fieldWeek||!recordedNames.size||recordedNames.has(canonicalName(name)));
 
     return buildFormationDecorations({
+      ratingMode: "FIELD",
       teamId: selectedTeamCanonical.id,
       players: teamPlayers,
       events: fieldWeek ? fieldWeek.events : formationEventsForDecorations,
@@ -2947,7 +2948,7 @@ export function FormationsPage({
                         >
                           <div
                             style={{
-                              background: "linear-gradient(180deg, #22c55e, #16a34a)",
+                              background: Number(decor.rating)>9 ? "#2385ed" : Number(decor.rating)<5 ? "#dc6670" : Number(decor.rating)>=7 ? "linear-gradient(180deg, #22c55e, #16a34a)" : "#586b83",
                               color: "#ffffff",
                               fontSize: "0.68rem",
                               fontWeight: 900,

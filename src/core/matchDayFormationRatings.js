@@ -210,6 +210,7 @@ export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
       stats[canonName] = {
         goals: 0,
         assists: 0,
+        defensiveBlocks: 0,
         cleanSheets: 0,
         gkCleanSheets: 0,
         defCleanSheets: 0,
@@ -225,6 +226,12 @@ export function buildMatchDayStatsByPlayer(events = [], resolveCanonicalName) {
 
   dedupeEvents(events).forEach((e) => {
     if (!e) return;
+
+    if (e.type === "defensive_block") {
+      const row=ensure(safeResolve(e.playerName || e.scorer || ""));
+      if(row)row.defensiveBlocks+=Math.max(1,Number(e.blockCount)||1);
+      return;
+    }
 
     if (e.type === "clean_sheet") {
       const holder = safeResolve(e.playerName || e.scorer || "");
@@ -306,8 +313,14 @@ function computeRawRating(playerStats, teamResultSummary, ratingMode = "LEAGUE")
   // personal contribution matters more than team result
   raw += Number(playerStats?.goals || 0) * 0.62;
   raw += Number(playerStats?.assists || 0) * 0.36;
-  raw += Number(playerStats?.gkCleanSheets || 0) * 0.42;
-  raw += Number(playerStats?.defCleanSheets || 0) * 0.26;
+  if(ratingMode === "FIELD") {
+    raw += Number(playerStats?.defensiveBlocks || 0) * 0.15;
+    raw -= Number(playerStats?.yellowCards || 0) * 0.15;
+    raw -= Number(playerStats?.redCards || 0) * 0.40;
+  } else {
+    raw += Number(playerStats?.gkCleanSheets || 0) * 0.42;
+    raw += Number(playerStats?.defCleanSheets || 0) * 0.26;
+  }
 
   // Friendlies-only defensive rating support.
   // These do NOT change the real stats table. They only improve the rating.
@@ -316,7 +329,7 @@ function computeRawRating(playerStats, teamResultSummary, ratingMode = "LEAGUE")
     raw += Number(playerStats?.friendlyRatingBonusAssists || 0) * 0.36;
   }
 
-  return clamp(5.8, raw, 9.4);
+  return ratingMode === "FIELD" ? clamp(0, raw, 10) : clamp(5.8, raw, 9.4);
 }
 
 export function buildFormationDecorations({
@@ -334,7 +347,7 @@ export function buildFormationDecorations({
       ? resolveCanonicalName
       : (x) => String(x || "").trim();
 
-  const effectiveRatingMode = isFriendlyMode(matchType)
+  const effectiveRatingMode = ratingMode === "FIELD" ? "FIELD" : isFriendlyMode(matchType)
     ? "FRIENDLY"
     : isFriendlyMode(ratingMode)
       ? "FRIENDLY"
@@ -439,6 +452,7 @@ export function buildFormationDecorations({
       rating,
       ratingLabel: rating != null ? rating.toFixed(1) : "",
       icons: {
+        defensiveBlocks: Number(stats.defensiveBlocks || 0),
         goals: Number(stats.goals || 0),
         assists: Number(stats.assists || 0),
         gkCS: Number(stats.gkCleanSheets || 0),
@@ -491,7 +505,7 @@ export function buildFormationDecorations({
 
   ranked.forEach(([, value], index) => {
     const spread = Math.max(0, 0.12 - index * 0.03);
-    const adjusted = clamp(5.8, Number(value.rating || 0) + spread, 9.6);
+    const adjusted = effectiveRatingMode === "FIELD" ? clamp(0,Number(value.rating || 0),10) : clamp(5.8, Number(value.rating || 0) + spread, 9.6);
 
     value.rating = round1(adjusted);
     value.ratingLabel = value.rating.toFixed(1);

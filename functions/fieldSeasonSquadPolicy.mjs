@@ -1,3 +1,12 @@
+export const PAYMENT_WINDOW_MS = 48 * 60 * 60 * 1000;
+export const PAYMENT_REMINDER_MS = 24 * 60 * 60 * 1000;
+export function seasonPaymentExpired(entry, now = Date.now()) {
+  return entry?.fundingType !== "company" && entry?.paymentStatus !== "paid" &&
+    (entry?.invitationStatus === "expired" ||
+    (entry?.invitationStatus === "accepted" &&
+     Number.isFinite(entry.paymentDueAtMs) && now >= entry.paymentDueAtMs));
+}
+
 const formats = {
   "5_V_5": 5, "6_V_6": 6, "7_V_7": 7, "11_V_11": 11,
 };
@@ -75,7 +84,14 @@ export function respondSeasonSquadInvitation({
   if (invitation.invitationStatus !== "pending") {
     throw new Error("This invitation has already been answered.");
   }
-  return {...invitation, invitationStatus: response, respondedAtMs: now};
+  return {...invitation, invitationStatus: response, respondedAtMs: now,
+    ...(response === "accepted" && invitation.fundingType !== "company" &&
+      invitation.paymentStatus !== "paid" ? {
+        paymentWindowStartedAtMs: now,
+        paymentReminderAtMs: now + PAYMENT_REMINDER_MS,
+        paymentDueAtMs: now + PAYMENT_WINDOW_MS,
+      } : {}),
+  };
 }
 
 export function confirmSeasonSquadPayment({
@@ -92,6 +108,9 @@ export function confirmSeasonSquadPayment({
     throw new Error("The agreed contribution is invalid.");
   }
   if (invitation.paymentStatus === "paid") return invitation;
+  if (seasonPaymentExpired(invitation, now)) {
+    throw new Error("Place expired. Contact your captain before paying.");
+  }
   return {
     ...invitation, paymentStatus: "paid",
     paidCents: invitation.contributionCents,
