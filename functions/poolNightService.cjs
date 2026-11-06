@@ -1,4 +1,4 @@
-const {isAdmin,creatorUid}=require("./poolAdminPolicy.cjs");
+const {isAdmin,creatorUid,isPlatformSuperAdmin}=require("./poolAdminPolicy.cjs");
 const {randomBytes,randomUUID,createHash}=require("node:crypto");
 const validUser=user=>Boolean(user?.uid&&user.email_verified===true&&!user.cameraSession);
 const fail=message=>{throw new Error(message);};
@@ -61,7 +61,7 @@ async function handle({db,user,body}){
   const view=night=>{
    if(!owner&&night.members?.[user.uid]?.status!=="approved")return {code,title:night.title,revision:night.revision,membership:night.members?.[user.uid]?.status||"none"};
    if(action==="load"&&body.revision===night.revision)return {code,revision:night.revision,unchanged:true};
-   return {code,...night,membership:"approved"};
+   return {code,...night,membership:"approved",canRecoverAdmin:isPlatformSuperAdmin(user)&&night.members?.[user.uid]?.status==="approved"};
   };
   if(action==="load")return view(current);
   if(current.lifecycle==="deleted")fail("This night was deleted. Its creator may restore it during the recovery period.");
@@ -74,6 +74,13 @@ async function handle({db,user,body}){
    tx.set(ref,next);tx.set(db.doc(`poolNights/${code}/alerts/join-${randomUUID()}`),{kind:"join",subjectUid:user.uid,createdAt:Date.now()});return view(next);
   }
   if(!owner&&member?.status!=="approved")fail("The host must approve you before you can log scores.");
+  if(action==="recoverAdmin"){
+   if(!isPlatformSuperAdmin(user)||member?.status!=="approved")fail("Only the verified platform super admin participating in this tournament can recover admin access.");
+   if(!["primary","second"].includes(body.mode))fail("Choose primary or second admin.");
+   if(body.revision!==current.revision)fail("The night changed on another phone. Refresh and try again.");
+   const next={...current,createdByUid:creatorUid(current),superAdminUid:user.uid,ownerUid:body.mode==="primary"?user.uid:current.ownerUid,revision:current.revision+1,updatedAt:Date.now(),audit:[...(current.audit||[]),{id:randomUUID(),action:"recoverAdmin",mode:body.mode,byUid:user.uid,previousOwnerUid:current.ownerUid,nextOwnerUid:body.mode==="primary"?user.uid:current.ownerUid,at:Date.now()}]};
+   tx.set(ref,next);return view(next);
+  }
   if(current.lifecycle==="ended"&&!["verify","correct","completeScore","transferAdmin"].includes(action))fail("This tournament has ended. Its scores are saved.");
   if(require("./poolBilling.cjs").decisionRequired(current,user.uid)){const error=new Error("Choose a contribution option to continue: pay, ask a teammate, use a token, or pay next time.");error.code="POOL_CONTRIBUTION_REQUIRED";throw error;}
   if(body.revision!==current.revision)fail("The night changed on another phone. Refresh and try again.");
@@ -82,6 +89,7 @@ async function handle({db,user,body}){
   if(adminOnly.has(action)&&!owner)fail("Only the night admin can do that.");
   if(action==="removePlayer"){
    const target=String(body.uid||"");
+   if(target===current.superAdminUid)fail("The platform super admin retains recovery access and cannot be removed.");
    if(target===creatorUid(current))fail("The tournament creator keeps admin access and cannot be removed.");
    if(target===current.ownerUid)fail("Appoint another admin before removing the current primary admin.");
    if(current.members?.[target]?.status!=="approved"||!next.pool.players.some(player=>player.id===target))fail("Choose an approved player in this night.");
