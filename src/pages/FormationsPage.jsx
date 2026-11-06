@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
 import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
 import {CLUB_COLLECTIONS} from "../core/clubPaths.js";
@@ -2482,7 +2483,7 @@ export function FormationsPage({
 
           <div className="field-row inline-field">
             <label>Formation</label>
-            <select
+            <PremiumSelect
               value={formation.id}
               onChange={handleFormationChange}
               className="lineups-select"
@@ -2493,7 +2494,7 @@ export function FormationsPage({
                   {getFormationDisplayLabel(f, gameType)}
                 </option>
               ))}
-            </select>
+            </PremiumSelect>
           </div>
         </div>
 
@@ -2801,7 +2802,7 @@ export function FormationsPage({
                 {isTemporaryOpponentTeam ? (
                   <div className="field-row">
                     <label>Guest player</label>
-                    <select
+                    <PremiumSelect
                       className="lineups-select"
                       value={selectedPhotoPlayerName}
                       onChange={(e) => {
@@ -2819,7 +2820,7 @@ export function FormationsPage({
                           </option>
                         ))
                       )}
-                    </select>
+                    </PremiumSelect>
                     <p className="muted small">
                       Guest photos are saved for this temporary opponent list only. They do not create permanent Turf Kings player records.
                     </p>

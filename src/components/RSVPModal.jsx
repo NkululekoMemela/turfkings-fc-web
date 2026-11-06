@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 // src/components/RSVPModal.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import {
@@ -427,7 +428,7 @@ export function RSVPModal({ identity, onClose }) {
                         Friends you are bringing (max 3):
                       </p>
 
-                      <select
+                      <PremiumSelect
                         className="text-input"
                         value={friends}
                         onChange={(e) =>
@@ -442,7 +443,7 @@ export function RSVPModal({ identity, onClose }) {
                         <option value={1}>1 friend</option>
                         <option value={2}>2 friends</option>
                         <option value={3}>3 friends</option>
-                      </select>
+                      </PremiumSelect>
 
                       <p
                         style={{

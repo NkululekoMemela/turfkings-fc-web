@@ -1,3 +1,5 @@
+import {fieldHighlightAttachment} from "../core/fieldHighlightAttachment.mjs";
+import VideoFramePreview from "../components/VideoFramePreview.jsx";
 import {uploadFormationChatImage} from "../storage/formationChatImage.js";
 import TeamChatLauncher from "../components/TeamChatLauncher.jsx";
 import ChatNotificationToggle from "../components/ChatNotificationToggle.jsx";
@@ -386,7 +388,7 @@ export default function VenueFieldChatPage({
       const messageRef = doc(
         collection(db, "leagueVenues", venueId, "chatMessages"),
       );
-      const attachment=fieldSelectedClip?.kind==="formation"&&fieldSelectedClip.imageData?await uploadFormationChatImage(fieldSelectedClip,venueId):fieldSelectedClip;
+      const attachment=fieldSelectedClip?.kind==="formation"&&fieldSelectedClip.imageData?await uploadFormationChatImage(fieldSelectedClip,venueId):fieldSelectedClip?.kind==="formation"?fieldSelectedClip:fieldSelectedClip?fieldHighlightAttachment(fieldSelectedClip,venueId):null;
       if(attachment)setFieldSelectedClip(attachment);
       await setDoc(messageRef, {
         text: (
@@ -552,7 +554,7 @@ export default function VenueFieldChatPage({
                         "Field highlight"}
                     </strong>
 
-                    {message.attachment.kind==="formation"?<a href={message.attachment.mediaUrl} target="_blank" rel="noreferrer"><img loading="lazy" alt={message.attachment.title||"Formation"} src={message.attachment.mediaUrl} style={{width:"100%",height:"auto",borderRadius:12}}/></a>:<video
+                    {message.attachment.kind==="formation"?<a href={message.attachment.mediaUrl} target="_blank" rel="noreferrer"><img loading="lazy" alt={message.attachment.title||"Formation"} src={message.attachment.mediaUrl} style={{width:"100%",height:"auto",borderRadius:12}}/></a>:<VideoFramePreview
                       controls
                       playsInline
                       preload="none"

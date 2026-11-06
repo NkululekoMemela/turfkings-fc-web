@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {saveClubMatchNumber} from "../storage/clubMatchNumberGateway.js";
 import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
 import {buildKitRoster,validateKitTeams,jerseyNumber} from "../core/playerKit.js";
@@ -4157,7 +4158,7 @@ export function SquadsPage({
 
             <div className="field-row">
               <label>Game format</label>
-              <select
+              <PremiumSelect
                 className="text-input"
                 value={challengeChangeDraft.format}
                 onChange={(event) =>
@@ -4171,7 +4172,7 @@ export function SquadsPage({
                 <option value="6v6">6 v 6</option>
                 <option value="7v7">7 v 7</option>
                 <option value="11aside">11 aside</option>
-              </select>
+              </PremiumSelect>
             </div>
 
             <div className="field-row">

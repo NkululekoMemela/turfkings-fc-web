@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import { createPortal } from "react-dom";
 import {
@@ -98,6 +99,8 @@ export function FieldSeasonStartModal({
   const [matchMinutes, setMatchMinutes] = useState(String(season?.scheduleSettings?.matchMinutes || 40));
   const [halftimeMinutes, setHalftimeMinutes] = useState(String(season?.scheduleSettings?.halftimeMinutes ?? 5));
   const [turnaroundMinutes, setTurnaroundMinutes] = useState(String(season?.scheduleSettings?.turnaroundMinutes ?? 5));
+  const [fixtureLegs, setFixtureLegs] = useState(2);
+  const [singleLegConfirmed, setSingleLegConfirmed] = useState(false);
   const [fee, setFee] = useState("");
   const [deadline, setDeadline] = useState("");
   const [minimum, setMinimum] = useState("3");
@@ -135,6 +138,7 @@ export function FieldSeasonStartModal({
             setSent(await onAnnounce({
               venueId: venue.id, name, startsOn: date,
               startTime, matchMinutes, halftimeMinutes, turnaroundMinutes,
+              fixtureLegs, singleLegConfirmed,
               entryFee: fee, gameFormat, signupClosesOn: deadline,
               minimumClubs: minimum,
               prizeIncreasePerClub: {
@@ -169,13 +173,23 @@ export function FieldSeasonStartModal({
           ))}
           <label style={{ display: "grid", gap: ".3rem", margin: ".8rem 0" }}>
             League size
-            <select className="text-input" value={gameFormat} disabled={busy}
+            <PremiumSelect className="text-input" value={gameFormat} disabled={busy}
               onChange={event => setGameFormat(event.target.value)}>
               {FIELD_GAME_FORMATS.map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
-            </select>
+            </PremiumSelect>
           </label>
+          <fieldset style={{border:"1px solid #77b4a666",borderRadius:14,padding:14,margin:"16px 0"}}>
+            <legend>League fixtures</legend>
+            <label style={{display:"block",marginBottom:12}}><input type="radio" name="fixtureLegs" checked={fixtureLegs === 2} disabled={busy} onChange={() => {setFixtureLegs(2);setSingleLegConfirmed(false);}} /> Home and away · standard</label>
+            <p>Every Club plays every opponent twice, once at home and once away.</p>
+            <label style={{display:"block",marginTop:14}}><input type="radio" name="fixtureLegs" checked={fixtureLegs === 1} disabled={busy} onChange={() => {setFixtureLegs(1);setSingleLegConfirmed(false);}} /> Single leg · shorter league</label>
+            {fixtureLegs === 1 && <div role="alert" style={{padding:12,border:"1px solid #e5a974",borderRadius:12,marginTop:12}}>
+              <strong>No return fixtures. Each pair of Clubs meets only once.</strong>
+              <label style={{display:"block",marginTop:10}}><input type="checkbox" required checked={singleLegConfirmed} disabled={busy} onChange={event => setSingleLegConfirmed(event.target.checked)} /> I confirm this is a single-leg league and will communicate it to the Clubs.</label>
+            </div>}
+          </fieldset>
           <details className="field-season-details">
             <summary>Prizes & participation conditions</summary>
             <p>Base prizes apply when the minimum number of Clubs signs up.
@@ -326,6 +340,7 @@ export function ClubFieldSeasonInvitation({ clubId }) {
           <strong>{season.signupClosesOn
             ? invitationDate(season.signupClosesOn) : "Before play begins"}</strong>
           {season.signupClosesOn && <small>23:59 SAST</small>}</div>
+        <div><span>League fixtures</span><strong>{season.fixtureLegs === 2 ? "Home and away · 2 legs" : season.fixtureLegs === 1 ? "Single leg · no return fixtures" : "Existing season format"}</strong></div>
         <div><span>Entry per Club</span>
           <strong>{money(season.entryFee)}</strong></div>
         <div><span>Format</span>

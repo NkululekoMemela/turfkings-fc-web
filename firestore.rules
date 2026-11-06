@@ -1013,6 +1013,10 @@ service cloud.firestore {
           );
       }
 
+      match /matchReversals/{reversalId} {
+        allow read: if isSignedIn() && !isCameraSession() && get(/databases/$(database)/documents/leagueVenues/$(venueId)).data.ownerUid == request.auth.uid;
+        allow write: if false;
+      }
       match /actionLog/{entryId} {
         function venueDoc() {
           return get(
@@ -1055,7 +1059,7 @@ service cloud.firestore {
           && request.resource.data.action in [
             "season_created", "season_started", "match_started", "match_completed",
             "match_day_saved", "match_day_discarded", "season_ended", "season_cancelled",
-            "empty_season_deleted", "fixture_pairing_selected"
+            "empty_season_deleted", "fixture_pairing_selected", "match_reversed", "match_corrected", "staff_permissions_changed"
           ]
           && request.resource.data.label is string
           && request.resource.data.label.size() <= 100

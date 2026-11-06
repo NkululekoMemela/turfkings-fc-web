@@ -58,3 +58,12 @@ test('stock-only staff view skips reservation reads; hires are loaded explicitly
  const full=await handle({...f,user:manager,body:{action:'hireView',venueId:'f'}});
  assert.equal(reservationQueries,1);assert.equal(full.orders.length,1);
 });
+test('stock-only inventory is readable by approved referees but stock changes remain manager-only',async()=>{
+ const f=setup();f.records.set('leagueVenues/f/staff/ref',{uid:'ref',status:'active',role:'referee'});const user={uid:'ref',email_verified:true};const view=await handle({...f,user,body:{action:'hireView',venueId:'f',stockOnly:true}});assert.equal(view.manager,false);assert.deepEqual(view.config.stock,[]);await assert.rejects(()=>handle({...f,user,body:{action:'saveHireStock',venueId:'f',stock,expectedRevision:0,inventoryOnly:true}}),/management/);
+});
+test('inventory-only save does not invent a rental collection point',async()=>{
+ const f=setup();await handle({...f,user:manager,body:{action:'saveHireStock',venueId:'f',stock,collectionAddress:'',inventoryOnly:true,expectedRevision:0}});const config=f.records.get('leagueVenues/f/bibHireConfig/stock');assert.equal(config.stock.length,6);assert.equal(config.collectionAddress,'');await assert.rejects(()=>handle({...f,user:captain,body:hire}),/physical stock/);
+});
+test('ordinary active Club players can read inventory without receiving stock or booking powers',async()=>{
+ const f=setup();f.records.set('clubs/club/members/player',{uid:'player',status:'active',role:'player'});const user={uid:'player',email_verified:true};const view=await handle({...f,user,body:{action:'hireView',clubId:'club',venueId:'f',stockOnly:true}});assert.equal(view.manager,false);assert.equal(view.captain,false);await assert.rejects(()=>handle({...f,user,body:{action:'saveHireStock',clubId:'club',venueId:'f',stock,inventoryOnly:true,expectedRevision:0}}),/management/);
+});

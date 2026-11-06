@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {CLUB_COLLECTIONS} from "../core/clubPaths.js";
 import {fieldFormationWeek} from "../core/fieldFormationWeek.mjs";
 import {resolvePlayerPortrait} from "../core/playerPortrait.mjs";
@@ -2830,7 +2831,7 @@ export function FormationsPage({
 
           <div className="field-row inline-field">
             <label>Formation</label>
-            <select
+            <PremiumSelect
               value={formation.id}
               onChange={handleFormationChange}
               className="lineups-select"
@@ -2841,7 +2842,7 @@ export function FormationsPage({
                   {getFormationDisplayLabel(f, gameType)}
                 </option>
               ))}
-            </select>
+            </PremiumSelect>
           </div>
         </div>
 

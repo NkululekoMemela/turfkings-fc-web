@@ -6004,3 +6004,11 @@ exports.chooseFieldMatchPairing = require("./fieldPairingOverride.cjs").chooseFi
 Object.assign(exports, require("./fieldSeasonPaymentDeadlines.cjs").buildHandlers({
   db, region: REGION, sendBatch: sendPaymentNotificationBatch,
 }));
+
+// Field integrity and video retention, scoped to official group records.
+exports.reverseFieldRecordedMatch=require("./fieldResultReversal.cjs").reverseFieldRecordedMatch;
+exports.permanentlyDeleteHighlight=require("./highlightPermanentDeletion.cjs").permanentlyDeleteHighlight;
+exports.processHighlightRetention=require("./highlightPermanentDeletion.cjs").processHighlightRetention;
+exports.onFieldAuditAction=require("./fieldAuditNotifications.cjs").buildHandler({db,region:REGION,sendBatch:options=>require("./notificationRuntime.cjs").reliableBatch({db,messaging:admin.messaging(),...options})});
+
+exports.closeHighlightWeek=require("./highlightPermanentDeletion.cjs").closeHighlightWeek;

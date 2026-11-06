@@ -23,7 +23,7 @@ async function access({db,tx,user,body}){
  if(!venue||venue.deleted)throw Error('Field unavailable.');
  const staff=(await tx.get(db.doc(`leagueVenues/${venueId}/staff/${user.uid}`))).data();
  const manager=venue.ownerUid===user.uid||staff?.status==='active'&&(staff.isAdministrator===true||['field_manager','assistant_manager'].includes(staff.role));
- if(!club&&!manager)throw Error('Field management access is required.');
+ if(!club&&!manager&&!(body.action==='hireView'&&body.stockOnly===true&&staff?.status==='active'))throw Error('Field management access is required.');
  return {venueId,venue,manager,club};
 }
 async function handle({db,user,body}){
@@ -44,7 +44,7 @@ async function handle({db,user,body}){
   if(body.action==='saveHireStock'){
    if(!ctx.manager)throw Error('Only Field management can confirm stock.');
    if(body.expectedRevision!==config.revision)throw Error('Stock changed. Refresh before saving.');
-   const stock=inventory(Array.isArray(body.stock)?body.stock.map(r=>({...r,color:kitColourKey(r.color)})):body.stock),address=clean(body.collectionAddress,500);if(!address)throw Error('Add the Field collection point.');
+   const stock=inventory(Array.isArray(body.stock)?body.stock.map(r=>({...r,color:kitColourKey(r.color)})):body.stock),address=clean(body.collectionAddress,500);if(!address&&body.inventoryOnly!==true)throw Error('Add the Field collection point.');
    const days=await tx.get(db.collection(`${base}/bibHireDays`));
    const capacities=Object.fromEntries(stock.map(r=>[stockKey(r.color,r.number),r.quantity]));
    for(const day of days.docs)for(const [id,used]of Object.entries(day.data().used||{}))if((capacities[id]||0)<used)throw Error('This stock is reserved. Resolve the hire before reducing it.');

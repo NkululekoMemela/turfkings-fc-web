@@ -21334,3 +21334,7 @@ footer.club-marketing-footer > section {
   overflow-wrap: anywhere;
   text-shadow: 0 1px 3px rgba(0,0,0,.85);
 }
+
+/* Fixed dimensions prevent the ribbon's contents shifting on scroll. */
+.landing-header-sticky.is-scrolled{transform:none!important;}
+.tk-bottom-nav-flat,.field-bottom-nav{overscroll-behavior:contain;bottom:0!important;}

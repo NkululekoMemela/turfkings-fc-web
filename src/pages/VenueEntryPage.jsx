@@ -1,7 +1,9 @@
+import FieldActivityNotice from "../components/FieldActivityNotice.jsx";
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {fieldNavigationReady,fieldEmptyRouteMessage,safeFieldSeason} from "../core/fieldRouteSafety.mjs";
 import {buildPlatformPlayerSnapshot,evaluatePlatformPlayerState} from "../core/platformPlayer/platformPlayerService.js";
 import {planPlatformPlayerWrite} from "../core/platformPlayer/platformPlayerManager.js";
-import FieldBibHire from "../components/FieldBibHire.jsx";
+import FieldBibHire,{preloadFieldBibStock} from "../components/FieldBibHire.jsx";
 import FieldPageWarmup from "../components/FieldPageWarmup.jsx";
 import VenueLeagueSpectatorPage from "./VenueLeagueSpectatorPage.jsx";
 import "../styles/FieldIdentityHub.css";
@@ -782,6 +784,7 @@ export default function VenueEntryPage({
   const fieldStartPendingRef = useRef(false);
   const [practicePage, setPracticePage] = useState("landing");
   const [formationChatDraft,setFormationChatDraft]=useState(null);
+  const [videoFixtureFocus,setVideoFixtureFocus]=useState('');
 
   useEffect(() => {
     setFieldSessionChoice(fieldNavTarget?.entryRequest ? "official" : "choose");
@@ -806,6 +809,7 @@ export default function VenueEntryPage({
   useEffect(()=>{
     if(!enteredIdentity||enteredIdentity.uid!==currentUser?.uid||enteredIdentity.venueId!==venue?.id)return;
     const hint=fieldEntryHint(enteredIdentity);if(!hint)return;
+    if(hint.kind==='staff')try{localStorage.setItem(`fanm-last-field:${activeFirebaseProjectId}:${currentUser.uid}`,venue.id);}catch{}
     try{localStorage.setItem(fieldEntryMemoryKey(activeFirebaseProjectId,venue.id,currentUser.uid),JSON.stringify(hint));}catch{}
   },[enteredIdentity,currentUser?.uid,venue?.id]);
 
@@ -935,13 +939,16 @@ export default function VenueEntryPage({
   const [endSeasonError, setEndSeasonError] = useState("");
   const [endSeasonConfirmText, setEndSeasonConfirmText] = useState("");
   const [authenticatedFieldStaff, setAuthenticatedFieldStaff] = useState(null);
+  const resumedStaffAccount=useRef('');
   const [fieldStaffPowers, setFieldStaffPowers] = useState(null);
   const [showStaffPowersPanel, setShowStaffPowersPanel] = useState(false);
   const [showFieldTeamManager,setShowFieldTeamManager]=useState(false);
   useEffect(()=>{
-    if(fieldNavTarget?.page!=="news"||enteredIdentity||!currentUser?.uid||authenticatedFieldStaff?.uid!==currentUser.uid||authenticatedFieldStaff?.status!=="active")return;
+    if(portalClubIdentity||fieldNavTarget?.entryRequest||enteredIdentity||!currentUser?.emailVerified||authenticatedFieldStaff?.uid!==currentUser.uid||authenticatedFieldStaff?.status!=="active")return;
+    const key=`${venue.id}:${currentUser.uid}`;if(resumedStaffAccount.current===key)return;resumedStaffAccount.current=key;
     setEnteredIdentity({...authenticatedFieldStaff,uid:currentUser.uid,venueId:venue?.id,role:authenticatedFieldStaff.role,actingRole:authenticatedFieldStaff.role});
-  },[fieldNavTarget,currentUser?.uid,authenticatedFieldStaff,enteredIdentity,venue?.id]);
+  },[fieldNavTarget,currentUser?.uid,currentUser?.emailVerified,authenticatedFieldStaff,enteredIdentity,venue?.id,portalClubIdentity]);
+  useEffect(()=>{if(currentUser?.emailVerified&&authenticatedFieldStaff?.status==='active'&&authenticatedFieldStaff?.isAdministrator===true)preloadFieldBibStock(venue?.id).catch(()=>{});},[venue?.id,currentUser?.uid,authenticatedFieldStaff?.status,authenticatedFieldStaff?.isAdministrator]);
   const canManageFieldTeam=Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||(authenticatedFieldStaff?.uid===currentUser.uid&&authenticatedFieldStaff?.status==="active"&&authenticatedFieldStaff?.role==="field_manager"&&authenticatedFieldStaff?.isAdministrator===true)));
   useEffect(()=>setShowFieldTeamManager(false),[venue?.id,currentUser?.uid,canManageFieldTeam]);
 
@@ -971,22 +978,25 @@ export default function VenueEntryPage({
     venue, staff: authenticatedFieldStaff,
   });
 
+  const canViewFieldBibStock=canAccessFieldSettings||Boolean(currentUser?.emailVerified&&enteredIdentity?.uid===currentUser.uid&&['club_member','club_rep'].includes(enteredIdentity?.role));
+
   useEffect(() => {
     const requestedPage = fieldSessionChoice === "practice" && canAccessFieldSettings ? practicePage : venuePage;
     onFieldNavState?.({
       ready: fieldNavigationReady({identity:enteredIdentity,choice:fieldSessionChoice,canChooseSession:canAccessFieldSettings}),
-      page: ["settings","hireStock"].includes(requestedPage) && !canAccessFieldSettings ? "landing" : requestedPage,
+      page: (requestedPage==="settings"&&!canAccessFieldSettings)||(requestedPage==="hireStock"&&!canViewFieldBibStock) ? "landing" : requestedPage,
       canAccessSettings: canAccessFieldSettings,
+      canViewBibStock: canViewFieldBibStock,
     });
     return () => onFieldNavState?.({ready: false, page: "landing", canAccessSettings: false});
-  }, [enteredIdentity, venuePage, onFieldNavState, fieldSessionChoice, practicePage, canAccessFieldSettings]);
+  }, [enteredIdentity, venuePage, onFieldNavState, fieldSessionChoice, practicePage, canAccessFieldSettings,canViewFieldBibStock]);
 
   useEffect(() => {
-    if (["settings","hireStock"].includes(venuePage) && !canAccessFieldSettings) setVenuePage("landing");
+    if ((venuePage==="settings"&&!canAccessFieldSettings)||(venuePage==="hireStock"&&!canViewFieldBibStock)) setVenuePage("landing");
     if (fieldNavTarget?.page) {
-      setVenuePage(["settings","hireStock"].includes(fieldNavTarget.page) && !canAccessFieldSettings ? "landing" : fieldNavTarget.page);
+      setVenuePage((fieldNavTarget.page==="settings"&&!canAccessFieldSettings)||(fieldNavTarget.page==="hireStock"&&!canViewFieldBibStock) ? "landing" : fieldNavTarget.page);
     }
-  }, [fieldNavTarget, canAccessFieldSettings, Boolean(enteredIdentity)]);
+  }, [fieldNavTarget, canAccessFieldSettings,canViewFieldBibStock, Boolean(enteredIdentity)]);
 
 
   useEffect(() => {
@@ -5435,7 +5445,7 @@ export default function VenueEntryPage({
       );
 
     const canUseFieldPractice = isFieldAdministrator || (hasActiveFieldRole && ["field_manager","assistant_manager","field_assistant","other_staff","referee"].includes(effectiveRole));
-    if (canUseFieldPractice && fieldSessionChoice === "choose") {
+    if (canUseFieldPractice && fieldSessionChoice === "choose" && fieldNavTarget?.page!=="actionLog") {
       return <FieldPracticeEntry key={`${venue.id}:${currentUser?.uid}:selector`}
         venue={venue} userId={currentUser?.uid} showSessionSelector
         onOfficial={()=>{setFieldSessionChoice("official");setVenuePage("landing");}}
@@ -5500,6 +5510,7 @@ export default function VenueEntryPage({
     if (venuePage === "videos") {
       const latestResult = (venueSeason?.results || []).at(-1) || null;
       const videoFixtureId =
+        videoFixtureFocus ||
         liveMatch?.fixtureId ||
         latestResult?.fixtureId ||
         nextFixture?.id ||
@@ -5507,21 +5518,23 @@ export default function VenueEntryPage({
       const videoMatchId = videoFixtureId && venueSeason?.id
         ? `venue__${venue.id}__${venueSeason.id}__${videoFixtureId}`
         : "";
-      const videoCurrentMatch = latestResult && videoFixtureId === latestResult.fixtureId
-        ? buildCurrentMatchFromFixture({
-            teamAId: latestResult.teamAId,
-            teamBId: latestResult.teamBId,
-          }, mappedTeams)
-        : currentMatch;
+      const selectedVideoFixture=(venueSeason?.fixtures||[]).find(f=>f.id===videoFixtureId);
+      const selectedVideoResult=[...(venueSeason?.results||[]),...(venueSeason?.matchDayHistory||[]).flatMap(d=>d.results||[])].find(r=>r.fixtureId===videoFixtureId);
+      const videoCurrentMatch=selectedVideoFixture?buildCurrentMatchFromFixture({teamAId:selectedVideoFixture.clubAId,teamBId:selectedVideoFixture.clubBId},mappedTeams):currentMatch;
 
       return (
         <VenueLeagueVideoHighlightsPage
+          initialMatchFilter={videoFixtureFocus?videoMatchId:''}
+          onSelectFixture={matchId=>{const fixture=(venueSeason?.fixtures||[]).find(f=>`venue__${venue.id}__${venueSeason.id}__${f.id}`===matchId);setVideoFixtureFocus(fixture?.id||'');}}
+          fixtureOptions={(venueSeason?.fixtures||[]).map(f=>({fixtureId:f.id,matchId:`venue__${venue.id}__${venueSeason.id}__${f.id}`,label:`${f.clubAName||f.clubAId} vs ${f.clubBName||f.clubBId}`,date:String(f.scheduledLocal||'').slice(0,10)}))}
+          canModerate={isFieldAdministrator||(hasActiveFieldRole&&effectiveRole==='referee')}
+          canComment={hasActiveFieldRole||isVenueOwner||['club_member','club_rep'].includes(effectiveRole)}
+          onAttachHighlightToClubChat={clip=>{setFormationChatDraft({kind:'highlight',clipId:clip.clipId||clip.id,venueId:venue.id,ownerUid:currentUser.uid,matchId:clip.matchId||videoMatchId,title:clip.title||'Match highlight',mediaUrl:clip.mediaUrl||clip.videoUrl||clip.downloadUrl,type:clip.normalizedType||clip.type||'highlight'});setVenuePage('chat');}}
           matchId={videoMatchId}
           activeClubId={venue.id}
           activeSeasonId={venueSeason?.id}
           currentMatchNo={
-            Number(liveMatch?.matchNo || latestResult?.matchNo ||
-              venueSeason?.currentMatchNo) || 1
+            Number(selectedVideoResult?.matchNo || (liveMatch?.fixtureId===videoFixtureId?liveMatch.matchNo:null) || venueSeason?.currentMatchNo) || 1
           }
           matchType="LEAGUE"
           gameFormat={venueSeason?.gameFormat || "5_V_5"}
@@ -5533,7 +5546,7 @@ export default function VenueEntryPage({
           teams={mappedTeams}
           currentMatch={videoCurrentMatch}
           members={[]}
-          onBack={() => setVenuePage("landing")}
+          onBack={() => setVenuePage(videoFixtureFocus?"fixtures":"landing")}
         />
       );
     }
@@ -5578,7 +5591,7 @@ export default function VenueEntryPage({
       );
     }
 
-    if (venuePage === "hireStock") return canAccessFieldSettings ? <FieldBibHire venueId={venue.id} manage/> : <p>Field management access is required.</p>;
+    if (venuePage === "hireStock") return canViewFieldBibStock ? <FieldBibHire venueId={venue.id} clubId={enteredIdentity?.role==='club_member'?enteredIdentity.clubId||'':''} season={venueSeason} manage/> : <p>Field management access is required.</p>;
 
     if (venuePage === "squads") {
       return <VenueSquadsPage venue={venue} season={venueSeason}
@@ -5623,6 +5636,7 @@ export default function VenueEntryPage({
     if (venuePage === "fixtures") {
       return (
         <VenueFixturesPage
+          onHighlights={fixtureId=>{setVideoFixtureFocus(fixtureId);setVenuePage("videos");}}
           onStandings={() => setVenuePage("stats")}
           onShareReport={draft=>{setFormationChatDraft(draft);setVenuePage("chat");}}
           venue={venue}
@@ -5727,6 +5741,7 @@ export default function VenueEntryPage({
         />
       )}
       <FieldPageWarmup venue={venue} season={venueSeason} clubId={(isClubRepresentative || effectiveRole==="club_member")?enteredIdentity?.clubId||"":""} canManageBanking={!isReadOnlyFieldRole&&(isVenueOwner||hasActiveFieldRole)}/>
+      {canOperateFieldMatch&&<FieldActivityNotice venueId={venue.id} onOpen={()=>setVenuePage("actionLog")}/>}
       <VenueLandingPage
         fieldSettingsOnly={venuePage === "settings" && canAccessFieldSettings}
         onSettingsBack={() => setVenuePage("landing")}
@@ -5848,17 +5863,19 @@ export default function VenueEntryPage({
 
             const timing = fieldFixtureStartTiming({season:venueSeason,fixture:nextFixture});
             let earlyStartConfirmed = false;
+            let earlyStartReason = "";
             if (timing.needsConfirmation) {
               const choice = await chooseFieldOfficialStart(timing.scheduledLocal);
               if (choice === "cancel") return;
               if (choice === "practice") {setPracticeStartRequest(value=>value+1);return;}
               earlyStartConfirmed = choice === "official";
+              if(earlyStartConfirmed){earlyStartReason=String(await fieldPrompt("Why are you starting Official play outside its scheduled time?")||'').trim();if(earlyStartReason.length<5)return;}
             }
             startStep = "Start Field fixture";
             await startVenueFixture({
               seasonId: venueSeason.id,
               venueId: venue?.id,
-              fixtureId, earlyStartConfirmed,
+              fixtureId, earlyStartConfirmed, earlyStartReason,
               controller: buildVenueRefereeController({
                 deviceId: getVenueRefereeDeviceId(),
                 identity: enteredIdentity,
@@ -7446,7 +7463,7 @@ export default function VenueEntryPage({
                     >
                       <label>Select player</label>
 
-                      <select
+                      <PremiumSelect
                         className="text-input"
                         value={profileMemberId}
                         onChange={(event) => {
@@ -7462,7 +7479,7 @@ export default function VenueEntryPage({
                             {member.fullName}
                           </option>
                         ))}
-                      </select>
+                      </PremiumSelect>
                     </div>
                   ) : null}
 
@@ -7770,7 +7787,7 @@ export default function VenueEntryPage({
 
                   <div className="field-column" style={{ marginTop: "0.9rem" }}>
                     <label>Select member</label>
-                    <select
+                    <PremiumSelect
                       className="text-input"
                       value={adminPrivilegesMemberId}
                       onChange={(event) => {
@@ -7788,7 +7805,7 @@ export default function VenueEntryPage({
                             : ""}
                         </option>
                       ))}
-                    </select>
+                    </PremiumSelect>
                   </div>
 
                   {adminPrivilegesMember && (
@@ -7963,7 +7980,7 @@ export default function VenueEntryPage({
 
                   <div className="field-column" style={{ marginTop: "0.9rem" }}>
                     <label>Select player</label>
-                    <select
+                    <PremiumSelect
                       className="text-input"
                       value={terminationMemberId}
                       onChange={(event) => {
@@ -7981,7 +7998,7 @@ export default function VenueEntryPage({
                           {member.fullName}
                         </option>
                       ))}
-                    </select>
+                    </PremiumSelect>
                   </div>
 
                   {terminationCandidate && (

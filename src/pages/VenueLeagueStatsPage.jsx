@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {fieldMatchStatEvents} from "../core/fieldDefensiveStats.mjs";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import "./VenueStatsToggles.css";
@@ -415,7 +416,7 @@ export default function VenueLeagueStatsPage({
             Previous
           </button>
           {seasonMode === "previous" && archivedSeasons.length > 1 && (
-            <select aria-label="Previous Field season"
+            <PremiumSelect aria-label="Previous Field season"
               value={selectedArchive?.id || ""}
               onChange={(event) => setSelectedArchiveId(event.target.value)}>
               {archivedSeasons.map((item) => (
@@ -424,7 +425,7 @@ export default function VenueLeagueStatsPage({
                     .toLocaleDateString()}
                 </option>
               ))}
-            </select>
+            </PremiumSelect>
           )}
         </div>
 
@@ -670,7 +671,7 @@ export default function VenueLeagueStatsPage({
                         <div className="tk-admin-grid">
                           <div>
                             <label className="tk-small-label">Scorer</label>
-                            <select className="tk-small-select" value={goalDraft.scorer}
+                            <PremiumSelect className="tk-small-select" value={goalDraft.scorer}
                               onChange={(event) => setGoalDraft((previous) => ({
                                 ...previous,
                                 scorer: event.target.value,
@@ -681,11 +682,11 @@ export default function VenueLeagueStatsPage({
                               {choices.map((name) => (
                                 <option key={name} value={name}>{name}</option>
                               ))}
-                            </select>
+                            </PremiumSelect>
                           </div>
                           <div>
                             <label className="tk-small-label">Assist</label>
-                            <select className="tk-small-select" value={goalDraft.assist}
+                            <PremiumSelect className="tk-small-select" value={goalDraft.assist}
                               onChange={(event) => setGoalDraft((previous) => ({
                                 ...previous, assist: event.target.value,
                               }))}>
@@ -694,17 +695,17 @@ export default function VenueLeagueStatsPage({
                                 .map((name) => (
                                   <option key={name} value={name}>{name}</option>
                                 ))}
-                            </select>
+                            </PremiumSelect>
                           </div>
                           <div>
                             <label className="tk-small-label">Type</label>
-                            <select className="tk-small-select" value="goal" disabled>
+                            <PremiumSelect className="tk-small-select" value="goal" disabled>
                               <option value="goal">goal</option>
-                            </select>
+                            </PremiumSelect>
                           </div>
                           <div>
                             <label className="tk-small-label">Club</label>
-                            <select className="tk-small-select" value={goalDraft.teamId}
+                            <PremiumSelect className="tk-small-select" value={goalDraft.teamId}
                               onChange={(event) => setGoalDraft((previous) => ({
                                 ...previous,
                                 teamId: event.target.value,
@@ -717,7 +718,7 @@ export default function VenueLeagueStatsPage({
                               <option value={result.teamBId}>
                                 {clubNames[result.teamBId] || result.teamBId}
                               </option>
-                            </select>
+                            </PremiumSelect>
                           </div>
                         </div>
                         {correctionError && (
@@ -864,11 +865,13 @@ export default function VenueLeagueStatsPage({
                                         "This will remove the match result and all linked scorer/assist events for that match."
                                       ));
                                       if (!ok) return;
+                                      const reason=await fieldPrompt("Why is this official result being reversed? (For example, practice recorded as official.)");
+                                      if(!reason||reason.trim().length<5)return;
                                       try {
                                         requireOfficialWrite();
       await deleteVenueRecordedMatch({
                                           venueId: venue.id,
-                                          fixtureId: resultId,
+                                          fixtureId: resultId, seasonId: season.id, reason: reason.trim(),
                                         });
                                         setExpandedResultId(null);
                                         setGoalDraft(null);
@@ -876,7 +879,7 @@ export default function VenueLeagueStatsPage({
                                         (await fieldAlert(error?.message || "Could not delete the match."));
                                       }
                                     }}>
-                                    Delete match
+                                    Reverse official match
                                   </button>
                                 </div>
                                 {goalDraft?.action === "add" &&

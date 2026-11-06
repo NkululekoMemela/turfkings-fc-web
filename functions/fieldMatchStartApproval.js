@@ -60,6 +60,8 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
           await import("./fieldMatchDayProgression.mjs");
         assertFieldMatchDayProgression({season, matchDayId: day.id});
         const earlyStartConfirmed = req.body?.earlyStartConfirmed === true;
+        const earlyStartReason=String(req.body?.earlyStartReason||'').trim().slice(0,300);
+        if(earlyStartConfirmed&&earlyStartReason.length<5)throw new Error('Give a short reason for starting outside the schedule.');
         const {assertFieldStartTiming} = await import("./fieldStartTiming.mjs");
         assertFieldStartTiming({season, fixture, confirmed: earlyStartConfirmed});
         const minimum = {
@@ -85,7 +87,7 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
         transaction.set(approvalRef, {
           venueId, seasonId, fixtureId, matchDayId: day.id,
           actorUid: user.uid, gameFormat: season.gameFormat,
-          earlyStartConfirmed, earlyStartConfirmedAtMs: earlyStartConfirmed ? Date.now() : null,
+          earlyStartConfirmed, earlyStartReason, earlyStartConfirmedAtMs: earlyStartConfirmed ? Date.now() : null,
           clubAId: fixture.clubAId, clubBId: fixture.clubBId,
           bookingVersions, squadVersions, squads, used: false,
           startingLineups, sourceFormations,

@@ -138,7 +138,7 @@ async function request(uid = "referee", headers = {authorization: "Bearer test"}
   };
   await approvalHandler({
     method: "POST", headers,
-    body: {venueId: "field-one", seasonId: "season-one", fixtureId: "fixture-one", earlyStartConfirmed: confirmed},
+    body: {venueId: "field-one", seasonId: "season-one", fixtureId: "fixture-one", earlyStartConfirmed: confirmed, earlyStartReason:confirmed?"Manager moved kickoff for pitch availability":""},
   }, res, {
     db,
     verifyToken: async (token, revoked) => {

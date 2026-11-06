@@ -1,5 +1,5 @@
 import {FieldRibbonContext} from "./FieldRibbonContext.jsx";
-import React, {useEffect, useId, useState} from "react";
+import React, {useEffect, useId, useState, useLayoutEffect, useRef} from "react";
 import "./FieldPageFrame.css";
 
 const titles = {
@@ -21,19 +21,26 @@ const titles = {
 };
 
 export default function FieldPageFrame({
-  venue, page = "landing", onHome, children, refereeMode = false,
+  venue, page = "landing", onHome, children, refereeMode = false, titleOverride = "", modeLabel = "LEAGUE MODE",
 }) {
+  const frameRef=useRef(null);
   const isRefereeView=page==="live"&&refereeMode;
   const [headerScrolled, setHeaderScrolled] = useState(false);
   const [ribbonHost, setRibbonHost] = useState(null);
   const ribbonId = useId().replace(/:/g, "");
-  const title = page === "landing"
+  const title = titleOverride || (page === "landing"
     ? venue?.name || "Your Field"
-    : titles[page] || "Field League";
+    : titles[page] || "Field League");
   const logo = venue?.branding?.logoUrl || venue?.logoUrl ||
     "/favicon_nobackground.png";
-  const modeLipLabel = "LEAGUE MODE";
+  const modeLipLabel = modeLabel;
   const modeLipDotColor = "#facc15";
+  useLayoutEffect(()=>{
+    const frame=frameRef.current,root=frame?.closest('.app-root');if(!root)return;
+    const measure=()=>{const css=getComputedStyle(root);frame.style.setProperty('--ribbon-left-gutter',css.paddingLeft);frame.style.setProperty('--ribbon-right-gutter',css.paddingRight);frame.style.setProperty('--ribbon-top-gutter',css.paddingTop);};
+    measure();const observer=new ResizeObserver(measure);observer.observe(root);window.addEventListener('resize',measure);return()=>{observer.disconnect();window.removeEventListener('resize',measure);};
+  },[]);
+
 
   useEffect(() => {
     const handleScroll = () => setHeaderScrolled(window.scrollY > 6);
@@ -46,7 +53,7 @@ export default function FieldPageFrame({
 
   return (
     <FieldRibbonContext.Provider value={isRefereeView ? null : ribbonHost}>
-    <div className={isRefereeView ? "field-referee-booth" : "field-ribbon-frame"} data-field-page={page}>
+    <div ref={frameRef} className={isRefereeView ? "field-referee-booth" : "field-ribbon-frame"} data-field-page={page}>
       {page !== "entry" && !isRefereeView && <div
         className={`landing-header-sticky ${
           headerScrolled ? "is-scrolled" : ""

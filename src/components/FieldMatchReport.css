@@ -209,3 +209,18 @@
 /* FANM closer player names */
 .field-match-report__portrait{margin-bottom:10px}
 .field-match-report__player-content:has(.field-match-report__event:nth-child(5)) .field-match-report__portrait{margin-bottom:20px}
+
+/* Event columns fill downwards before expanding right. */
+.field-match-report__badges{grid-template-columns:none;grid-template-rows:repeat(3,12px);grid-auto-flow:column;grid-auto-columns:max-content;gap:3px;}
+.field-match-report__score{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:6px;}
+.field-match-report__score-side{display:flex;align-items:center;justify-content:space-between;gap:5px;min-width:0;}
+.field-match-report__score-side:last-child{flex-direction:row-reverse;}
+.field-match-report__score-side>span{overflow-wrap:anywhere;}
+.field-match-report__score-side img{width:26px;height:26px;object-fit:contain;flex:none;}
+
+.field-match-report__player-content:has(.field-match-report__event:nth-child(3)) .field-match-report__portrait{margin-bottom:24px}
+
+.field-match-report__score-side{justify-content:flex-start;gap:5px;}
+.field-match-report__score-side img{width:23px;height:23px;}
+.field-match-report__tools{gap:5px;}
+.field-match-report__tools .field-match-report__highlights{width:auto;font-size:11px;padding:5px 8px;border-radius:16px;}

@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import React, {
   useEffect,
   useMemo,
@@ -463,7 +464,7 @@ export default function VenueStaffApprovalPanel({
               <label className="field-admin-notification-role">
                 Confirm Field role
 
-                <select
+                <PremiumSelect
                   required
                   value={selectedRole}
                   disabled={Boolean(busyId)}
@@ -485,7 +486,7 @@ export default function VenueStaffApprovalPanel({
                       {label}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </label>
 
               {error && (

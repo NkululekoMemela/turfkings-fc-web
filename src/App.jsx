@@ -1,3 +1,5 @@
+import {clubBrowseMode} from "./core/clubBrowseMode.mjs";
+import PremiumSelect from "./components/PremiumSelect.jsx";
 import {emptyClubState} from "./core/clubStateBoundary.mjs";
 import FieldRouteBoundary from "./components/FieldRouteBoundary.jsx";
 import FieldPracticeTimer from "./components/FieldPracticeTimer.jsx";
@@ -112,7 +114,7 @@ import {
   markScheduledFixtureCompleted,
 } from "./core/scheduledFixtures.js";
 
-import { db, auth } from "./firebaseConfig.js";
+import { db, auth, activeFirebaseProjectId } from "./firebaseConfig.js";
 import { clubCollectionPath, clubDocPath } from "./core/clubPaths.js";
 import { getPlayerPhotosCollection } from "./core/clubFirestorePaths.js";
 import {
@@ -2636,7 +2638,10 @@ export default function App() {
     loading: authLoading,
     signInWithGoogle,
   } = useAuth();
+  useEffect(()=>{if(nativeStartupReady&&authUser?.uid&&page===PAGE_LANDING)try{localStorage.removeItem(`fanm-last-field:${activeFirebaseProjectId}:${authUser.uid}`);}catch{}},[nativeStartupReady,page,authUser?.uid]);
 
+
+  const [clubBrowseChoice,setClubBrowseChoice]=useState(null);
   const [sessionMode, setSessionMode] = useState("official");
   const [practiceRuntime, setPracticeRuntime] = useState(null);
   const [practiceBootstrapping, setPracticeBootstrapping] = useState(false);
@@ -2790,6 +2795,12 @@ export default function App() {
       return;
     }
 
+    let lastField='';try{lastField=localStorage.getItem(`fanm-last-field:${activeFirebaseProjectId}:${authUser.uid}`)||'';}catch{}
+    if(/^[A-Za-z0-9_-]{1,150}$/.test(lastField)&&authUser.emailVerified){
+      import('firebase/firestore').then(async({getDoc,getDocFromCache,doc})=>{const ref=doc(db,'leagueVenues',lastField);let snapshot;try{snapshot=await getDocFromCache(ref);}catch{}if(!snapshot?.exists())snapshot=await Promise.race([getDoc(ref),new Promise((_,reject)=>setTimeout(()=>reject(Error('Field connection timed out.')),5000))]);if(auth.currentUser?.uid!==authUser.uid)return;if(snapshot.exists()&&!snapshot.data().deleted){setPortalOriginClubId('');setSelectedLeagueVenue({...snapshot.data(),id:snapshot.id});setPage(PAGE_VENUE_ENTRY);}else setPage(PAGE_ENTRY);}).catch(()=>setPage(PAGE_ENTRY)).finally(()=>setNativeStartupReady(true));
+      return;
+    }
+
     const storedEmail = String(identity?.email || "")
       .trim()
       .toLowerCase();
@@ -2933,7 +2944,7 @@ export default function App() {
           }
           return;
         }
-        if (data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" || data.type === "field_match_day_squads" ||
+        if (data.type === "field_audit" || data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" || data.type === "field_match_day_squads" ||
             data.type === "field_manager_approval" || data.type === "field_story" || data.type === "field_poll" || data.type === "field_winners_story_request") {
           const venueId = String(data.venueId || "").trim();
           if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
@@ -2962,7 +2973,7 @@ export default function App() {
             setShowSessionSelector(false);
             setPortalOriginClubId("");
             setFieldNavTarget({
-              page: data.type==="field_match_day_squads" ? "squads" : ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
+              page: data.type==="field_audit" ? "actionLog" : data.type==="field_match_day_squads" ? "squads" : ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
               privateChat:data.type==="field_club_chat"?{clubId:String(data.clubId||""),openedAt:Date.now()}:null,
               entryRequest:["field_chat","field_club_chat"].includes(data.type)?{
                 venueId,privateClubId:data.type==="field_club_chat"?String(data.clubId||""):"",
@@ -4368,6 +4379,11 @@ export default function App() {
   const isAdmin = activeRole === "admin";
   const isCaptain = activeRole === "captain";
   const canChooseSessionMode = isAdmin || isCaptain;
+  const publishedMatchType=matchType;
+  const browseMatchType=clubBrowseMode({published:publishedMatchType,choice:clubBrowseChoice,clubId:activeClubId,uid:authUser?.uid,canManage:isAdmin||isCaptain});
+  matchType=browseMatchType;
+  if(!isAdmin&&!isCaptain&&browseMatchType!==publishedMatchType&&browseMatchType===MATCH_TYPE.FRIENDLY){matchMode='round_robin';scheduledTarget=null;scheduledFixtures=[];}
+  const browseClubMode=value=>{if(isAdmin||isCaptain||![MATCH_TYPE.LEAGUE,MATCH_TYPE.FRIENDLY].includes(value))return;setClubBrowseChoice({clubId:activeClubId,uid:authUser?.uid,value});};
 
   const practiceCreditRecipients = useMemo(() => {
     if (!canChooseSessionMode) return [];
@@ -5471,6 +5487,7 @@ export default function App() {
   };
 
   const applyMatchTypeChange = (nextMatchType) => {
+    if(!isAdmin&&!isCaptain)return;
     const safeMatchType =
       normalizeMatchMode(nextMatchType, MATCH_TYPE.FRIENDLY) === MATCH_TYPE.LEAGUE
         ? MATCH_TYPE.LEAGUE
@@ -8917,7 +8934,7 @@ export default function App() {
                     eligible admin or captain in this club.
                   </div>
 
-                  <select
+                  <PremiumSelect
                     value={practiceCreditRecipientId}
                     disabled={practiceCreditTransferPending}
                     onChange={(event) => {
@@ -8942,7 +8959,7 @@ export default function App() {
                           : ""}
                       </option>
                     ))}
-                  </select>
+                  </PremiumSelect>
 
                   {practiceCreditRecipients.length === 0 && (
                     <div
@@ -10017,7 +10034,8 @@ export default function App() {
           results={fullResults}
           streaks={streaks}
           hasLiveMatch={hasLiveMatch}
-          matchType={matchType}
+          matchType={browseMatchType}
+          onBrowseMatchType={browseClubMode}
           gameFormat={gameFormat}
           matchSeconds={matchSeconds}
           defaultMatchSeconds={defaultMatchSeconds}
@@ -10303,7 +10321,7 @@ export default function App() {
           canPreviewPreviousSeasonUI={canPreviewPreviousSeasonUI}
           isAdmin={isAdmin}
           identity={pageIdentity}
-          matchType={matchType}
+          matchType={browseMatchType}
           isPracticeMode={isPracticeMode}
           dataScope={footballDataScope}
         />
@@ -10342,12 +10360,12 @@ export default function App() {
           isCaptain={isCaptain}
           isPlayer={isPlayer}
           members={members}
-          teams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
+          teams={browseMatchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
           friendlyTeams={
             isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
           }
           currentMatch={effectiveLiveMatch}
-          matchType={matchType}
+          matchType={browseMatchType}
           gameFormat={gameFormat}
           activeSeasonId={activeSeasonId}
           currentMatchNo={activeMatchNo}
@@ -10573,7 +10591,7 @@ export default function App() {
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
           onBack={handleBackToLanding}
           onGoToSquads={handleGoToSquads}
-          matchType={matchType}
+          matchType={browseMatchType}
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
         />
@@ -11645,7 +11663,7 @@ export default function App() {
           isAdminViewer={isAdmin}
           activeSeasonId={activeSeasonId}
           currentMatchNo={currentMatchNo}
-          matchType={matchType}
+          matchType={browseMatchType}
           gameFormat={gameFormat}
           members={members}
           nativeOpenRequest={nativeChatOpenRequest}
@@ -11671,7 +11689,7 @@ export default function App() {
         fieldNav.page !== "chat" && (
           <>
             <FieldBottomNav
-              canAccessSettings={fieldNav.canAccessSettings === true}
+              canAccessSettings={fieldNav.canAccessSettings === true} canViewBibStock={fieldNav.canViewBibStock === true}
               currentPage={fieldNav.page}
               onNavigate={(target) =>
                 setFieldNavTarget({ page: target, id: Date.now() })

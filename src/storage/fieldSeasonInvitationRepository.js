@@ -19,7 +19,12 @@ export async function announceFieldSeason({
   signupClosesOn, minimumClubs, prizeIncreasePerClub,
   startTime = "18:00", matchMinutes = 40,
   halftimeMinutes = 5, turnaroundMinutes = 5,
+  fixtureLegs = 2, singleLegConfirmed = false,
 }) {
+  const legs = Number(fixtureLegs);
+  if (![1, 2].includes(legs) || (legs === 1 && singleLegConfirmed !== true)) {
+    throw new Error("Confirm that each Club will play every opponent only once.");
+  }
   const duration = Number(matchMinutes);
   const halftime = Number(halftimeMinutes);
   const turnaround = Number(turnaroundMinutes);
@@ -102,6 +107,9 @@ export async function announceFieldSeason({
       throw new Error("This season is already announced or has match records.");
     }
 
+    if ((existing?.fixtures || []).length) {
+      throw new Error("This draft already has fixtures. Review or clear its draft schedule before announcing a new league format.");
+    }
     const invitations = {};
     clubIds.forEach((clubId, index) => {
       const membership = membershipSnapshots[index].data();
@@ -126,11 +134,14 @@ export async function announceFieldSeason({
         id: existing?.id || seasonId,
         name: title,
         startsOn: date,
+        fixtureLegs: legs,
+        fixtureFormatConfirmedByUid: user.uid,
+        fixtureFormatConfirmedAtMs: Date.now(),
         scheduleVersion: 1,
         scheduleSettings: {
           startTime, matchMinutes: duration,
           halftimeMinutes: halftime, turnaroundMinutes: turnaround,
-          intervalDays: 7,
+          intervalDays: 7, legs,
         },
         matchSeconds: duration * 60,
         entryFee: Math.round(fee * 100) / 100,

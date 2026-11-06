@@ -30,7 +30,7 @@ function Player({player,photos={}}){
   <span className="field-match-report__name" title={player.name}><span><CompactPlayerNumber number={player.number} disabled name={player.name}/>{firstName}</span>{surname.length>0&&<span>{surname.join(' ')}</span>}</span>
  </div>;
 }
-export default function FieldMatchReport({season,resultId,teams=[],venueId,onShareReport,onStandings,onClose}){
+export default function FieldMatchReport({season,resultId,teams=[],venueId,onShareReport,onStandings,onHighlights,onClose}){
  const model=useMemo(()=>buildFieldMatchReport({season,resultId}),[season,resultId]);
  const [photos,setPhotos]=useState({}),[photoError,setPhotoError]=useState(false);
  const close=useRef(null),dialog=useRef(null),capture=useRef(null);
@@ -61,11 +61,11 @@ export default function FieldMatchReport({season,resultId,teams=[],venueId,onSha
  const identity=side=>teams.find(t=>t.id===side.clubId)||{};
  const band=side=>{const team=identity(side),logo=team.transparentLogoUrl||team.branding?.logoUrl||team.logoUrl||team.logo;return <div className="field-match-report__team"><strong>{typeof logo==="string"&&logo&&<img src={logo} alt="" onError={e=>{e.currentTarget.style.display="none";}}/>}{side.name}</strong><span>{side.formationId||'Recorded lineup'}</span></div>;};
  return createPortal(<div className="field-match-report__overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><section ref={dialog} className="field-match-report" role="dialog" aria-modal="true" aria-labelledby="field-match-report-title">
-  <header><h2 id="field-match-report-title">Match lineups</h2><div className="field-match-report__tools">{onStandings&&<button type="button" className="field-match-report__standings" onClick={()=>{onClose();onStandings();}}>Standings</button>}{onShareReport&&venueId&&<button type="button" aria-label="Attach match recap to chat" title="Attach match recap to chat" disabled={sharing} onClick={attachToChat}>{sharing?'…':'💬'}</button>}<button ref={close} type="button" onClick={onClose} aria-label="Close match lineups">×</button></div></header>
+  <header><h2 id="field-match-report-title">Match lineups</h2><div className="field-match-report__tools">{onStandings&&<button type="button" className="field-match-report__standings" onClick={()=>{onClose();onStandings();}}>Standings</button>}{onHighlights&&model&&<button type="button" className="field-match-report__highlights" onClick={()=>{onClose();onHighlights(model.result.fixtureId||resultId);}}>Highlights</button>}{onShareReport&&venueId&&<button type="button" aria-label="Attach match recap to chat" title="Attach match recap to chat" disabled={sharing} onClick={attachToChat}>{sharing?'…':'💬'}</button>}<button ref={close} type="button" onClick={onClose} aria-label="Close match lineups">×</button></div></header>
   {shareError&&<p role="alert" className="field-match-report__share-error">{shareError}</p>}
   {!model?<p>This match result is no longer available.</p>:<>
    <div className="field-match-report__capture" ref={capture}>
-   <div className="field-match-report__score"><span>{model.sides[0].name}</span><strong>{model.result.goalsA} – {model.result.goalsB}<small>FULL TIME</small></strong><span>{model.sides[1].name}</span></div>
+   <div className="field-match-report__score">{[0,1].map((index)=><React.Fragment key={index}>{index===1&&<strong>{model.result.goalsA} – {model.result.goalsB}<small>FULL TIME</small></strong>}<span className="field-match-report__score-side"><span>{model.sides[index].name}</span>{(()=>{const t=identity(model.sides[index]);const logo=t.transparentLogoUrl||t.branding?.logoUrl||t.logoUrl||t.logo;return typeof logo==='string'&&logo?<img src={logo} alt="" onError={e=>{e.currentTarget.style.visibility='hidden';}}/>:null;})()}</span></React.Fragment>)}</div>
    {band(model.sides[0])}
    <div className="field-match-report__pitch" aria-label="Full pitch with both recorded team lineups">
     <div className="field-match-report__half-line"/><div className="field-match-report__centre"/><div className="field-match-report__box is-top"/><div className="field-match-report__box is-bottom"/>

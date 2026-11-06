@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
 
 import React, {useEffect, useRef, useState} from "react";
@@ -186,12 +187,12 @@ export default function VenueLostFoundPage({
         <form className="lf-form" onSubmit={submit}>
           <div className="lf-form-row">
             <label>Item type
-              <select name="itemType" value={category}
+              <PremiumSelect name="itemType" value={category}
                 onChange={event => setCategory(event.target.value)}>
                 {["Footwear", "Clothing", "Bag", "Phone", "Keys", "Jewellery",
                   "Sports equipment", "Other"].map(value =>
                   <option key={value}>{value}</option>)}
-              </select>
+              </PremiumSelect>
             </label>
             <label>What is the item?
               <input name="description" required minLength={3} maxLength={160}
@@ -278,7 +279,7 @@ export default function VenueLostFoundPage({
             {canManage && open && <>
               {["pending", "responded"].includes(claim.status) && <div className="lf-review">
                 <label>Item matching this description
-                  <select value={selected[claim.id] || ""}
+                  <PremiumSelect value={selected[claim.id] || ""}
                     onChange={event => setSelected(current => ({
                       ...current, [claim.id]: event.target.value,
                     }))}>
@@ -286,7 +287,7 @@ export default function VenueLostFoundPage({
                     {options.map(item => <option key={item.id} value={item.id}>
                       {item.description} · {item.date} · {item.place}
                     </option>)}
-                  </select>
+                  </PremiumSelect>
                 </label>
                 <div className="lf-actions">
                   {selected[claim.id] && <button className="secondary-btn"

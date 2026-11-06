@@ -10,10 +10,11 @@ const items = [
   { key: "videos", image: "/videotape.png", label: "Videos" },
   { key: "hireStock", emoji: "👕", label: "Bib Stock" },
   { key: "settings", emoji: "⚙️", label: "Settings" },
+  { key: "actionLog", emoji: "📋", label: "Activity" },
 ];
 
-export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false }) {
-  const visibleItems = items.filter(item => !["settings","hireStock"].includes(item.key) || canAccessSettings);
+export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false, canViewBibStock = false }) {
+  const visibleItems = items.filter(item => item.key==="hireStock" ? canAccessSettings||canViewBibStock : !["settings","actionLog"].includes(item.key) || canAccessSettings);
   const navScroller = useRef(null);
   const [isHidden,setIsHidden]=useState(false);
   useEffect(() => {

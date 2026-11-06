@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import React from "react";
 
 export const TEAM_COLOUR_OPTIONS = [
@@ -161,7 +162,7 @@ export default function TeamIdentityEditor({
               aria-hidden="true"
             />
 
-            <select
+            <PremiumSelect
               className={
                 compact
                   ? "squad-preview-colour-select"
@@ -182,7 +183,7 @@ export default function TeamIdentityEditor({
                   </option>
                 )
               )}
-            </select>
+            </PremiumSelect>
           </span>
         </label>
       ) : null}

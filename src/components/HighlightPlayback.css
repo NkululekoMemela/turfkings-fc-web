@@ -40,3 +40,11 @@
 .fanm-clip-options-content .tkh-btn{padding:11px 14px!important;min-height:42px!important;font-size:.8rem!important;color:#e2f3e8;background:#123b3c;border:1px solid #8aaea555;border-radius:12px;cursor:pointer;margin:3px 0}
 .fanm-clip-options-content .fanm-clip-details{border-top:1px solid #a2c7b733;padding-top:12px;margin-top:12px;font-size:.8rem;color:#bcd5c7}.fanm-clip-options-content .fanm-clip-details h3{font-size:.8rem;color:#e1f1e7;margin:0 0 8px}.fanm-clip-options-content .fanm-clip-details p{font-size:.75rem;line-height:1.65;margin:8px 0}
 @media(min-width:641px){.video-highlights-page .fanm-clip-preview{max-height:260px}.fanm-clip-options-backdrop{align-items:center}}
+
+/* Keep social controls clear of the bottom video watermark. */
+.video-highlights-page .tkh-card .fanm-clip-social{bottom:30px!important;}
+
+.fanm-highlight-fixture-filter{display:grid;gap:7px;margin:14px 0;font-size:12px;font-weight:700;color:#b9dcd5;}
+.fanm-highlight-fixture-heading{grid-column:1/-1;margin:14px 0 2px;padding:8px 0;border-bottom:1px solid #83b3b63d;font-size:14px;color:#e7f7f2;}
+
+.video-highlights-page .tkh-card .fanm-clip-social,.fanm-clip-options-toggle{z-index:41;}

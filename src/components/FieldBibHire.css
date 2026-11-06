@@ -25,3 +25,35 @@ body .hire-stock-address input{width:100%;box-sizing:border-box;min-height:44px;
 body .hire-stock-note{display:block;margin-top:10px;color:#aebfd2;font-size:12px;line-height:1.5;}
 .field-hire-reservations{margin-top:20px;padding-top:16px;border-top:1px solid #7895ac33;}
 .field-hire-reservations article{padding-block:12px;border-bottom:1px solid #7895ac22;}
+
+.field-bib-inventory{display:grid;gap:20px;}
+.field-bib-inventory>section{border:1px solid #8bbdb52e;background:linear-gradient(145deg,#102b34,#101a2c);border-radius:18px;padding:12px;min-width:0;}
+.bib-inventory-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;}
+.bib-inventory-title h4{font-size:15px;margin:0;color:#edf9f5;}
+.bib-inventory-title small{font-size:11px;color:#a9cfc5;}
+.bib-inventory-title button{font-size:11px;padding:6px 9px;min-height:30px;}
+.bib-inventory-scroll{overflow-x:auto;border:1px solid #95c5ba26;border-radius:12px;}
+.bib-inventory-table{border-collapse:collapse;width:100%;font-size:11px;color:#e7f6f1;}
+.bib-inventory-table thead{background:#153d43;color:#bce3d7;}
+.bib-inventory-table th,.bib-inventory-table td{padding:10px 5px;border-bottom:1px solid #88bdb520;text-align:center;}
+.bib-inventory-table th:first-child{text-align:left;}
+.bib-inventory-table tbody tr:last-child>*{border-bottom:0;}
+.bib-inventory-table tbody tr:nth-child(even){background:#82c9ba06;}
+.bib-inventory-colour{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-weight:650;}
+.bib-inventory-colour i{display:inline-block;width:11px;height:11px;border-radius:50%;border:1px solid #d6eee380;flex:none;}
+.bib-inventory-table input{width:30px;min-width:0;padding:6px 1px;border-radius:6px;border:1px solid #6caba34d;background:#091b25;color:white;text-align:center;font:inherit;box-sizing:border-box;}
+.bib-inventory-edit{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:12px;}
+.bib-inventory-edit>.primary-btn{grid-column:1/-1;}
+.bib-inventory-edit button{font-size:12px;padding:8px 10px;}
+.bib-assignment-table{font-size:12px;}
+.bib-assignment-table th,.bib-assignment-table td{padding:12px 7px;}
+.bib-assignment-table tbody th{font-weight:650;min-width:82px;}
+.field-bib-hire>.hire-stock-toolbar{margin-bottom:16px;}
+
+.bib-stock-tools{display:flex;gap:6px;}
+.bib-returns-overlay{position:fixed;inset:0;z-index:32000;background:#020817bd;display:grid;place-items:center;padding:18px;}
+.bib-returns-overlay>section{width:min(440px,100%);max-height:80dvh;overflow:auto;background:linear-gradient(145deg,#143b3b,#0c182b);border:1px solid #8abebd66;border-radius:20px;padding:18px;box-sizing:border-box;}
+.bib-returns-overlay header{display:flex;justify-content:space-between;align-items:center;gap:12px;}
+.bib-returns-overlay header button{border:0;background:transparent;color:white;font-size:24px;}
+.bib-returns-overlay article{padding:14px 0;border-top:1px solid #8bbdb52e;margin-top:14px;}
+.bib-returns-overlay article p{font-size:12px;line-height:1.6;color:#a8c9c0;}

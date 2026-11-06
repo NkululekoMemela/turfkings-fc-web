@@ -1,3 +1,5 @@
+import {highlightFixtureId,groupHighlightFixtures,highlightFixtureOptions,highlightMatchesMode} from "../core/highlightFixtures.mjs";
+import PremiumSelect from "../components/PremiumSelect.jsx";
 // src/pages/VideoHighlightsPage.jsx
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1880,7 +1882,7 @@ function TopShelfAwardsWatch({
 }
 
 export function VideoHighlightsPage({
-  matchId,
+  matchId, initialMatchFilter="", fixtureOptions=[],
   activeClubId = "turf-kings",
   activeSeasonId = null,
   currentMatchNo = 1,
@@ -1901,20 +1903,22 @@ export function VideoHighlightsPage({
   onAttachHighlightToClubChat,
   onBack,
 }) {
+  const [fixtureFilter,setFixtureFilter]=useState(initialMatchFilter);
+  useEffect(()=>{setFixtureFilter(initialMatchFilter||'');if(initialMatchFilter){setMainTab('currentWeek');setSelectedTab('approved');}},[initialMatchFilter]);
   const fileInputRef = useRef(null);
   const categorySelectorRef = useRef(null);
   const stickyCategoryTimerRef = useRef(null);
 
   const resolvedMatchId = useMemo(
     () =>
-      String(matchId || "").trim() ||
+      String(fixtureFilter || matchId || "").trim() ||
       buildFallbackMatchId({
         matchType,
         gameFormat,
         activeSeasonId,
         currentMatchNo,
       }),
-    [matchId, matchType, gameFormat, activeSeasonId, currentMatchNo]
+    [fixtureFilter, matchId, matchType, gameFormat, activeSeasonId, currentMatchNo]
   );
 
   const [firebaseHighlights, setFirebaseHighlights] = useState([]);
@@ -2339,76 +2343,7 @@ export function VideoHighlightsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedMatchId, activeClubId]);
 
-  useEffect(() => {
-    if (loadingHighlights) return undefined;
-
-    let cancelled = false;
-    let finished = false;
-    let fallbackTimer = null;
-
-    const frame = window.requestAnimationFrame(() => {
-      const videos = Array.from(
-        document.querySelectorAll(
-          ".video-highlights-page .fanm-clip-preview"
-        )
-      ).slice(0, 3);
-
-      if (videos.length === 0) {
-        setPreviewLoadStatus("Highlights ready");
-        setClipPreviewsReady(true);
-        return;
-      }
-
-      let settledCount = 0;
-
-      const finish = () => {
-        if (cancelled || finished) return;
-        finished = true;
-        setPreviewLoadStatus("Your highlights are ready");
-        setClipPreviewsReady(true);
-      };
-
-      const settleVideo = () => {
-        settledCount += 1;
-
-        if (!cancelled && settledCount < videos.length) {
-          setPreviewLoadStatus(
-            `Preparing preview ${settledCount + 1} of ${videos.length}…`
-          );
-        }
-
-        if (settledCount >= videos.length) finish();
-      };
-
-      setPreviewLoadStatus(
-        `Preparing preview 1 of ${videos.length}…`
-      );
-
-      videos.forEach((video) => {
-        if (video.readyState >= 2) {
-          settleVideo();
-          return;
-        }
-
-        video.preload = "auto";
-        video.addEventListener("loadeddata", settleVideo, {
-          once: true,
-        });
-        video.addEventListener("error", settleVideo, {
-          once: true,
-        });
-        video.load();
-      });
-
-      fallbackTimer = window.setTimeout(finish, 12000);
-    });
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-      if (fallbackTimer) window.clearTimeout(fallbackTimer);
-    };
-  }, [loadingHighlights]);
+  useEffect(()=>{if(!loadingHighlights){setPreviewLoadStatus("Highlights ready");setClipPreviewsReady(true);}},[loadingHighlights]);
 
   useEffect(() => {
     if (splashDismissed) return undefined;
@@ -2438,6 +2373,7 @@ export function VideoHighlightsPage({
 
     return combined
       .map((highlight, index) => normalizeHighlight(highlight, index))
+      .filter(highlight=>highlightMatchesMode(highlight,matchType))
       .filter((highlight) => {
         const key = String(highlight?.id || highlight?.clipId || "").trim();
         if (!key) return true;
@@ -2446,7 +2382,7 @@ export function VideoHighlightsPage({
         return true;
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [currentMatchDayHighlights, firebaseHighlights, localHighlights]);
+  }, [currentMatchDayHighlights, firebaseHighlights, localHighlights,matchType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2864,6 +2800,8 @@ export function VideoHighlightsPage({
     return scopedApprovedHighlights;
   }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
 
+  const fixtureChoices=useMemo(()=>highlightFixtureOptions([...allHighlights,...archivedHighlights],fixtureOptions,clip=>getMatchupLabel(clip,teams,matchType),resolvedMatchId),[allHighlights,archivedHighlights,fixtureOptions,teams,matchType,resolvedMatchId]);
+  const fixtureLabel=clip=>{const entry=fixtureChoices.find(f=>f.matchId===highlightFixtureId(clip,resolvedMatchId));return [entry?.label||'Match highlights',entry?.date].filter(Boolean).join(' · ');};
   const visibleHighlights = useMemo(() => {
     const isThrowbackClip = (item) =>
       item?.highlightEra === "throwback" ||
@@ -2936,6 +2874,10 @@ export function VideoHighlightsPage({
       return false;
     });
 
+    if(fixtureFilter){
+      const candidates=[...allHighlights,...archivedHighlights].filter(item=>highlightMatchesMode(item,matchType));
+      filtered=[...new Map(candidates.filter(item=>highlightFixtureId(item,resolvedMatchId)===fixtureFilter&&(selectedTab==='approved'?item.status==='approved'||item.status==='archived'||item.archivedClubFeed:isModerator&&item.status===selectedTab)).map(item=>[`${highlightFixtureId(item,resolvedMatchId)}:${item.clipId||item.id}`,item])).values()];
+    }
     if (selectedFilter !== "all") {
       filtered = filtered.filter(
         (item) => item.normalizedType === selectedFilter
@@ -2966,9 +2908,9 @@ export function VideoHighlightsPage({
       });
     }
 
-    return filtered;
+    return groupHighlightFixtures(filtered,fixtureFilter,resolvedMatchId);
   }, [
-    tabHighlights,
+    tabHighlights,fixtureFilter,allHighlights,archivedHighlights,selectedTab,isModerator,matchType,
     selectedFilter,
     selectedPlayerFilter,
     watchedFilter,
@@ -3532,21 +3474,23 @@ export function VideoHighlightsPage({
   };
 
   const handleDelete = async (highlight) => {
-    const confirmed = window.confirm("Delete this highlight permanently?");
+    const confirmed = window.confirm("Permanently delete this video and its stored file? This cannot be undone.");
     if (!confirmed) return;
 
     try {
       removeLocalHighlight(highlight);
 
-      if (resolvedMatchId && highlight?.clipId) {
+      if ((highlight?.matchId || resolvedMatchId) && highlight?.clipId) {
         await VideoHighlightsRepository.deleteRawHighlightFromFirebase({
-          matchId: resolvedMatchId,
+          matchId: highlight.matchId || resolvedMatchId,
+          clubId: activeClubId,
           clipId: highlight.clipId,
           storagePath: highlight.storagePath,
         });
       }
 
       await onDeleteHighlight?.(highlight);
+      await loadHighlights();
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Delete failed:", error);
       window.alert(error?.message || "Could not delete this highlight.");
@@ -3827,23 +3771,12 @@ export function VideoHighlightsPage({
       setRunningCuration(true);
       setCurationNotice("");
 
-      const result = await VideoHighlightsRepository.runVideoHighlightCuration({
-        matchId: resolvedMatchId,
-        highlights: approvedHighlights,
-        votesByUser: localVotesByUser,
-        curationMeta: {
-          matchType,
-          gameFormat,
-          activeSeasonId,
-          currentMatchNo,
-          teamContextText,
-        },
-      });
+      const {getActiveFirebaseFunctionsBaseUrl,auth}=await import('../firebaseConfig.js');
+      const user=auth.currentUser;if(!user?.emailVerified)throw Error('Sign in with your verified account.');
+      const response=await fetch(`${getActiveFirebaseFunctionsBaseUrl()}/closeHighlightWeek`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({kind:'club',ownerId:activeClubId,matchId:resolvedMatchId}),signal:AbortSignal.timeout(180000)});
+      const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'Could not close weekly voting.');
+      await loadHighlights();setCurationResult(null);setMainTab('winners');setCurationNotice('Weekly voting closed. Winners are preserved. Non-winning videos have been permanently deleted.');
 
-      setCurationResult(result);
-      setMainTab("currentWeek");
-      setSelectedTab("approved");
-      setSelectedFilter("all");
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Curation failed:", error);
       window.alert(error?.message || "Could not run curation.");
@@ -5680,11 +5613,12 @@ export function VideoHighlightsPage({
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
-                . Winners advance; non-winners become deletion-eligible.
+                . Winners advance. Non-winning clips are permanently deleted when weekly voting closes.
               </div>
             </section>
           )}
 
+        {(mainTab==='currentWeek'||mainTab==='throwback')&&<label className="fanm-highlight-fixture-filter">Match<PremiumSelect aria-label="Choose match highlights" value={fixtureFilter} onChange={event=>setFixtureFilter(event.target.value)}><option value="">All matches</option>{fixtureChoices.map(f=><option key={f.matchId} value={f.matchId}>{f.label}{f.date?' · '+f.date:''}</option>)}</PremiumSelect></label>}
         {(mainTab === "currentWeek" || mainTab === "throwback") && (
           <div className="tkh-feed-toolbar">
             <div className="tkh-filter-summary">
@@ -5735,7 +5669,7 @@ export function VideoHighlightsPage({
                 {isModerator && (
                   <label className="tkh-compact-select-label">
                     Review status
-                    <select
+                    <PremiumSelect
                       className="tkh-compact-select"
                       value={selectedTab}
                       onChange={(event) =>
@@ -5747,13 +5681,13 @@ export function VideoHighlightsPage({
                       {rejectedHighlights.length > 0 && (
                         <option value="rejected">Rejected</option>
                       )}
-                    </select>
+                    </PremiumSelect>
                   </label>
                 )}
 
                 <label className="tkh-compact-select-label">
                   Moment
-                  <select
+                  <PremiumSelect
                     className="tkh-compact-select"
                     value={selectedFilter}
                     onChange={(event) =>
@@ -5767,12 +5701,12 @@ export function VideoHighlightsPage({
                         </option>
                       )
                     )}
-                  </select>
+                  </PremiumSelect>
                 </label>
 
                 <label className="tkh-compact-select-label">
                   Player
-                  <select
+                  <PremiumSelect
                     className="tkh-compact-select"
                     value={selectedPlayerFilter}
                     onChange={(event) =>
@@ -5785,12 +5719,12 @@ export function VideoHighlightsPage({
                         {name}
                       </option>
                     ))}
-                  </select>
+                  </PremiumSelect>
                 </label>
 
                 <label className="tkh-compact-select-label">
                   Viewed
-                  <select
+                  <PremiumSelect
                     className="tkh-compact-select"
                     value={watchedFilter}
                     onChange={(event) =>
@@ -5800,7 +5734,7 @@ export function VideoHighlightsPage({
                     <option value="all">All clips</option>
                     <option value="unwatched">Not watched</option>
                     <option value="watched">Watched</option>
-                  </select>
+                  </PremiumSelect>
                 </label>
               </div>
             )}
@@ -5920,7 +5854,8 @@ export function VideoHighlightsPage({
                     isThrowback && !previousWasThrowback;
 
                   return (
-                    <React.Fragment key={highlight.id}>
+                    <React.Fragment key={`${highlightFixtureId(highlight,resolvedMatchId)}:${highlight.id}`}>
+                      {(!previous||highlightFixtureId(previous,resolvedMatchId)!==highlightFixtureId(highlight,resolvedMatchId))&&<h3 className="fanm-highlight-fixture-heading">{fixtureLabel(highlight)}</h3>}
                       {shouldShowThrowbackDivider && (
                         <div className="tkh-throwback-divider">
                           <strong>Throwback ✨</strong>
@@ -6253,7 +6188,7 @@ export function VideoHighlightsPage({
 
               <label className="tkh-field">
                 <span>Clip type</span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editClipType}
                   onChange={(event) =>
@@ -6266,7 +6201,7 @@ export function VideoHighlightsPage({
                   <option value="skill">✨ Skill</option>
                   <option value="momish">😂 MOM-ish</option>
                   <option value="other">🎥 Other</option>
-                </select>
+                </PremiumSelect>
               </label>
 
               <label className="tkh-field">
@@ -6298,7 +6233,7 @@ export function VideoHighlightsPage({
 
               <label className="tkh-field">
                 <span>Player's team</span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editPlayerTeamName}
                   onChange={(event) =>
@@ -6314,7 +6249,7 @@ export function VideoHighlightsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </label>
 
               <label className="tkh-field">
@@ -6323,7 +6258,7 @@ export function VideoHighlightsPage({
                     ? "League Team A"
                     : "Match Team A"}
                 </span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editTeamAName}
                   onChange={(event) =>
@@ -6337,7 +6272,7 @@ export function VideoHighlightsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </label>
 
               <label className="tkh-field">
@@ -6346,7 +6281,7 @@ export function VideoHighlightsPage({
                     ? "League Team B"
                     : "Match Team B"}
                 </span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editTeamBName}
                   onChange={(event) =>
@@ -6360,7 +6295,7 @@ export function VideoHighlightsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </label>
 
               <datalist id="tkh-edit-player-options">
@@ -6503,13 +6438,13 @@ export function VideoHighlightsPage({
 
               <div className="tkh-field">
                 <label>Type</label>
-                <select className="tkh-select" value={clipType} onChange={(e) => setClipType(e.target.value)} disabled={uploading}>
+                <PremiumSelect className="tkh-select" value={clipType} onChange={(e) => setClipType(e.target.value)} disabled={uploading}>
                   <option value="goal">⚽ Goal</option>
                   <option value="save">🧤 Save</option>
                   <option value="skill">✨ Skill</option>
                   <option value="momish">😂 MOM-ish</option>
                   <option value="other">🎥 Other</option>
-                </select>
+                </PremiumSelect>
               </div>
 
               {highlightEra !== "throwback" ? (

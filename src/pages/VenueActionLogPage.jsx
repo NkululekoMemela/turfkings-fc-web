@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   collection, collectionGroup, doc, getDoc, getDocs, onSnapshot,
-  query, where,
+  query, where, orderBy, limit,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig.js";
 
@@ -24,14 +24,10 @@ export default function VenueActionLogPage({ venueId, onBack }) {
   useEffect(() => {
     if (!venueId) return undefined;
     return onSnapshot(
-      collection(db, "leagueVenues", venueId, "actionLog"),
+      query(collection(db, "leagueVenues", venueId, "actionLog"),orderBy("at","desc"),limit(200)),
       (snapshot) => {
         setEntries(snapshot.docs
           .map((item) => ({ id: item.id, ...item.data() }))
-          .filter((entry) =>
-            (entry.at?.toMillis?.() || 0) >=
-            Date.now() - 7 * 24 * 60 * 60 * 1000
-          )
           .sort((a, b) => (b.at?.toMillis?.() || 0) - (a.at?.toMillis?.() || 0)));
         setError("");
       },

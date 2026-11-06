@@ -272,6 +272,8 @@ export async function prepareVenueSeasonForMatch({ venueId }) {
         ? buildFieldLeagueSchedule({
             seasonId, clubs, startsOn: existing.startsOn,
             ...existing.scheduleSettings,
+            // Legacy announcements retain their original one-leg format.
+            legs: existing.fixtureLegs ?? existing.scheduleSettings?.legs ?? 1,
           })
         : null;
     const fixtures = datedSchedule?.fixtures || reconcileFieldSeasonFixtures({
@@ -660,7 +662,7 @@ export async function scheduleVenueFixture({
 
 export async function startVenueFixture({
   venueId, fixtureId, seasonId = "", teams = [], matchSeconds = 3600,
-  currentMatchNo = 1, controller = null, earlyStartConfirmed = false,
+  currentMatchNo = 1, controller = null, earlyStartConfirmed = false, earlyStartReason = "",
 }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the field manager.");
@@ -677,7 +679,7 @@ export async function startVenueFixture({
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({venueId, seasonId: approvalSeasonId, fixtureId, earlyStartConfirmed: earlyStartConfirmed === true}),
+      body: JSON.stringify({venueId, seasonId: approvalSeasonId, fixtureId, earlyStartConfirmed: earlyStartConfirmed === true, earlyStartReason}),
       signal: AbortSignal.timeout(20000),
     }
   );
@@ -876,7 +878,7 @@ export async function startVenueFixture({
       fixtureId,
       action: "match_started",
       label: "Match started",
-      details: `${fixture.clubAName || fixture.clubAId} vs ${fixture.clubBName || fixture.clubBId}; referee UID: ${user.uid}`,
+      details: `${fixture.clubAName || fixture.clubAId} vs ${fixture.clubBName || fixture.clubBId}; referee UID: ${user.uid}${approval.earlyStartConfirmed ? "; OUTSIDE SCHEDULE: "+approval.earlyStartReason : ""}`,
     });
     return match;
   });
@@ -1802,108 +1804,18 @@ export async function correctVenueRecordedGoal({
       "updatedAt",
       serverTimestamp()
     );
+    recordVenueAction(transaction,{venueId,seasonId:season.id,fixtureId,action:'match_corrected',label:'Official result corrected',details:`${action} goal; score ${goalsA}–${goalsB}; manager UID: ${user.uid}`});
     return nextResult;
   });
 }
 
 
-export async function deleteVenueRecordedMatch({ venueId, fixtureId }) {
-  const user = auth.currentUser;
-  if (!user?.uid) throw new Error("Sign in as the Field Manager.");
-
-  const venueRef = doc(db, "leagueVenues", venueId);
-
-  return runTransaction(db, async (transaction) => {
-    const venueSnap = await transaction.get(venueRef);
-    if (!venueSnap.exists()) throw new Error("Field no longer exists.");
-
-    const venue = venueSnap.data();
-    if (venue.ownerUid !== user.uid) {
-      throw new Error("Only the Field Manager can delete a recorded match.");
-    }
-
-    const season = venue.league?.activeSeason;
-    if (!season?.id) throw new Error("Active Field season is missing.");
-
-    const matchRef = doc(
-      db, "leagueVenues", venueId, "seasons", season.id,
-      "matches", "current"
-    );
-    const matchSnap = await transaction.get(matchRef);
-
-    const results = Array.isArray(season.results) ? season.results : [];
-    const result = results.find((item) =>
-      item.fixtureId === fixtureId && item.status === "completed"
-    );
-    if (!result) throw new Error("Completed match no longer exists.");
-    if ((season.matchDayHistory || []).some((day) =>
-      (day.results || []).some((saved) =>
-        String(saved.fixtureId || saved.id) === String(fixtureId)
-      )
-    )) {
-      throw new Error(
-        "This match day is saved. Correct the result instead of deleting it."
-      );
-    }
-
-    const matchNo = Number(result.matchNo);
-    if (!Number.isInteger(matchNo) ||
-        results.some((item) => Number(item.matchNo) > matchNo) ||
-        Number(season.currentMatchNo) !== matchNo + 1) {
-      throw new Error("Only the latest completed Field match can be deleted.");
-    }
-
-    const fixture = (season.fixtures || []).find((item) =>
-      item.id === fixtureId
-    );
-    if (fixture?.status !== "completed" ||
-        season.liveMatches?.[fixtureId]?.status !== "completed") {
-      throw new Error("Fixture state changed; deletion was stopped.");
-    }
-
-    if (Object.values(season.liveMatches || {}).some((item) =>
-      item?.status === "live"
-    )) {
-      throw new Error("Finish or cancel the live match before deleting a result.");
-    }
-
-    if (matchSnap.exists() &&
-        (matchSnap.data().fixtureId !== fixtureId ||
-         matchSnap.data().status !== "completed")) {
-      throw new Error("Current match document changed; deletion was stopped.");
-    }
-
-    const {
-      goalsA, goalsB, scoreA, scoreB, winnerId, isDraw,
-      completedByUid, completedAtMs, ...scheduledFixture
-    } = fixture;
-    const nextFixtures = season.fixtures.map((item) =>
-      item.id === fixtureId
-        ? { ...scheduledFixture, status: "scheduled" }
-        : item
-    );
-    const nextLiveMatches = { ...(season.liveMatches || {}) };
-    delete nextLiveMatches[fixtureId];
-
-    transaction.update(venueRef, {
-      "league.activeSeason": {
-        ...season,
-        status: "active",
-        fixtures: nextFixtures,
-        liveMatches: nextLiveMatches,
-        results: results.filter((item) => item.fixtureId !== fixtureId),
-        allEvents: (season.allEvents || []).filter((event) =>
-          Number(event.matchNo) !== matchNo
-        ),
-        currentMatchNo: matchNo,
-        updatedAtMs: Date.now(),
-      },
-      updatedAt: serverTimestamp(),
-    });
-
-    if (matchSnap.exists()) transaction.delete(matchRef);
-  });
+export async function deleteVenueRecordedMatch({venueId,seasonId,fixtureId,reason}) {
+ const user=auth.currentUser;if(!user?.uid||!user.emailVerified)throw Error('Sign in as the Field Manager.');
+ const response=await fetch(`${startFunctionsUrl()}/reverseFieldRecordedMatch`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({venueId,seasonId,fixtureId,reason}),signal:AbortSignal.timeout(30000)});
+ const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'Could not reverse this result.');return result;
 }
+
 
 
 async function requireFieldPracticeMatchSession(transaction, scope, uid) {

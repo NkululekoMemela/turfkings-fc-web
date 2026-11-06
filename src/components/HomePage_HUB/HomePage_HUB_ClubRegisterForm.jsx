@@ -1,3 +1,4 @@
+import PremiumSelect from "../PremiumSelect.jsx";
 import {ClubKitColours} from "../ClubKitColours.jsx";
 // src/components/HomePage_HUB/HomePage_HUB_ClubRegisterForm.jsx
 
@@ -224,7 +225,7 @@ export default function HomePage_HUB_ClubRegisterForm({
         <label className="hub-field">
           <span>Playing day</span>
 
-          <select
+          <PremiumSelect
             className="hub-select"
             value={clubDraft?.playDay || ""}
             onChange={(event) =>
@@ -243,7 +244,7 @@ export default function HomePage_HUB_ClubRegisterForm({
                 {day}
               </option>
             ))}
-          </select>
+          </PremiumSelect>
         </label>
 
         <label className="hub-field">

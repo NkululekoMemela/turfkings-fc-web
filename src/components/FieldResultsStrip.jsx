@@ -16,7 +16,7 @@ const dateLabel=value=>{
  const date=new Date(`${value}T12:00:00Z`);
  return /^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(date.getTime())?new Intl.DateTimeFormat("en-ZA",{day:"numeric",month:"short",timeZone:"UTC"}).format(date):"Final result";
 };
-export default function FieldResultsStrip({season,teams=[],venueId,onShareReport,onStandings}){
+export default function FieldResultsStrip({season,teams=[],venueId,onShareReport,onStandings,onHighlights}){
  const results=fieldRecentResults(season),track=useRef(null);
  const [selected,setSelected]=useState(null);
  const closeReport=useCallback(()=>setSelected(null),[]);
@@ -53,6 +53,6 @@ export default function FieldResultsStrip({season,teams=[],venueId,onShareReport
     </article>;
    })}
   </div>
- {selected&&<FieldMatchReport season={season} resultId={selected} teams={teams} venueId={venueId} onShareReport={onShareReport} onStandings={onStandings} onClose={closeReport}/>}
+ {selected&&<FieldMatchReport season={season} resultId={selected} teams={teams} venueId={venueId} onShareReport={onShareReport} onStandings={onStandings} onHighlights={onHighlights} onClose={closeReport}/>}
  </section>;
 }

@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 // src/pages/StatsPage.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -3149,7 +3150,7 @@ export function StatsPage({
                   </div>
                 ) : (
                   <>
-                    <select
+                    <PremiumSelect
                       className="text-input"
                       value={seasonScope}
                       onChange={(e) => setSeasonScope(e.target.value)}
@@ -3159,7 +3160,7 @@ export function StatsPage({
                           {formatSeasonDisplayName(s)}
                         </option>
                       ))}
-                    </select>
+                    </PremiumSelect>
                     <div className="muted stats-season-range">
                       {previousSeasonRange
                         ? `Season range: ${previousSeasonRange}`
@@ -3968,7 +3969,7 @@ export function StatsPage({
                                         <div className="tk-admin-grid">
                                           <div>
                                             <label className="tk-small-label">Scorer</label>
-                                            <select
+                                            <PremiumSelect
                                               className="tk-small-select"
                                               value={eventDraft.scorer}
                                               onChange={(evt) =>
@@ -3984,12 +3985,12 @@ export function StatsPage({
                                                   {name}
                                                 </option>
                                               ))}
-                                            </select>
+                                            </PremiumSelect>
                                           </div>
 
                                           <div>
                                             <label className="tk-small-label">Assist</label>
-                                            <select
+                                            <PremiumSelect
                                               className="tk-small-select"
                                               value={eventDraft.assist || ""}
                                               onChange={(evt) =>
@@ -4005,12 +4006,12 @@ export function StatsPage({
                                                   {name}
                                                 </option>
                                               ))}
-                                            </select>
+                                            </PremiumSelect>
                                           </div>
 
                                           <div>
                                             <label className="tk-small-label">Team</label>
-                                            <select
+                                            <PremiumSelect
                                               className="tk-small-select"
                                               value={eventDraft.teamId}
                                               onChange={(evt) =>
@@ -4022,7 +4023,7 @@ export function StatsPage({
                                             >
                                               <option value={r.teamAId}>{teamAName}</option>
                                               <option value={r.teamBId}>{teamBName}</option>
-                                            </select>
+                                            </PremiumSelect>
                                           </div>
                                         </div>
 
@@ -4266,7 +4267,7 @@ export function StatsPage({
                                               <label className="tk-small-label">
                                                 Scorer
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.scorer}
                                                 onChange={(evt) =>
@@ -4285,13 +4286,13 @@ export function StatsPage({
                                                     {name}
                                                   </option>
                                                 ))}
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                             <div>
                                               <label className="tk-small-label">
                                                 Assist
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.assist || ""}
                                                 onChange={(evt) =>
@@ -4310,13 +4311,13 @@ export function StatsPage({
                                                     {name}
                                                   </option>
                                                 ))}
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                             <div>
                                               <label className="tk-small-label">
                                                 Type
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.type}
                                                 onChange={(evt) =>
@@ -4327,13 +4328,13 @@ export function StatsPage({
                                                 }
                                               >
                                                 <option value="goal">goal</option>
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                             <div>
                                               <label className="tk-small-label">
                                                 Team
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.teamId}
                                                 onChange={(evt) =>
@@ -4345,7 +4346,7 @@ export function StatsPage({
                                               >
                                                 <option value={r.teamAId}>{teamAName}</option>
                                                 <option value={r.teamBId}>{teamBName}</option>
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                           </div>
 
@@ -4448,7 +4449,7 @@ export function StatsPage({
                                               <label className="tk-small-label">
                                                 Scorer
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.scorer}
                                                 onChange={(evt) =>
@@ -4467,13 +4468,13 @@ export function StatsPage({
                                                     {name}
                                                   </option>
                                                 ))}
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                             <div>
                                               <label className="tk-small-label">
                                                 Assist
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.assist || ""}
                                                 onChange={(evt) =>
@@ -4492,13 +4493,13 @@ export function StatsPage({
                                                     {name}
                                                   </option>
                                                 ))}
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                             <div>
                                               <label className="tk-small-label">
                                                 Type
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.type}
                                                 onChange={(evt) =>
@@ -4509,13 +4510,13 @@ export function StatsPage({
                                                 }
                                               >
                                                 <option value="goal">goal</option>
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                             <div>
                                               <label className="tk-small-label">
                                                 Team
                                               </label>
-                                              <select
+                                              <PremiumSelect
                                                 className="tk-small-select"
                                                 value={eventDraft.teamId}
                                                 onChange={(evt) =>
@@ -4527,7 +4528,7 @@ export function StatsPage({
                                               >
                                                 <option value={r.teamAId}>{teamAName}</option>
                                                 <option value={r.teamBId}>{teamBName}</option>
-                                              </select>
+                                              </PremiumSelect>
                                             </div>
                                           </div>
 
@@ -5138,7 +5139,7 @@ export function StatsPage({
             <div className="tk-edit-goal-modal-grid">
               <div>
                 <label className="tk-small-label">Team</label>
-                <select
+                <PremiumSelect
                   className="tk-small-select tk-modal-select"
                   value={eventDraft.teamId}
                   onChange={(evt) =>
@@ -5153,12 +5154,12 @@ export function StatsPage({
                       {team.label}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </div>
 
               <div>
                 <label className="tk-small-label">Scorer</label>
-                <select
+                <PremiumSelect
                   className="tk-small-select tk-modal-select"
                   value={eventDraft.scorer}
                   onChange={(evt) =>
@@ -5174,12 +5175,12 @@ export function StatsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </div>
 
               <div>
                 <label className="tk-small-label">Assist</label>
-                <select
+                <PremiumSelect
                   className="tk-small-select tk-modal-select"
                   value={eventDraft.assist || ""}
                   onChange={(evt) =>
@@ -5195,7 +5196,7 @@ export function StatsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </div>
             </div>
 
@@ -5251,7 +5252,7 @@ export function StatsPage({
             <div className="tk-edit-goal-modal-grid">
               <div>
                 <label className="tk-small-label">Team</label>
-                <select
+                <PremiumSelect
                   className="tk-small-select tk-modal-select"
                   value={newEventDraft.teamId}
                   onChange={(evt) =>
@@ -5266,12 +5267,12 @@ export function StatsPage({
                       {team.label}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </div>
 
               <div>
                 <label className="tk-small-label">Scorer</label>
-                <select
+                <PremiumSelect
                   className="tk-small-select tk-modal-select"
                   value={newEventDraft.scorer}
                   onChange={(evt) =>
@@ -5287,12 +5288,12 @@ export function StatsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </div>
 
               <div>
                 <label className="tk-small-label">Assist</label>
-                <select
+                <PremiumSelect
                   className="tk-small-select tk-modal-select"
                   value={newEventDraft.assist || ""}
                   onChange={(evt) =>
@@ -5308,7 +5309,7 @@ export function StatsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </div>
             </div>
 

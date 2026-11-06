@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import EntryManagementButton from "../components/EntryManagementButton.jsx";
 import PlayerNameSelectionButton from "../components/PlayerNameSelectionButton.jsx";
 import {subscribeClubMemberDirectory} from "../storage/clubMemberDirectory.js";
@@ -5387,7 +5388,7 @@ onClick={() => {
                     Default is admin. If you choose player, captain, or spectator,
                     the rest of the app receives that selected role as the active identity.
                   </p>
-                  <select
+                  <PremiumSelect
                     className="text-input"
                     value={adminPreviewRole}
                     onChange={(e) => setAdminPreviewRole(e.target.value)}
@@ -5396,7 +5397,7 @@ onClick={() => {
                     <option value="captain">Captain</option>
                     <option value="player">Player</option>
                     <option value="spectator">Spectator</option>
-                  </select>
+                  </PremiumSelect>
                 </div>
               )}
             </div>
@@ -6667,7 +6668,7 @@ onClick={() => {
                     >
                       <label>Select player</label>
 
-                      <select
+                      <PremiumSelect
                         className="text-input"
                         value={profileMemberId}
                         onChange={(event) => {
@@ -6683,7 +6684,7 @@ onClick={() => {
                             {member.fullName}
                           </option>
                         ))}
-                      </select>
+                      </PremiumSelect>
                     </div>
                   ) : null}
 
@@ -6991,7 +6992,7 @@ onClick={() => {
 
                   <div className="field-column" style={{ marginTop: "0.9rem" }}>
                     <label>Select member</label>
-                    <select
+                    <PremiumSelect
                       className="text-input"
                       value={adminPrivilegesMemberId}
                       onChange={(event) => {
@@ -7009,7 +7010,7 @@ onClick={() => {
                             : ""}
                         </option>
                       ))}
-                    </select>
+                    </PremiumSelect>
                   </div>
 
                   {adminPrivilegesMember && (
@@ -7184,7 +7185,7 @@ onClick={() => {
 
                   <div className="field-column" style={{ marginTop: "0.9rem" }}>
                     <label>Select player</label>
-                    <select
+                    <PremiumSelect
                       className="text-input"
                       value={terminationMemberId}
                       onChange={(event) => {
@@ -7202,7 +7203,7 @@ onClick={() => {
                           {member.fullName}
                         </option>
                       ))}
-                    </select>
+                    </PremiumSelect>
                   </div>
 
                   {terminationCandidate && (

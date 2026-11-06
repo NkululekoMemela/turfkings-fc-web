@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import {fieldHoursError} from "../core/fieldOperatingHours.mjs";
 import React, {
   useMemo,
@@ -467,7 +468,7 @@ export default function VenueRegistrationModal({
             <div className="hub-form-grid">
               <label className="hub-field hub-field--wide">
                 <span>Your role at this Field</span>
-                <select
+                <PremiumSelect
                   className="hub-select"
                   value={draft.creatorRole}
                   onChange={(event) =>
@@ -492,7 +493,7 @@ export default function VenueRegistrationModal({
                   <option value="other_staff">
                     Other authorised staff
                   </option>
-                </select>
+                </PremiumSelect>
               </label>
 
               <label className="hub-field">

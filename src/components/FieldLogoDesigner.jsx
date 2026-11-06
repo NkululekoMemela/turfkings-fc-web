@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import {prepareLogoImage as prepareUpload} from "../core/prepareLogoImage.js";
 import React, {useEffect, useState} from "react";
 import {MASCOTS, FRAMES, PALETTES, NAME_STYLES, renderFieldLogo, svgDataUrl, stockSpec} from "../../functions/fieldLogoDesigns.mjs";
@@ -76,13 +77,13 @@ export default function FieldLogoDesigner({clubDraft, logoDraft, onChange}) {
     <button type="button" className="hub-primary-button" onClick={applyDescription}>Build this style</button>
     {message && <p role="status">{message}</p>}
     <div className="field-logo-designer__controls">
-      <label>Name placement<select value={spec.nameStyle || "auto"} onChange={e => patchSpec({nameStyle: e.target.value}, true)}>{NAME_STYLES.map(value => <option value={value} key={value}>{({auto:"Designed for this badge",ring:"Around the badge",banner:"On a banner",stacked:"Under the emblem",top:"Above the emblem",inside:"Within the badge"})[value]}</option>)}</select></label>
-      <label>Lettering<select value={spec.lettering || "full"} onChange={e => patchSpec({lettering: e.target.value}, true)}><option value="full">Full Field name</option><option value="initials">Initials</option><option value="custom">My own short name</option></select></label>
+      <label>Name placement<PremiumSelect value={spec.nameStyle || "auto"} onChange={e => patchSpec({nameStyle: e.target.value}, true)}>{NAME_STYLES.map(value => <option value={value} key={value}>{({auto:"Designed for this badge",ring:"Around the badge",banner:"On a banner",stacked:"Under the emblem",top:"Above the emblem",inside:"Within the badge"})[value]}</option>)}</PremiumSelect></label>
+      <label>Lettering<PremiumSelect value={spec.lettering || "full"} onChange={e => patchSpec({lettering: e.target.value}, true)}><option value="full">Full Field name</option><option value="initials">Initials</option><option value="custom">My own short name</option></PremiumSelect></label>
       {spec.lettering === "custom" && <label>Short name<input value={spec.shortName || ""} maxLength={24} onChange={e => patchSpec({shortName: e.target.value}, true)} placeholder="For example: GC ARENA"/></label>}
-      <label>Emblem<select value={spec.mascot} onChange={e => patchSpec({mascot: e.target.value})}>{MASCOTS.map(value => <option key={value}>{value}</option>)}</select></label>
-      <label>Frame<select value={spec.frame} onChange={e => patchSpec({frame: e.target.value})}>{FRAMES.map(value => <option key={value}>{value}</option>)}</select></label>
-      <label>Colours<select value={spec.palette} onChange={e => patchSpec({palette: Number(e.target.value)}, true)}>{PALETTES.map(([label], i) => <option value={i} key={label}>{label}</option>)}</select></label>
-      <label>Decoration<select value={spec.ornament} onChange={e => patchSpec({ornament: Number(e.target.value)})}><option value={0}>Clean</option><option value={1}>Laurel branches</option></select></label>
+      <label>Emblem<PremiumSelect value={spec.mascot} onChange={e => patchSpec({mascot: e.target.value})}>{MASCOTS.map(value => <option key={value}>{value}</option>)}</PremiumSelect></label>
+      <label>Frame<PremiumSelect value={spec.frame} onChange={e => patchSpec({frame: e.target.value})}>{FRAMES.map(value => <option key={value}>{value}</option>)}</PremiumSelect></label>
+      <label>Colours<PremiumSelect value={spec.palette} onChange={e => patchSpec({palette: Number(e.target.value)}, true)}>{PALETTES.map(([label], i) => <option value={i} key={label}>{label}</option>)}</PremiumSelect></label>
+      <label>Decoration<PremiumSelect value={spec.ornament} onChange={e => patchSpec({ornament: Number(e.target.value)})}><option value={0}>Clean</option><option value={1}>Laurel branches</option></PremiumSelect></label>
     </div>
     <div className="field-logo-designer__preview">
       <img src={logoDraft.preparedUploadDataUrl || (!logoDraft.logoChanged && logoDraft.uploadedLogoUrl) || svgDataUrl(renderFieldLogo(spec, name))} alt={`${name} logo preview`}/>
