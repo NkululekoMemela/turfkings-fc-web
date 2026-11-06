@@ -11,5 +11,5 @@ exports.poolNight=onRequest({region:"us-central1",cors:true,timeoutSeconds:60,ma
   const context={db:getFirestore(),user,body:req.body||{}};
   if(String(context.body.action).startsWith("billing")){res.json(await require("./poolBilling.cjs").handle(context));return;}
   res.json(["pushConfig","registerPush"].includes(context.body.action)?await require("./poolPush.cjs").register(context):await require("./poolNightService.cjs").handle(context));
- }catch(error){res.status(400).json({error:error.message||"Could not update this pool night."});}
+ }catch(error){res.status(400).json({error:error.message||"Could not update this pool night.",...(error.code==="POOL_CONTRIBUTION_REQUIRED"?{code:error.code}:{})});}
 });

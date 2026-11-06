@@ -75,7 +75,7 @@ async function handle({db,user,body}){
   }
   if(!owner&&member?.status!=="approved")fail("The host must approve you before you can log scores.");
   if(current.lifecycle==="ended"&&!["verify","correct","completeScore","transferAdmin"].includes(action))fail("This tournament has ended. Its scores are saved.");
-  if(require("./poolBilling.cjs").decisionRequired(current,user.uid))fail("Choose a contribution option to continue: pay, ask a teammate, use a coupon, or pay next time.");
+  if(require("./poolBilling.cjs").decisionRequired(current,user.uid)){const error=new Error("Choose a contribution option to continue: pay, ask a teammate, use a token, or pay next time.");error.code="POOL_CONTRIBUTION_REQUIRED";throw error;}
   if(body.revision!==current.revision)fail("The night changed on another phone. Refresh and try again.");
   let next={...current,pool:{...current.pool}};
   const adminOnly=new Set(["approveMember","rejectMember","settings","presence","cancel","verify","correct","transferAdmin","removePlayer"]);

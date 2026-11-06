@@ -7,7 +7,7 @@ export async function poolNightRequest(body){
  try{
   const response=await fetch(`${getActiveFirebaseFunctionsBaseUrl()}/poolNight`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(body),signal:controller.signal});
   const data=await response.json().catch(()=>({error:'Pool service unavailable. Please retry.'}));
-  if(!response.ok)throw new Error(data.error||'Could not update the night.');
+  if(!response.ok){const error=new Error(data.error||'Could not update the night.');error.code=data.code||'';throw error;}
   return data;
  }finally{clearTimeout(timer);}
 }

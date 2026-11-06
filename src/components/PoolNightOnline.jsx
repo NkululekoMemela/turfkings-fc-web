@@ -64,7 +64,7 @@ export default function PoolNightOnline({onBack,onLocal,initialRoute}){
    if(action==='transferAdmin')setNotice('Another admin appointed. The tournament creator keeps admin access.');
    if(action==='finishUnscored'){setNotice('Game finished. Both players and the table are free. Add the score in Games.');setTab('tables');}
    if(action==='submit')setNotice('Score sent for admin verification. The table is ready for the next game.');
-  }catch(e){if(alive.current&&uid===identity.current){setError(e.message);if(code)try{const data=await poolNightRequest({action:'load',code});if(alive.current&&uid===identity.current)accept(data);}catch{setConnected(false);}}}
+  }catch(e){if(alive.current&&uid===identity.current){setError(e.message);if(e.code==="POOL_CONTRIBUTION_REQUIRED"||/choose a contribution option/i.test(e.message))window.dispatchEvent(new CustomEvent("pool-contribution-required",{detail:{code}}));if(code)try{const data=await poolNightRequest({action:'load',code});if(alive.current&&uid===identity.current)accept(data);}catch{setConnected(false);}}}
   finally{writing.current=false;if(alive.current)setBusy(false);}
  }
  function leave(){request.current++;try{const url=new URL(location.href);url.searchParams.delete('poolNight');url.searchParams.delete('poolTab');history.replaceState(null,'',url);}catch{}setCode('');state.current=null;setNight(null);setError('');setConnected(false);try{sessionStorage.removeItem(CODE_KEY);}catch{}}
