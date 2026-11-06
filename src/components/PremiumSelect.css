@@ -1,0 +1,19 @@
+.fanm-premium-select{display:inline-block;position:relative;vertical-align:middle;box-sizing:border-box}
+.fanm-premium-select__native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;padding:0!important;border:0!important;overflow:hidden!important}
+.fanm-premium-select__trigger{display:flex!important;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:46px!important;padding:12px 14px!important;border:1px solid rgba(125,211,252,.3)!important;border-radius:16px!important;background:linear-gradient(135deg,#162638,#101b2d)!important;color:#f8fafc!important;text-align:left;cursor:pointer;font:inherit;box-sizing:border-box}
+.fanm-premium-select__trigger>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fanm-premium-select__trigger:disabled{opacity:.5;cursor:default}
+.fanm-premium-select__trigger:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}
+.fanm-premium-select__backdrop{position:fixed;inset:0;z-index:31000;display:flex;align-items:center;justify-content:center;padding:16px;background:#020617b8;backdrop-filter:blur(5px);box-sizing:border-box}
+.fanm-premium-select__panel{width:min(520px,100%);max-height:85dvh;overflow:auto;box-sizing:border-box;border:1px solid #7dd3fc44;border-radius:22px;padding:16px;background:#0b1524;color:#f8fafc;box-shadow:0 24px 64px #0008}
+.fanm-premium-select__panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.fanm-premium-select__panel>header button{width:36px;height:36px;border:1px solid #7dd3fc44;border-radius:50%;background:#142033;color:white;font-size:22px;cursor:pointer}
+.fanm-premium-select__panel>input{box-sizing:border-box;width:100%;padding:12px 14px;border:1px solid #7dd3fc44;border-radius:14px;background:#142033;color:white;margin-bottom:10px;font:inherit}
+.fanm-premium-select__panel .field-staff-picker__options{display:grid;gap:6px;max-height:58dvh;overflow:auto;padding:6px;background:#0b1524;border:1px solid #7dd3fc33;border-radius:18px}
+.fanm-premium-select__panel .field-staff-picker__option{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1px solid transparent;border-radius:16px;background:#142033;color:#f8fafc;text-align:left;font:inherit;cursor:pointer;min-height:46px}
+.fanm-premium-select__panel .field-staff-picker__option[aria-selected="true"]{border-color:#67e8f9;background:#163649}
+.fanm-premium-select__panel .field-staff-picker__option:disabled{opacity:.4;cursor:default}
+.fanm-premium-select__panel .field-staff-picker__option:focus-visible{outline:2px solid #67e8f9;outline-offset:-2px}
+/* Club management follows the Club theme rather than category colours. */
+[aria-label="Club management"]{background:linear-gradient(155deg,#102d2b,#0c1928)!important;border:1px solid #72ada466!important;box-shadow:0 24px 64px #0007!important}
+[aria-label="Club management"] button{background:linear-gradient(135deg,#163934,#102b31)!important;border-color:#77b4a64d!important;color:#eefbf7!important;box-shadow:none!important}

@@ -1,3 +1,9 @@
+import HighlightFilters from '../components/HighlightFilters.jsx';
+import HighlightMatchFolders from '../components/HighlightMatchFolders.jsx';
+import {highlightFixtureId,groupHighlightFixtures,highlightFixtureOptions,highlightMatchesMode,filterHighlightClips} from "../core/highlightFixtures.mjs";
+import ClipOptions from "../components/ClipOptions.jsx";
+import {HighlightPlaybackProvider,HighlightThumbnail} from "../components/HighlightPlayback.jsx";
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 // src/pages/VideoHighlightsPage.jsx
 
@@ -749,7 +755,6 @@ function HighlightCard({
     cancelLikeLongPress();
     onShowLikes?.(highlight, likerUsers);
   };
-  const missingBadges = getMissingBadges(highlight);
   const matchupLabel = getMatchupLabel(highlight, teams, matchType);
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   const canDeleteHighlight =
@@ -893,7 +898,7 @@ function HighlightCard({
             ) : (
               <video
                 src={highlight.mediaUrl}
-                preload="none"
+                preload="metadata"
                 muted
                 playsInline
                 tabIndex={-1}
@@ -925,57 +930,13 @@ function HighlightCard({
         </button>
       ) : (
         <>
-          <div className="tkh-card-progress">
-            <span>
-              Clip {feedPosition || 1} of {feedTotal || 1}
-            </span>
-            <span className={isWatched ? "is-complete" : ""}>
-              {isWatched ? "✓ Watched" : "New"}
-            </span>
-          </div>
-      <div className="tkh-card-top">
-        <div className="tkh-card-title-block">
-          <div className="tkh-player-name">
-  {String(highlight.playerName || "")
-    .trim()
-    .split(" ")[0]}
-</div>
-          <div className="tkh-clip-title">
-            {String(highlight.title || "")
-              .replace(/\bby\s+([A-Za-zÀ-ÿ'-]+)\s+([A-Za-zÀ-ÿ'-]+)/i, "by $1")}
-          </div>
-        </div>
+          <div className="fanm-clip-surface">
+      <HighlightThumbnail highlight={highlight} onWatched={clip=>{setIsExpanded(true);onWatched?.(clip);}} onFinish={()=>setIsExpanded(false)}/>
 
-        <div style={{ display: "grid", gap: "0.35rem", justifyItems: "end" }}>
-          {(highlight.highlightEra === "throwback" || highlight.isThrowback) && (
-            <span className="tkh-throwback-badge">Throwback ✨</span>
-          )}
-          {!compactWinner && (
-            <span className={`tkh-status-badge ${statusClass(highlight.status)}`}>
-              {statusBadgeLabel(highlight.status)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <video
-        className="tkh-video"
-        controls
-        preload="none"
-        playsInline
-        src={highlight.mediaUrl}
-        onPlay={() => {
-          setIsExpanded(true);
-          onWatched?.(highlight);
-        }}
-        onEnded={() => {
-          onWatched?.(highlight);
-          setIsExpanded(false);
-        }}
-      />
-
+      <span className="fanm-clip-type">{typeBadgeLabel(highlight.normalizedType)}</span>
+      <ClipOptions title={`Clip options · ${highlight.playerName||"Player"}`} onClose={()=>setShowShareMenu(false)}>
       <div className="tkh-badge-row">
-        <span className="tkh-type-badge">{typeBadgeLabel(highlight.normalizedType)}</span>
+
 
         <div
           style={{
@@ -998,7 +959,7 @@ function HighlightCard({
                 fontSize: "0.72rem",
               }}
             >
-              ✏️
+              ✏️ Edit clip
             </button>
           )}
 
@@ -1015,7 +976,7 @@ function HighlightCard({
                 fontSize: "0.72rem",
               }}
             >
-              🗑️
+              🗑️ Delete clip
             </button>
           )}
 
@@ -1026,6 +987,7 @@ function HighlightCard({
             >
               <button
                 ref={shareButtonRef}
+                data-keep-clip-options="true"
                 type="button"
                 className="tkh-btn"
                 title="Share highlight"
@@ -1038,7 +1000,7 @@ function HighlightCard({
                   fontSize: "0.72rem",
                 }}
               >
-                ↗️
+                ↗ Share
               </button>
 
               {showShareMenu &&
@@ -1119,10 +1081,6 @@ function HighlightCard({
           )}
         </div>
 
-        {!compactWinner && missingBadges.map((badge) => (
-          <span key={badge} className="tkh-missing-badge">{badge}</span>
-        ))}
-
         {!compactWinner && needsPlayer(highlight) && (
           <button
             type="button"
@@ -1136,44 +1094,25 @@ function HighlightCard({
               background: "rgba(14,165,233,0.10)",
             }}
           >
-            Help identify player
+            Identify player
           </button>
         )}
       </div>
 
-      {!compactWinner && (
-        <div className="tkh-meta-row">
-          <span>{highlight.clubName}</span>
-          <span className="tkh-matchup-label">{matchupLabel}</span>
-          {!needsTeam(highlight) && (
-            <span>{highlight.teamName}</span>
-          )}
-        </div>
-      )}
+      {!compactWinner&&<div className="fanm-clip-details"><h3>Clip details</h3><p>{highlight.clubName} · {matchupLabel}{highlight.assist?` · Assist: ${highlight.assist}`:""}</p>{isModerator&&<p>Uploaded {formatDate(highlight.createdAt)}{highlight.createdByName?` by ${highlight.createdByName}`:""}</p>}</div>}
 
-      {!compactWinner && highlight.assist && (
-        <div className="tkh-soft-line">
-  Assist:{" "}
-  <strong>
-    {String(toTitleCaseLoose(highlight.assist) || "")
-      .trim()
-      .split(" ")[0]}
-  </strong>
-</div>
-      )}
-
-      {!compactWinner && isModerator && (
-        <div className="tkh-soft-line">
-          Uploaded {formatDate(highlight.createdAt)}
-          {highlight.createdByName
-            ? ` by ${String(highlight.createdByName)
-                .trim()
-                .split(" ")[0]}`
-            : ""}
-        </div>
-      )}
-
-      <div className="tkh-card-actions">
+        {isModerator && highlight.status === "pending" && (
+          <>
+            <button type="button" className="tkh-btn tkh-btn-approve" onClick={() => onApprove?.(highlight)}>
+              Approve
+            </button>
+            <button type="button" className="tkh-btn tkh-btn-reject" onClick={() => onReject?.(highlight)}>
+              Reject
+            </button>
+          </>
+        )}
+      </ClipOptions>
+      <div className="tkh-card-actions fanm-clip-social">
         {(highlight.status === "approved" ||
           isArchivedTopVotedClip(highlight)) &&
           canLike &&
@@ -1244,24 +1183,16 @@ function HighlightCard({
             className="tkh-btn"
             onClick={() => onAttachToClubChat?.(highlight)}
           >
-            💬 Chat
+            💬 Comment
           </button>
         )}
 
 
 
-        {isModerator && highlight.status === "pending" && (
-          <>
-            <button type="button" className="tkh-btn tkh-btn-approve" onClick={() => onApprove?.(highlight)}>
-              Approve
-            </button>
-            <button type="button" className="tkh-btn tkh-btn-reject" onClick={() => onReject?.(highlight)}>
-              Reject
-            </button>
-          </>
-        )}
+
 
       </div>
+          </div>
         </>
       )}
     </article>
@@ -1954,7 +1885,7 @@ function TopShelfAwardsWatch({
 }
 
 export function VideoHighlightsPage({
-  matchId,
+  matchId, canModerate=false, canComment=false, initialMatchFilter="", fixtureOptions=[], fixtureResults=[],
   activeClubId = "turf-kings",
   activeSeasonId = null,
   currentMatchNo = 1,
@@ -1975,6 +1906,8 @@ export function VideoHighlightsPage({
   onAttachHighlightToClubChat,
   onBack,
 }) {
+  const [fixtureFilter,setFixtureFilter]=useState(initialMatchFilter);
+  useEffect(()=>{setFixtureFilter(initialMatchFilter||'');if(initialMatchFilter){setMainTab('currentWeek');setSelectedTab('approved');}},[initialMatchFilter]);
   const fileInputRef = useRef(null);
   const categorySelectorRef = useRef(null);
   const stickyCategoryTimerRef = useRef(null);
@@ -2159,8 +2092,8 @@ export function VideoHighlightsPage({
   const defaultClubName = useMemo(() => getIdentityClub(identity), [identity]);
   const role = safeLower(activeRole);
   const isLoggedIn = Boolean(identityKey);
-  const isModerator = role === "admin" || role === "captain";
-  const canUpload = isLoggedIn && role === "admin";
+  const isModerator = canModerate;
+  const canUpload = isLoggedIn && canModerate;
   const isLeagueMode = safeLower(matchType).includes("league");
   const teamContextText = useMemo(() => getTeamContextText(teams, matchType), [teams, matchType]);
   const featuredTeamNames = useMemo(
@@ -2321,6 +2254,7 @@ export function VideoHighlightsPage({
 
     return combined
       .map((highlight, index) => normalizeHighlight(highlight, index))
+      .filter(highlight=>highlightMatchesMode(highlight,matchType))
       .filter((highlight) => {
         const key = String(highlight?.id || highlight?.clipId || "").trim();
         if (!key) return true;
@@ -2329,7 +2263,7 @@ export function VideoHighlightsPage({
         return true;
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [currentMatchDayHighlights, firebaseHighlights, localHighlights]);
+  }, [currentMatchDayHighlights, firebaseHighlights, localHighlights,matchType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2662,54 +2596,6 @@ export function VideoHighlightsPage({
     ]
   );
 
-  const currentWeekCountdown = useMemo(() => {
-    const clipTimes = currentWeekHighlights
-      .map((clip) => getHighlightDate(clip).getTime())
-      .filter(Number.isFinite);
-
-    if (!clipTimes.length) return null;
-
-    /*
-     * The earliest clip marks the beginning of the current
-     * matchday/week voting batch. Voting remains open for five days.
-     */
-    const votingStartedAt = Math.min(...clipTimes);
-    const votingDurationMs =
-      5 * 24 * 60 * 60 * 1000;
-    const closesAt = votingStartedAt + votingDurationMs;
-    const remainingMs = Math.max(0, closesAt - nowTick);
-
-    const wholeDays = Math.floor(
-      remainingMs / (24 * 60 * 60 * 1000)
-    );
-    const wholeHours = Math.floor(
-      (remainingMs % (24 * 60 * 60 * 1000)) /
-      (60 * 60 * 1000)
-    );
-
-    const elapsedPercentage = Math.min(
-      100,
-      Math.max(
-        0,
-        ((nowTick - votingStartedAt) / votingDurationMs) * 100
-      )
-    );
-
-    return {
-      closesAt,
-      remainingMs,
-      wholeDays,
-      wholeHours,
-      elapsedPercentage,
-      label:
-        remainingMs <= 0
-          ? "Voting window complete"
-          : wholeDays > 0
-          ? `${wholeDays}d ${wholeHours}h remaining`
-          : `${wholeHours}h remaining`,
-    };
-  }, [currentWeekHighlights, nowTick]);
-
   const throwbackHighlights = useMemo(
     () =>
       allHighlights.filter((item) => {
@@ -2747,6 +2633,8 @@ export function VideoHighlightsPage({
     return scopedApprovedHighlights;
   }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
 
+  const fixtureChoices=useMemo(()=>highlightFixtureOptions(filterHighlightClips([...tabHighlights,...(selectedTab==='approved'?archivedHighlights.filter(clip=>["approved","archived"].includes(clip.status)||clip.archivedClubFeed):[])].filter(clip=>highlightMatchesMode(clip,matchType)&&(mainTab==='throwback'?(clip.highlightEra==='throwback'||clip.isThrowback===true):!(clip.highlightEra==='throwback'||clip.isThrowback===true))),{type:selectedFilter,player:selectedPlayerFilter,viewed:watchedFilter,watchedIds:watchedClipIds}),fixtureOptions,clip=>getMatchupLabel(clip,teams,matchType),resolvedMatchId,fixtureResults),[tabHighlights,archivedHighlights,fixtureOptions,fixtureResults,teams,matchType,resolvedMatchId,mainTab,selectedTab,selectedFilter,selectedPlayerFilter,watchedFilter,watchedClipIds]);
+  const fixtureLabel=clip=>{const entry=fixtureChoices.find(f=>f.matchId===highlightFixtureId(clip,resolvedMatchId));return [entry?.label||'Match highlights',entry?.date].filter(Boolean).join(' · ');};
   const visibleHighlights = useMemo(() => {
     const isThrowbackClip = (item) =>
       item?.highlightEra === "throwback" ||
@@ -2819,39 +2707,14 @@ export function VideoHighlightsPage({
       return false;
     });
 
-    if (selectedFilter !== "all") {
-      filtered = filtered.filter(
-        (item) => item.normalizedType === selectedFilter
-      );
+    if(fixtureFilter){
+      const candidates=[...allHighlights,...archivedHighlights].filter(item=>highlightMatchesMode(item,matchType));
+      filtered=[...new Map(candidates.filter(item=>highlightFixtureId(item,resolvedMatchId)===fixtureFilter&&(selectedTab==='approved'?item.status==='approved'||item.status==='archived'||item.archivedClubFeed:isModerator&&item.status===selectedTab)).map(item=>[`${highlightFixtureId(item,resolvedMatchId)}:${item.clipId||item.id}`,item])).values()];
     }
-
-    if (selectedPlayerFilter !== "all") {
-      filtered = filtered.filter(
-        (item) =>
-          safeLower(item?.playerName) ===
-          safeLower(selectedPlayerFilter)
-      );
-    }
-
-    if (watchedFilter !== "all") {
-      filtered = filtered.filter((item) => {
-        const clipId = String(
-          item?.clipId ||
-          item?.id ||
-          ""
-        ).trim();
-
-        const watched = watchedClipIds.has(clipId);
-
-        return watchedFilter === "watched"
-          ? watched
-          : !watched;
-      });
-    }
-
-    return filtered;
+    filtered=filterHighlightClips(filtered,{type:selectedFilter,player:selectedPlayerFilter,viewed:watchedFilter,watchedIds:watchedClipIds});
+    return groupHighlightFixtures(filtered,fixtureFilter,resolvedMatchId);
   }, [
-    tabHighlights,
+    tabHighlights,fixtureFilter,allHighlights,archivedHighlights,selectedTab,isModerator,matchType,
     selectedFilter,
     selectedPlayerFilter,
     watchedFilter,
@@ -3410,21 +3273,23 @@ export function VideoHighlightsPage({
   };
 
   const handleDelete = async (highlight) => {
-    const confirmed = (await fieldConfirm("Delete this highlight permanently?"));
+    const confirmed = (await fieldConfirm("Permanently delete this video and its stored file? This cannot be undone."));
     if (!confirmed) return;
 
     try {
       removeLocalHighlight(highlight);
 
-      if (resolvedMatchId && highlight?.clipId) {
+      if ((highlight?.matchId || resolvedMatchId) && highlight?.clipId) {
         await VideoHighlightsRepository.deleteRawHighlightFromFirebase({
-          matchId: resolvedMatchId,
+          matchId: highlight.matchId || resolvedMatchId,
+          clubId: activeClubId,
           clipId: highlight.clipId,
           storagePath: highlight.storagePath,
         });
       }
 
       await onDeleteHighlight?.(highlight);
+      await loadHighlights();
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Delete failed:", error);
       (await fieldAlert(error?.message || "Could not delete this highlight."));
@@ -3705,23 +3570,12 @@ export function VideoHighlightsPage({
       setRunningCuration(true);
       setCurationNotice("");
 
-      const result = await VideoHighlightsRepository.runVideoHighlightCuration({
-        matchId: resolvedMatchId,
-        highlights: approvedHighlights,
-        votesByUser: localVotesByUser,
-        curationMeta: {
-          matchType,
-          gameFormat,
-          activeSeasonId,
-          currentMatchNo,
-          teamContextText,
-        },
-      });
+      const {getActiveFirebaseFunctionsBaseUrl,auth}=await import('../firebaseConfig.js');
+      const user=auth.currentUser;if(!user?.emailVerified)throw Error('Sign in with your verified account.');
+      const response=await fetch(`${getActiveFirebaseFunctionsBaseUrl()}/closeHighlightWeek`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({kind:'field',ownerId:activeClubId,matchId:resolvedMatchId}),signal:AbortSignal.timeout(180000)});
+      const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'Could not close weekly voting.');
+      await loadHighlights();setCurationResult(null);setMainTab('winners');setCurationNotice('Weekly voting closed. Winners are preserved. Non-winning videos have been permanently deleted.');
 
-      setCurationResult(result);
-      setMainTab("currentWeek");
-      setSelectedTab("approved");
-      setSelectedFilter("all");
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Curation failed:", error);
       (await fieldAlert(error?.message || "Could not run curation."));
@@ -3886,7 +3740,7 @@ export function VideoHighlightsPage({
   };
 
   return (
-    <div className="page video-highlights-page">
+    <HighlightPlaybackProvider><div className="page video-highlights-page">
       <style>{`
         .video-highlights-page {
           padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
@@ -5261,7 +5115,7 @@ export function VideoHighlightsPage({
               background: "linear-gradient(135deg, rgba(249,115,22,0.12), rgba(168,85,247,0.14))",
             }}
           >
-            Throwback ✨
+            Throwbacks ✨
           </button>
           </div>
         )}
@@ -5342,10 +5196,8 @@ export function VideoHighlightsPage({
                 showFeedFilters ? "is-active" : ""
               }`}
               onClick={() => {
-                setShowStickyCategories(true);
-                setShowFeedFilters((current) => !current);
+                document.querySelector('[data-highlight-filters]')?.scrollIntoView({behavior:'smooth',block:'center'});
               }}
-              aria-expanded={showFeedFilters}
             >
               Filters
             </button>
@@ -5365,7 +5217,7 @@ export function VideoHighlightsPage({
               type="button"
               className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
               onClick={() => setMainTab("currentWeek")}
-              title={`Fresh clips competing this week. Voting closes ${votingDeadlineLabel}`}
+              title="Fresh clips grouped by match, each with its own voting countdown."
             >
               <span className="tkh-category-title">This Week</span>
               <small>Fresh competition</small>
@@ -5420,247 +5272,8 @@ export function VideoHighlightsPage({
 
         </div>
 
-        {mainTab === "currentWeek" &&
-          currentWeekCountdown && (
-            <section
-              aria-label="Highlight voting countdown"
-              style={{
-                position: "relative",
-                overflow: "hidden",
-                width: "100%",
-                minWidth: 0,
-                boxSizing: "border-box",
-                marginBottom: "0.85rem",
-                padding: "0.82rem 0.9rem",
-                borderRadius: "17px",
-                border:
-                  currentWeekCountdown.remainingMs > 0
-                    ? "1px solid rgba(56,189,248,0.3)"
-                    : "1px solid rgba(250,204,21,0.34)",
-                background:
-                  "linear-gradient(135deg, rgba(8,47,73,0.92), rgba(15,23,42,0.97))",
-                boxShadow:
-                  "0 14px 30px rgba(2,132,199,0.12)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      color: "#7dd3fc",
-                      fontSize: "0.68rem",
-                      fontWeight: 900,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Voting countdown
-                  </div>
-
-                  <strong
-                    style={{
-                      display: "block",
-                      marginTop: "0.22rem",
-                      color: "#f8fafc",
-                      fontSize: "0.96rem",
-                    }}
-                  >
-                    {currentWeekCountdown.label}
-                  </strong>
-                </div>
-
-                <div
-                  aria-hidden="true"
-                  style={{
-                    flex: "0 0 auto",
-                    display: "grid",
-                    placeItems: "center",
-                    width: "42px",
-                    height: "42px",
-                    borderRadius: "14px",
-                    color: "#fde68a",
-                    background: "rgba(250,204,21,0.11)",
-                    border: "1px solid rgba(250,204,21,0.22)",
-                    fontSize: "1.15rem",
-                  }}
-                >
-                  ⏳
-                </div>
-              </div>
-
-              <div
-                style={{
-                  height: "5px",
-                  marginTop: "0.7rem",
-                  overflow: "hidden",
-                  borderRadius: "999px",
-                  background: "rgba(148,163,184,0.18)",
-                }}
-              >
-                <div
-                  style={{
-                    width:
-                      `${currentWeekCountdown.elapsedPercentage}%`,
-                    height: "100%",
-                    borderRadius: "inherit",
-                    background:
-                      "linear-gradient(90deg, #38bdf8, #22c55e, #facc15)",
-                    transition: "width 500ms ease",
-                  }}
-                />
-              </div>
-
-              <div
-                style={{
-                  marginTop: "0.52rem",
-                  color: "#cbd5e1",
-                  fontSize: "0.72rem",
-                  lineHeight: 1.35,
-                }}
-              >
-                Vote before{" "}
-                {new Date(
-                  currentWeekCountdown.closesAt
-                ).toLocaleDateString(undefined, {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                . Winners advance; non-winners become deletion-eligible.
-              </div>
-            </section>
-          )}
-
-        {(mainTab === "currentWeek" || mainTab === "throwback") && (
-          <div className="tkh-feed-toolbar">
-            <div className="tkh-filter-summary">
-              <strong>
-                {mainTab === "throwback"
-                  ? "Previous Seasons"
-                  : "Current Season"}
-              </strong>
-              <span>
-                {visibleHighlights.length} clip
-                {visibleHighlights.length === 1 ? "" : "s"}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              className={`tkh-filter-toggle ${
-                showFeedFilters ? "is-open" : ""
-              }`}
-              onClick={() =>
-                setShowFeedFilters((current) => !current)
-              }
-              aria-expanded={showFeedFilters}
-            >
-              <span aria-hidden="true">☰</span>
-              Filters
-              {[
-                selectedFilter !== "all",
-                selectedPlayerFilter !== "all",
-                watchedFilter !== "all",
-                isModerator && selectedTab !== "approved",
-              ].filter(Boolean).length > 0 && (
-                <strong>
-                  {
-                    [
-                      selectedFilter !== "all",
-                      selectedPlayerFilter !== "all",
-                      watchedFilter !== "all",
-                      isModerator && selectedTab !== "approved",
-                    ].filter(Boolean).length
-                  }
-                </strong>
-              )}
-            </button>
-
-            {showFeedFilters && (
-              <div className="tkh-feed-filter-fields">
-                {isModerator && (
-                  <label className="tkh-compact-select-label">
-                    Review status
-                    <select
-                      className="tkh-compact-select"
-                      value={selectedTab}
-                      onChange={(event) =>
-                        setSelectedTab(event.target.value)
-                      }
-                    >
-                      <option value="approved">Approved</option>
-                      <option value="pending">Pending review</option>
-                      {rejectedHighlights.length > 0 && (
-                        <option value="rejected">Rejected</option>
-                      )}
-                    </select>
-                  </label>
-                )}
-
-                <label className="tkh-compact-select-label">
-                  Moment
-                  <select
-                    className="tkh-compact-select"
-                    value={selectedFilter}
-                    onChange={(event) =>
-                      setSelectedFilter(event.target.value)
-                    }
-                  >
-                    {["all", "goal", "save", "skill", "other"].map(
-                      (filter) => (
-                        <option key={filter} value={filter}>
-                          {getFilterLabel(filter)}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </label>
-
-                <label className="tkh-compact-select-label">
-                  Player
-                  <select
-                    className="tkh-compact-select"
-                    value={selectedPlayerFilter}
-                    onChange={(event) =>
-                      setSelectedPlayerFilter(event.target.value)
-                    }
-                  >
-                    <option value="all">All players</option>
-                    {playerOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="tkh-compact-select-label">
-                  Viewed
-                  <select
-                    className="tkh-compact-select"
-                    value={watchedFilter}
-                    onChange={(event) =>
-                      setWatchedFilter(event.target.value)
-                    }
-                  >
-                    <option value="all">All clips</option>
-                    <option value="unwatched">Not watched</option>
-                    <option value="watched">Watched</option>
-                  </select>
-                </label>
-              </div>
-            )}
-          </div>
-        )}
+        {(mainTab==='currentWeek'||mainTab==='throwback')&&<HighlightFilters type={selectedFilter} onType={setSelectedFilter} player={selectedPlayerFilter} onPlayer={setSelectedPlayerFilter} viewed={watchedFilter} onViewed={setWatchedFilter} review={selectedTab} onReview={setSelectedTab} moderator={isModerator} players={playerOptions} rejected={rejectedHighlights.length>0}/>}
+        {(mainTab==='currentWeek'||mainTab==='throwback')&&<HighlightMatchFolders kind="field" ownerId={activeClubId} voting={mainTab==='currentWeek'} fixtures={fixtureChoices} value={fixtureFilter} onChange={value=>{setFixtureFilter(value);}}/>}
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && !isModerator && scopedPendingHighlights.length > 0 && (
           <div className="tkh-system-note">
@@ -5714,8 +5327,8 @@ export function VideoHighlightsPage({
           </div>
         )}
 
-        {(mainTab === "currentWeek" || mainTab === "throwback") && (
-          <>
+        {(mainTab === "currentWeek" || mainTab === "throwback") && Boolean(fixtureFilter) && (
+          <React.Fragment key={fixtureFilter}>
             {votingWindowClosed && (
               <div className="tkh-system-note">
                 Voting for this week has closed. Top Voted is now the main highlights hub, but you can still review current-week clips here.
@@ -5775,10 +5388,11 @@ export function VideoHighlightsPage({
                     isThrowback && !previousWasThrowback;
 
                   return (
-                    <React.Fragment key={highlight.id}>
+                    <React.Fragment key={`${highlightFixtureId(highlight,resolvedMatchId)}:${highlight.id}`}>
+                      {(!previous||highlightFixtureId(previous,resolvedMatchId)!==highlightFixtureId(highlight,resolvedMatchId))&&<h3 className="fanm-highlight-fixture-heading">{fixtureLabel(highlight)}</h3>}
                       {shouldShowThrowbackDivider && (
                         <div className="tkh-throwback-divider">
-                          <strong>Throwback ✨</strong>
+                          <strong>Throwbacks ✨</strong>
                           <span>
                             Classic club memories, old rivalries, and nostalgic football moments.
                           </span>
@@ -5811,7 +5425,7 @@ export function VideoHighlightsPage({
                     )}
                     showVoteLabel={showVoteLabel}
                     canAttachToChat={
-                      ["player", "captain", "admin"].includes(role) &&
+                      canComment &&
                       typeof onAttachHighlightToClubChat === "function"
                     }
                     currentUserKey={identityKey}
@@ -5840,7 +5454,7 @@ export function VideoHighlightsPage({
                 })}
               </div>
             )}
-          </>
+          </React.Fragment>
         )}
 
         {mainTab === "topShelf" && (
@@ -5924,7 +5538,7 @@ export function VideoHighlightsPage({
                                 : ""
                             }
                             canAttachToChat={
-                              ["player", "captain", "admin"].includes(role) &&
+                              canComment &&
                               typeof onAttachHighlightToClubChat === "function"
                             }
                             currentUserKey={identityKey}
@@ -6108,7 +5722,7 @@ export function VideoHighlightsPage({
 
               <label className="tkh-field">
                 <span>Clip type</span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editClipType}
                   onChange={(event) =>
@@ -6121,7 +5735,7 @@ export function VideoHighlightsPage({
                   <option value="skill">✨ Skill</option>
                   <option value="momish">😂 MOM-ish</option>
                   <option value="other">🎥 Other</option>
-                </select>
+                </PremiumSelect>
               </label>
 
               <label className="tkh-field">
@@ -6153,7 +5767,7 @@ export function VideoHighlightsPage({
 
               <label className="tkh-field">
                 <span>Player's team</span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editPlayerTeamName}
                   onChange={(event) =>
@@ -6169,7 +5783,7 @@ export function VideoHighlightsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </label>
 
               <label className="tkh-field">
@@ -6178,7 +5792,7 @@ export function VideoHighlightsPage({
                     ? "League Team A"
                     : "Match Team A"}
                 </span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editTeamAName}
                   onChange={(event) =>
@@ -6192,7 +5806,7 @@ export function VideoHighlightsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </label>
 
               <label className="tkh-field">
@@ -6201,7 +5815,7 @@ export function VideoHighlightsPage({
                     ? "League Team B"
                     : "Match Team B"}
                 </span>
-                <select
+                <PremiumSelect
                   className="tkh-select"
                   value={editTeamBName}
                   onChange={(event) =>
@@ -6215,7 +5829,7 @@ export function VideoHighlightsPage({
                       {name}
                     </option>
                   ))}
-                </select>
+                </PremiumSelect>
               </label>
 
               <datalist id="tkh-edit-player-options">
@@ -6284,7 +5898,7 @@ export function VideoHighlightsPage({
                       color: highlightEra === "throwback" ? "#fb923c" : "#4ade80",
                     }}
                   >
-                    {highlightEra === "throwback" ? "Throwback ✨" : "Current Week"}
+                    {highlightEra === "throwback" ? "Throwbacks ✨" : "Current Week"}
                   </span>
                 </h2>
                 <div className="tkh-help">
@@ -6358,13 +5972,13 @@ export function VideoHighlightsPage({
 
               <div className="tkh-field">
                 <label>Type</label>
-                <select className="tkh-select" value={clipType} onChange={(e) => setClipType(e.target.value)} disabled={uploading}>
+                <PremiumSelect className="tkh-select" value={clipType} onChange={(e) => setClipType(e.target.value)} disabled={uploading}>
                   <option value="goal">⚽ Goal</option>
                   <option value="save">🧤 Save</option>
                   <option value="skill">✨ Skill</option>
                   <option value="momish">😂 MOM-ish</option>
                   <option value="other">🎥 Other</option>
-                </select>
+                </PremiumSelect>
               </div>
 
               {highlightEra !== "throwback" ? (
@@ -6545,7 +6159,7 @@ export function VideoHighlightsPage({
           </div>
         </div>
       )}
-    </div>
+    </div></HighlightPlaybackProvider>
   );
 }
 

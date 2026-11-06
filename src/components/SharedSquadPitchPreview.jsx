@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import React from "react";
 import TeamIdentityEditor from "./TeamIdentityEditor";
 export default function SharedSquadPitchPreview({
@@ -125,7 +126,7 @@ export default function SharedSquadPitchPreview({
 
                   {canEdit ? (
                     <div style={{ display: "grid", gap: "0.35rem" }}>
-                      <select
+                      <PremiumSelect
                         className="text-input"
                         value={
                           team.captainId && playersById.has(team.captainId)
@@ -145,7 +146,7 @@ export default function SharedSquadPitchPreview({
                             ⭐ {displayNameOf(pid)}
                           </option>
                         ))}
-                      </select>
+                      </PremiumSelect>
 
                       <TeamIdentityEditor
                         team={team}

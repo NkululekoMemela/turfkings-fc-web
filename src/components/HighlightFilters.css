@@ -1,0 +1,5 @@
+.highlight-filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:12px 0 16px;padding:0;}
+.highlight-filter-bar>.fanm-premium-select{flex:0 1 auto;width:auto!important;max-width:170px;}
+.highlight-filter-bar .fanm-premium-select__trigger{min-height:31px!important;padding:6px 11px!important;border-radius:999px!important;background:linear-gradient(130deg,#153f5066,#182a4566)!important;border:1px solid #8ec5d044!important;color:#dfedf3!important;font-size:11px!important;line-height:1.2!important;box-shadow:inset 0 1px #ffffff0b!important;gap:9px;}
+.highlight-filter-bar .fanm-premium-select__trigger>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.highlight-filter-reset{border:0;background:none;color:#8fd2dd;font-size:11px;cursor:pointer;padding:6px;}

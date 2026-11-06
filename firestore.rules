@@ -343,6 +343,12 @@ service cloud.firestore {
         && get(member).data.get("role", "") in ["admin","captain"]
         && ownsClubMember(clubId,memberId));
     }
+    match /clubs/{clubId}/playerDebuts/{id} {
+      allow read: if isSignedIn() && (clubStateOperator(clubId) || clubDataParticipant(clubId));
+      allow write: if false;
+    }
+    match /playerDebutMigrations/{id} { allow read, write: if false; }
+
     match /clubs/{clubId}/state/{stateId} {
       allow read: if true;
       allow write: if isSignedIn() && !isCameraSession()
@@ -352,12 +358,12 @@ service cloud.firestore {
     match /clubStateOperators/{document=**} { allow read, write: if false; }
 
     match /clubs/{clubId}/{collectionName}/{document=**} {
-      allow read: if !(collectionName in ["members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups", "numberReservations", "numberOffers", "numberQuotes"]);
+      allow read: if !(collectionName in ["members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups", "numberReservations", "numberOffers", "numberQuotes", "playerDebuts"]);
       allow write: if isSignedIn() && !isCameraSession()
         && request.auth.token.get("email_verified", false) == true
         && (clubStateOperator(clubId) || clubDataParticipant(clubId))
         && !(collectionName in ["state", "members", "players", "playerPhotos", "humanMembers", "pendingSignups", "matchSignups",
-          "publicMembers", "publicPlayers", "publicPlayerPhotos", "publicPendingSignups", "publicMatchSignups", "numberReservations", "numberOffers", "numberQuotes"]);
+          "publicMembers", "publicPlayers", "publicPlayerPhotos", "publicPendingSignups", "publicMatchSignups", "numberReservations", "numberOffers", "numberQuotes", "playerDebuts"]);
     }
 
     // ---------------------------------------------------------
@@ -632,6 +638,17 @@ service cloud.firestore {
         );
       }
 
+      // Guarded official results are committed by the referee endpoint only.
+      // This prevents a previous phone's queued Firestore write overwriting recovery.
+      function guardedBoothResults() {
+        let old = resource.data.get("league", {}).get("activeSeason", {});
+        let next = request.resource.data.get("league", {}).get("activeSeason", {});
+        let path = /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(old.get("id", "none"))/matches/current;
+        return old.get("results", []) == next.get("results", [])
+          || !exists(path) || get(path).data.get("boothVersion", 0) != 1
+          || get(path).data.status != "live";
+      }
+
       function fieldClosurePowersRespected() {
         let old = resource.data.get("league", {}).get("activeSeason", {});
         let next = request.resource.data.get("league", {}).get("activeSeason", {});
@@ -836,6 +853,7 @@ service cloud.firestore {
                        == resource.data.ownerUid
                     && request.resource.data.id == venueId
                     && isSignedIn()
+                    && guardedBoothResults()
                     && fieldClosurePowersRespected()
                     && fieldTestingSettingProtected()
                     && (
@@ -900,6 +918,11 @@ service cloud.firestore {
         ).data.league.activeSeason;
         let fixture = season.fixtures[data.fixtureIndex];
         return approval.actorUid == request.auth.uid
+          && (season.gameFormat != "5_V_5" || (
+            approval.get("stockRevision", 0) > 0
+            && exists(/databases/$(database)/documents/leagueVenues/$(venueId)/bibHireConfig/stock)
+            && approval.stockRevision == get(/databases/$(database)/documents/leagueVenues/$(venueId)/bibHireConfig/stock).data.revision
+          ))
           && approval.venueId == venueId && approval.seasonId == seasonId
           && approval.fixtureId == data.fixtureId
           && data.get("paidSquads", {}) == approval.get("squads", {})
@@ -1013,6 +1036,10 @@ service cloud.firestore {
           );
       }
 
+      match /matchReversals/{reversalId} {
+        allow read: if isSignedIn() && !isCameraSession() && get(/databases/$(database)/documents/leagueVenues/$(venueId)).data.ownerUid == request.auth.uid;
+        allow write: if false;
+      }
       match /actionLog/{entryId} {
         function venueDoc() {
           return get(
@@ -1055,7 +1082,7 @@ service cloud.firestore {
           && request.resource.data.action in [
             "season_created", "season_started", "match_started", "match_completed",
             "match_day_saved", "match_day_discarded", "season_ended", "season_cancelled",
-            "empty_season_deleted", "fixture_pairing_selected"
+            "empty_season_deleted", "fixture_pairing_selected", "match_reversed", "match_corrected", "staff_permissions_changed"
           ]
           && request.resource.data.label is string
           && request.resource.data.label.size() <= 100
@@ -1165,6 +1192,8 @@ service cloud.firestore {
 
         allow update: if matchId == "current"
           && activeFieldOperatorForSeason(seasonId)
+          && (resource.data.get("boothVersion", 0) != 1
+            || (resource.data.status == "completed" && request.resource.data.status == "live"))
           && resource.data.venueId == venueId
           && resource.data.seasonId == seasonId
           && request.resource.data.venueId == venueId
@@ -1191,7 +1220,8 @@ service cloud.firestore {
           );
 
         allow delete: if matchId == "current"
-          && activeFieldOperatorForSeason(seasonId);
+          && activeFieldOperatorForSeason(seasonId)
+          && !(resource.data.get("boothVersion", 0) == 1 && resource.data.status == "live");
       }
 
       match /seasons/{seasonId}/cameraRequests/{requestId} {
@@ -1974,7 +2004,7 @@ service cloud.firestore {
         && resource.data.firebaseUid == request.auth.uid;
       allow create, update: if isSignedIn() && !isCameraSession()
         && request.auth.token.get("email_verified", false) == true
-        && request.resource.data.keys().hasOnly(["token","enabled","firebaseUid","deviceId","platform","rendererVersion","updatedAt"])
+        && request.resource.data.keys().hasOnly(["token","enabled","firebaseUid","deviceId","platform","rendererVersion","liveScoreVersion","updatedAt"])
         && request.resource.data.keys().hasAll(["token","enabled","firebaseUid","deviceId","platform","rendererVersion","updatedAt"])
         && request.resource.data.firebaseUid == request.auth.uid
         && request.resource.data.deviceId == deviceId
@@ -1985,6 +2015,7 @@ service cloud.firestore {
         && request.resource.data.enabled is bool
         && request.resource.data.platform in ["android","ios"]
         && request.resource.data.rendererVersion == "2"
+        && request.resource.data.get("liveScoreVersion", "0") in ["0","1"]
         && request.resource.data.updatedAt == request.time;
       allow delete: if isSignedIn() && !isCameraSession()
         && resource.data.firebaseUid == request.auth.uid;
@@ -2025,6 +2056,8 @@ service cloud.firestore {
 
     match /privateTeamChats/{document=**} { allow read, write: if false; }
 
+    match /fieldRefereeInvites/{document=**} { allow read, write: if false; }
+
     match /{topLevel}/{document=**} {
       allow read, write: if isSignedIn()
                          && !isCameraSession()
@@ -2034,10 +2067,12 @@ service cloud.firestore {
                          && topLevel != "poolNights"
                          && topLevel != "profileAccountChanges"
                          && topLevel != "playerPrivacyMigrations"
+                         && topLevel != "playerDebutMigrations"
                          && topLevel != "matchNumberSheets"
                          && topLevel != "practiceControl"
                          && topLevel != "practiceSessions"
                          && topLevel != "sandboxes"
+                         && topLevel != "fieldRefereeInvites"
                          && topLevel != "leagueVenues"
                          && topLevel != "legalAcceptances"
                          && topLevel != "clubs"

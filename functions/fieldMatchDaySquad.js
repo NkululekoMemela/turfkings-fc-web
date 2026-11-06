@@ -150,9 +150,15 @@ async function loadDay({tx, db, scope, matchDayId}) {
   }
   const [{fixtureColours,automaticFixtureBibs},{kitColourKey,teamBibColours}]=await Promise.all([import("./automaticFixtureKit.mjs"),import("./opponentKitColours.mjs")]);
   const [homeClub,awayClub]=await tx.getAll(db.doc(`clubs/${fixture.clubAId}`),db.doc(`clubs/${fixture.clubBId}`));
-  const colours=fixtureColours(homeClub.data()||{},awayClub.data()||{});
+  const stockConfig=(await tx.get(db.doc(`leagueVenues/${scope.venueId}/bibHireConfig/stock`))).data()||{};
+  const ownedStock=stockConfig.confirmedAtMs?stockConfig.stock||[]:[];
+  const {bibCustodySnapshot,playerCarryPins,readBibCustody}=await import("./fieldBibCustody.mjs");
+  const loans=await readBibCustody(db,tx,scope.venueId);
+  const confirmedStock=bibCustodySnapshot(ownedStock,loans).availableStock;
+  const carryPins=playerCarryPins(loans,scope.clubId,matchDayId);
+  const colours=fixtureColours(homeClub.data()||{},awayClub.data()||{},ownedStock);
   const matchColour=scope.clubId===fixture.clubAId?colours.home:colours.away;
-  const planned=automaticFixtureBibs(candidates,matchColour);
+  const planned=automaticFixtureBibs(candidates,matchColour,confirmedStock,carryPins);
   candidates.splice(0,candidates.length,...planned);
   candidates.sort((a, b) => a.fullName.localeCompare(b.fullName));
   let submission = project({
@@ -160,11 +166,13 @@ async function loadDay({tx, db, scope, matchDayId}) {
     saved: context.squad?.matchDaySubmissions?.[matchDayId],
     carried: require("./rollingFieldSquad.cjs").carriedMemberIds({season:context.season,squad:context.squad,day,clubId:scope.clubId,candidates}),
   });
-  if (!submission.ready && submission.players.length >= 5) {
-    const selectedPlayers = automaticFixtureBibs(submission.players, matchColour);
+  if (submission.players.length >= 5) {
+    const selectedPlayers = automaticFixtureBibs(submission.players, matchColour,confirmedStock,carryPins);
     submission = project({scope, day, fixture, candidates: selectedPlayers});
     submission.rosterSource = "season";
   }
+  submission.stockConfirmed=Boolean(stockConfig.confirmedAtMs);
+  submission.stockRevision=stockConfig.revision||0;
   submission.matchColour=matchColour;
   submission.automaticKit=true;
   if(teamBibColours(submission.players).some(c=>c!==kitColourKey(matchColour))){submission.ready=false;submission.confirmed=false;}
@@ -215,6 +223,7 @@ async function submit({db, user, body, now = Date.now()}) {
     if (!service.canManageSquad(data.club, user)) {
       throw new Error("Only this Club's captain or administrator can send its squad.");
     }
+    if(!data.submission.stockConfirmed)throw new Error("Ask the Field to confirm bib stock first.");
     const window = sendWindow({
       day: data.day, fixture: data.fixture, now, testMode: body.testMode,
     });
@@ -371,7 +380,7 @@ async function getFieldDay({db, user, body}) {
         status: squad.confirmed ? "confirmed" : squad.ready ? "season_roster" : "needs_attention",
         availablePlayers: data.candidates, candidateCount: data.candidates.length, vacancies: data.vacancies.length};
     }));
-    return {matchDayId, dateLocal: day.dateLocal, clubs: result};
+    return {stockPolicyVersion:1,matchDayId, dateLocal: day.dateLocal, clubs: result};
   });
 }
 

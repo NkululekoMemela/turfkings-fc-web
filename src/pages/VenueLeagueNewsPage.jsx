@@ -1,3 +1,4 @@
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import "../components/NewsPagePolish.css";
 import CompactNewsPoll from "../components/CompactNewsPoll.jsx";
 import {compactKitPollQuestion} from "../core/merchandisePoll.mjs";
@@ -3239,7 +3240,7 @@ Votes for this poll will no longer be shown.`
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Where should this story appear?</span>
-                  <select
+                  <PremiumSelect
                     value={storyDraft.slotKey}
                     onChange={(e) => handleStoryDraftChange("slotKey", e.target.value)}
                     style={newsInputStyle}
@@ -3249,12 +3250,12 @@ Votes for this poll will no longer be shown.`
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </PremiumSelect>
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Player in the group (optional)</span>
-                  <select
+                  <PremiumSelect
                     value={storyDraft.playerName}
                     onChange={(e) => handleStoryDraftChange("playerName", e.target.value)}
                     style={newsInputStyle}
@@ -3265,7 +3266,7 @@ Votes for this poll will no longer be shown.`
                         {playerName}
                       </option>
                     ))}
-                  </select>
+                  </PremiumSelect>
                 </label>
 
                 <div style={{ display: "grid", gap: "0.35rem" }}>
@@ -3280,10 +3281,10 @@ Votes for this poll will no longer be shown.`
                   />
                 </div>
 
-                {storyDraft.playerName&&<label style={{display:"grid",gap:".35rem"}}><span>Player portrait</span><select style={newsInputStyle} value={storyDraft.playerPhotoSide||"left"} onChange={e=>handleStoryDraftChange("playerPhotoSide",e.target.value)}><option value="left">Top left</option><option value="right">Top right</option></select></label>}
+                {storyDraft.playerName&&<label style={{display:"grid",gap:".35rem"}}><span>Player portrait</span><PremiumSelect style={newsInputStyle} value={storyDraft.playerPhotoSide||"left"} onChange={e=>handleStoryDraftChange("playerPhotoSide",e.target.value)}><option value="left">Top left</option><option value="right">Top right</option></PremiumSelect></label>}
                 <label hidden={Boolean(storyDraft.playerName)} style={{ display: storyDraft.playerName ? "none" : "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Photo size</span>
-                  <select
+                  <PremiumSelect
                     value={storyDraft.imageSize}
                     onChange={(e) => handleStoryDraftChange("imageSize", e.target.value)}
                     style={newsInputStyle}
@@ -3293,12 +3294,12 @@ Votes for this poll will no longer be shown.`
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </PremiumSelect>
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Photo framing</span>
-                  <select
+                  <PremiumSelect
                     value={storyDraft.imageFit}
                     onChange={(e) => handleStoryDraftChange("imageFit", e.target.value)}
                     style={newsInputStyle}
@@ -3308,7 +3309,7 @@ Votes for this poll will no longer be shown.`
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </PremiumSelect>
                 </label>
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
@@ -3442,7 +3443,7 @@ Votes for this poll will no longer be shown.`
 
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <span style={{ fontWeight: 700 }}>Poll icon</span>
-                  <select
+                  <PremiumSelect
                     value={pollDraft.icon}
                     onChange={(e) =>
                       handlePollDraftChange("icon", e.target.value)
@@ -3455,7 +3456,7 @@ Votes for this poll will no longer be shown.`
                     <option value="🏆">🏆 Award</option>
                     <option value="👥">👥 Team decision</option>
                     <option value="📣">📣 Field announcement</option>
-                  </select>
+                  </PremiumSelect>
                 </label>
 
                 <div style={{ display: "grid", gap: "0.65rem" }}>
@@ -4301,11 +4302,11 @@ Votes for this poll will no longer be shown.`
       {renderCustomStoriesAt("before-recap")}
 
       {/* MATCH-BY-MATCH RECAP */}
-      <section className="card">
-        <div className="news-recap-header">
-          <h2>Match-by-match recap</h2>
+      <details className="card news-recap-fold">
+        <summary className="news-recap-header">
+          <strong>Match recaps</strong>
           <span className="news-recap-subtitle">Match-day {latestMatchDayLabel}</span>
-        </div>
+        </summary>
 
         {recapResults.length === 0 ? (
           <p className="muted">No matches recorded for the latest saved match-day yet.</p>
@@ -4357,7 +4358,7 @@ Votes for this poll will no longer be shown.`
             })}
           </ul>
         )}
-      </section>
+      </details>
 
       {isTurfKingsClub && showRSVP && (
         <RSVPModal

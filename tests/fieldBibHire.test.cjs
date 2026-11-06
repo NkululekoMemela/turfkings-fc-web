@@ -9,7 +9,7 @@ function setup(){return fixture({
 const stock=[1,2,3,4,5,6].map(number=>({color:'Blue',number,quantity:1}));
 const hire={action:'placeHire',clubId:'club',seasonId:'season',matchDayId:'day',requestId:'request',customer:{name:'Captain',phone:'0768304880'}};
 test('inventory accepts actual numbered quantities and rejects duplicate or invalid numbers',()=>{
- assert.equal(inventory(stock).length,6);assert.throws(()=>inventory([{color:'Blue',number:22,quantity:1}]),/1–6/);assert.throws(()=>inventory([...stock,stock[0]]),/duplicate/);
+ assert.equal(inventory(stock).length,6);assert.equal(inventory([{color:'Blue',number:22,quantity:1}])[0].number,22);assert.throws(()=>inventory([{color:'Blue',number:1000,quantity:1}]),/1–999/);assert.throws(()=>inventory([...stock,stock[0]]),/duplicate/);
 });
 test('only Field management can confirm stock; no inventory is invented',async()=>{
  const f=setup(),view=await handle({...f,user:captain,body:{action:'hireView',clubId:'club'}});assert.deepEqual(view.config.stock,[]);assert.equal(view.seasonId,'season');
@@ -57,4 +57,57 @@ test('stock-only staff view skips reservation reads; hires are loaded explicitly
  assert.equal(reservationQueries,0);assert.deepEqual(fast.orders,[]);
  const full=await handle({...f,user:manager,body:{action:'hireView',venueId:'f'}});
  assert.equal(reservationQueries,1);assert.equal(full.orders.length,1);
+});
+test('stock-only inventory is readable by approved referees but stock changes remain manager-only',async()=>{
+ const f=setup();f.records.set('leagueVenues/f/staff/ref',{uid:'ref',status:'active',role:'referee'});const user={uid:'ref',email_verified:true};const view=await handle({...f,user,body:{action:'hireView',venueId:'f',stockOnly:true}});assert.equal(view.manager,false);assert.deepEqual(view.config.stock,[]);await assert.rejects(()=>handle({...f,user,body:{action:'saveHireStock',venueId:'f',stock,expectedRevision:0,inventoryOnly:true}}),/management/);
+});
+test('inventory-only save does not invent a rental collection point',async()=>{
+ const f=setup();await handle({...f,user:manager,body:{action:'saveHireStock',venueId:'f',stock,collectionAddress:'',inventoryOnly:true,expectedRevision:0}});const config=f.records.get('leagueVenues/f/bibHireConfig/stock');assert.equal(config.stock.length,6);assert.equal(config.collectionAddress,'');await assert.rejects(()=>handle({...f,user:captain,body:hire}),/physical stock/);
+});
+test('ordinary active Club players can read inventory without receiving stock or booking powers',async()=>{
+ const f=setup();f.records.set('clubs/club/members/player',{uid:'player',status:'active',role:'player'});const user={uid:'player',email_verified:true};const view=await handle({...f,user,body:{action:'hireView',clubId:'club',venueId:'f',stockOnly:true}});assert.equal(view.manager,false);assert.equal(view.captain,false);await assert.rejects(()=>handle({...f,user,body:{action:'saveHireStock',clubId:'club',venueId:'f',stock,inventoryOnly:true,expectedRevision:0}}),/management/);
+});
+
+test('manager records a real handout, tracks exact player returns and retains accountability',async t=>{
+ const f=setup();f.records.get('leagueVenues/f').league.activeSeason.clubIds=['club','other'];
+ await handle({...f,user:manager,body:{action:'saveHireStock',venueId:'f',stock,collectionAddress:'',inventoryOnly:true,expectedRevision:0}});
+ const players=[1,2].map(n=>({sourcePlayerId:`p${n}`,fullName:`Player ${n}`,matchBib:{source:'hired',number:n,color:'Blue'}}));
+ t.mock.method(require('../functions/fieldMatchDaySquad'),'loadDay',async()=>({submission:{players,clubName:'Club'}}));
+ const body={action:'recordBibHandout',venueId:'f',seasonId:'season',matchDayId:'day',borrowerClubId:'club',contact:{name:'Captain',phone:'0768304880'}};
+ await assert.rejects(()=>handle({...f,user:captain,body}),/management/);
+ const {id}=await handle({...f,user:manager,body});
+ const view=await handle({...f,user:manager,body:{action:'hireView',venueId:'f'}});
+ assert.equal(view.orders[0].hirePlayers[1].name,'Player 2');assert.equal(view.orders[0].recordType,'handout');
+ await handle({...f,user:manager,body:{action:'recordBibReturn',venueId:'f',recordType:'handout',orderId:id,playerIndex:0}});
+ let loan=f.records.get(`leagueVenues/f/bibLoans/${id}`);assert.equal(loan.hireStatus,'handed_out');assert.equal(loan.returnedPlayers['0'].byUid,'manager');assert.equal(loan.returnedPlayers['1'],undefined);
+ await handle({...f,user:manager,body:{action:'recordBibReturn',venueId:'f',recordType:'handout',orderId:id,playerIndex:0}});
+ assert.equal(f.records.get(`leagueVenues/f/bibLoans/${id}`).revision,2);
+ await handle({...f,user:manager,body:{action:'recordBibReturn',venueId:'f',recordType:'handout',orderId:id,playerIndex:1}});
+ loan=f.records.get(`leagueVenues/f/bibLoans/${id}`);assert.equal(loan.hireStatus,'returned');assert.equal(loan.issuedBy,'manager');
+ assert.equal((await handle({...f,user:manager,body:{action:'hireView',venueId:'f'}})).orders.length,0);
+ assert.equal(f.records.has(`kitShopOrders/${id}`),false);
+});
+test('handout rejects unconfirmed stock, unrelated clubs and bibs still held by another player',async t=>{
+ const f=setup();f.records.get('leagueVenues/f').league.activeSeason.clubIds=['club','other'];
+ const body={action:'recordBibHandout',venueId:'f',seasonId:'season',matchDayId:'day',borrowerClubId:'club'};
+ await assert.rejects(()=>handle({...f,user:manager,body}),/confirmed stock/);
+ await handle({...f,user:manager,body:{action:'saveHireStock',venueId:'f',stock,inventoryOnly:true,expectedRevision:0}});
+ await assert.rejects(()=>handle({...f,user:manager,body:{...body,borrowerClubId:'outsider'}}),/Club in this season/);
+ t.mock.method(require('../functions/fieldMatchDaySquad'),'loadDay',async()=>({submission:{players:[{fullName:'Player',matchBib:{source:'hired',number:1,color:'Blue'}}]}}));
+ await handle({...f,user:manager,body});
+ await assert.rejects(()=>handle({...f,user:manager,body:{...body,borrowerClubId:'other'}}),/still out/);
+ await assert.rejects(()=>handle({...f,user:manager,body:{action:'recordBibReturn',venueId:'f',orderId:'a'.repeat(64),recordType:'handout',playerIndex:999}}),/recorded handout/);
+});
+
+test('individual paid-hire returns release reserved stock only after the final bib and reject other fields',async()=>{
+ const f=setup(),id='a'.repeat(64),order={orderType:'bib_hire',venueId:'f',clubId:'club',ownerUid:'cap',paymentStatus:'confirmed',hireStatus:'reserved',hirePlayers:[{name:'One',number:1,color:'Blue'},{name:'Two',number:2,color:'Blue'}],hireNeeds:{blue_1:1,blue_2:1},reservationId:'season__day',revision:1};
+ f.records.set(`kitShopOrders/${id}`,order);f.records.set('leagueVenues/f/bibHireDays/season__day',{used:{blue_1:1,blue_2:1},orders:{[id]:true}});
+ await handle({...f,user:manager,body:{action:'recordBibReturn',venueId:'f',orderId:id,playerIndex:0}});
+ assert.equal(f.records.get('leagueVenues/f/bibHireDays/season__day').used.blue_1,1);
+ assert.equal(f.records.get(`kitShopOrders/${id}`).hireStatus,'part_returned');
+ await handle({...f,user:manager,body:{action:'recordBibReturn',venueId:'f',orderId:id,playerIndex:1}});
+ assert.equal(f.records.get('leagueVenues/f/bibHireDays/season__day').used.blue_1,0);
+ assert.equal(f.records.get(`kitShopOrders/${id}`).hireStatus,'returned');
+ f.records.set('leagueVenues/other',{ownerUid:'manager'});
+ await assert.rejects(()=>handle({...f,user:manager,body:{action:'recordBibReturn',venueId:'other',orderId:id,playerIndex:0}}),/recorded handout/);
 });

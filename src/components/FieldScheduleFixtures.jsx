@@ -191,13 +191,13 @@ export default function FieldScheduleFixtures({
         <div className="field-fixtures-download">
           <button type="button" className="secondary-btn field-fixtures-export"
             disabled={!!downloading} onClick={() => download("")}>
-            {downloading === "league" ? "Saving…" : "All fixtures"}
+            {downloading === "league" ? "Saving…" : "Save fixtures to phone"}
           </button>
           {!!ownClub && (
             <button type="button" className="secondary-btn field-fixtures-export"
               disabled={!!downloading} onClick={() => download(myClubId)}>
               {downloading === myClubId
-                ? "Saving…" : "My Club"}
+                ? "Saving…" : "Save my Club fixtures"}
             </button>
           )}
           <small className="muted" style={{flexBasis: "100%"}}>

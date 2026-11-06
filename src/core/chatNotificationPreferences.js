@@ -7,19 +7,22 @@ export function chatPreferenceRef(uid,scope,groupId){
 }
 export function watchChatPreference(uid,scope,id,onData,onError){
  let active=true,version=0;
+ const policyRequest=scope==='field'?memberWorkspaceRequest('fieldChatPreferences',{venueId:id}):Promise.resolve({eligible:true,defaultMuted:false});
+ policyRequest.catch(()=>{});
  const unsubscribe=onSnapshot(chatPreferenceRef(uid,scope,id),async snap=>{
   const request=++version;
   try{
-   const policy=scope==='field'?await memberWorkspaceRequest('fieldChatPreferences',{venueId:id}):{eligible:true,defaultMuted:false};
+   const policy=await policyRequest;
    const muted=!policy.eligible||(typeof snap.data()?.muted==='boolean'?snap.data().muted:policy.defaultMuted);
-   if(active&&version===request&&auth.currentUser?.uid===uid)onData(muted);
+   if(active&&version===request&&auth.currentUser?.uid===uid)onData(muted,{canChange:policy.eligible});
   }catch(error){if(active&&version===request)onError?.(error);}
  },onError);
  return()=>{active=false;unsubscribe();};
 }
 export async function saveChatPreference(uid,scope,groupId,muted){
  if(auth.currentUser?.uid!==uid)throw Error('Sign in again before changing notifications.');
- await setDoc(chatPreferenceRef(uid,scope,groupId),{scope,groupId,muted:!!muted,updatedAt:serverTimestamp()});
+ const write=setDoc(chatPreferenceRef(uid,scope,groupId),{scope,groupId,muted:!!muted,updatedAt:serverTimestamp()});
+ let timer;try{await Promise.race([write,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Waiting for connection to update chat alerts.')),8000);})]);}finally{clearTimeout(timer);}
 }
 export async function shouldPresentChatNotification(data){
  const scope=data?.type==='club_chat'?'club':data?.type==='field_chat'?'field':null;

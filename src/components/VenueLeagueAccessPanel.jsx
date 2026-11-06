@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import EntryManagementButton from "./EntryManagementButton.jsx";
 import PlayerNameSelectionButton from "./PlayerNameSelectionButton.jsx";
 import { onAuthStateChanged } from "firebase/auth";
@@ -1353,7 +1354,7 @@ export default function VenueLeagueAccessPanel({
                   </small>
                 </span>
 
-                <select
+                <PremiumSelect
                   required
                   value={joinStaffRole}
                   onChange={(event) => {
@@ -1392,7 +1393,7 @@ export default function VenueLeagueAccessPanel({
                   <option value="referee">
                     Referee
                   </option>
-                </select>
+                </PremiumSelect>
 
                 {!joinStaffRole && (
                   <span style={{

@@ -4,6 +4,7 @@ import "./FieldBottomNav.css";
 const items = [
   { key: "landing", emoji: "🏡", label: "Home" },
   { key: "stats", emoji: "📊", label: "Stats" },
+  { key: "cards", emoji: "🪪", label: "Cards" },
   { key: "squads", emoji: "👥", label: "Squads" },
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
   { key: "news", emoji: "📰", label: "News" },
@@ -12,8 +13,8 @@ const items = [
   { key: "settings", emoji: "⚙️", label: "Settings" },
 ];
 
-export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false }) {
-  const visibleItems = items.filter(item => !["settings","hireStock"].includes(item.key) || canAccessSettings);
+export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false, canViewBibStock = false, locked = false }) {
+  const visibleItems = items.filter(item => item.key==="hireStock" ? canAccessSettings||canViewBibStock : !["settings","actionLog"].includes(item.key) || canAccessSettings);
   const navScroller = useRef(null);
   const [isHidden,setIsHidden]=useState(false);
   useEffect(() => {
@@ -79,6 +80,8 @@ export default function FieldBottomNav({ currentPage, onNavigate, canAccessSetti
             <button
               key={key}
               type="button"
+              disabled={locked}
+              title={locked ? "Return to the referee booth" : undefined}
               className={`field-bottom-nav__pill ${current ? "is-current" : ""}`}
               style={{flex: "1 1 0", minWidth: 0}}
               aria-current={current ? "page" : undefined}

@@ -1,0 +1,13 @@
+/* Complete Match signup ribbon layout; legacy header markup is no longer rendered. */
+.app-root .club-page-ribbon{position:sticky;top:0;z-index:50;isolation:isolate;margin-left:calc(-1 * var(--club-ribbon-left,0px));margin-right:calc(-1 * var(--club-ribbon-right,0px));margin-top:calc(-1 * var(--club-ribbon-top,0px));margin-bottom:6px;width:calc(100% + var(--club-ribbon-left,0px) + var(--club-ribbon-right,0px));min-width:0;}
+.app-root .club-page-ribbon .field-ribbon-frame>.landing-header-sticky{position:relative!important;top:0!important;left:auto!important;right:auto!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;transform:none!important;background:transparent!important;}
+.app-root .club-page-ribbon .field-ribbon-frame>.landing-header-sticky>.landing-wave-header{height:122px!important;min-height:122px!important;margin:0!important;padding:0!important;background:transparent!important;border:0!important;border-radius:0!important;overflow:visible!important;box-shadow:none!important;}
+.app-root .club-page-ribbon .field-ribbon-frame .tk-ribbon-wave-svg--mobile{display:block!important;top:-1px!important;left:0!important;width:100%!important;height:123px!important;}
+.app-root .club-page-ribbon .field-ribbon-frame .tk-ribbon-desktop-lip{display:none!important;}
+.app-root .club-page-ribbon .field-ribbon-frame .header-title{position:relative!important;z-index:2!important;background:none!important;}
+.app-root .club-page-ribbon .field-ribbon-title-copy h1{margin:0!important;font-size:clamp(1.05rem,2.2vw,1.65rem)!important;line-height:1.15!important;color:white!important;white-space:normal!important;}
+.app-root .club-page-ribbon .field-ribbon-logo{width:45px!important;height:45px!important;object-fit:contain!important;}
+.app-root .club-page-ribbon .field-ribbon-content{display:none;}
+.club-ribbon-context{font-size:11px;color:#b7cad9;margin:0 0 12px;}
+@media(min-width:760px){.app-root .club-page-ribbon .field-ribbon-frame .tk-ribbon-wave-svg--mobile{display:none!important;}.app-root .club-page-ribbon .field-ribbon-frame .tk-ribbon-desktop-lip{display:block!important;top:-1px!important;left:0!important;width:100%!important;height:123px!important;}}
+@media(max-width:480px){.app-root .club-page-ribbon .field-ribbon-logo{width:38px!important;height:38px!important;}.app-root .club-page-ribbon .field-ribbon-title-row{gap:9px!important;}}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical" android:padding="4dp">
+ <ImageView android:id="@+id/fanm_score_home_logo" android:layout_width="28dp" android:layout_height="28dp" android:contentDescription="Home club logo" android:scaleType="fitCenter" android:src="@mipmap/ic_launcher"/>
+ <TextView android:id="@+id/fanm_score_home" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginHorizontal="5dp" android:textSize="12sp" android:textStyle="bold" android:maxLines="2"/>
+ <LinearLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center">
+  <TextView android:id="@+id/fanm_score_number" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="20sp" android:textStyle="bold"/>
+  <TextView android:id="@+id/fanm_score_phase" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="8sp"/>
+ </LinearLayout>
+ <TextView android:id="@+id/fanm_score_away" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginHorizontal="5dp" android:gravity="end" android:textSize="12sp" android:textStyle="bold" android:maxLines="2"/>
+ <ImageView android:id="@+id/fanm_score_away_logo" android:layout_width="28dp" android:layout_height="28dp" android:contentDescription="Away club logo" android:scaleType="fitCenter" android:src="@mipmap/ic_launcher"/>
+ <TextView android:id="@+id/fanm_score_close" android:layout_width="32dp" android:layout_height="match_parent" android:gravity="center" android:text="×" android:textSize="22sp" android:contentDescription="Hide this match score"/>
+</LinearLayout>

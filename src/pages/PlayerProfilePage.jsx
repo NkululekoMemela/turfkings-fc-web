@@ -1,3 +1,4 @@
+import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import {PendingBibNotice} from "../components/ClubBibOrders.jsx";
 import {canUsePlayerFeatures} from "../core/playerFeatureAccess.mjs";
 import {buildPlayerProfileStory} from "../core/playerProfileStory.mjs";
@@ -126,15 +127,11 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
   const field=(label,name,{type="text",...props}={})=><label className="field-row"><span>{label}</span>{editing?<input className="text-input" name={name} type={type} value={draft[name]} onChange={changed} disabled={disabled} {...props}/>:<strong className="profile-field-value">{draft[name] || "Not recorded"}</strong>}</label>;
   if(!playerAccess)return <main className="page player-profile-page"><section className="card"><h1>Player Profile</h1><p>Open your club as a verified player to view your profile. Player details are unavailable in spectator mode.</p><button type="button" className="primary-btn" onClick={onBack}>Back to Home</button></section></main>;
   if(!session?.uid || !session.emailVerified || auth.currentUser?.uid!==session.uid) return <main className="page player-profile-page">
-    <div className="landing-header-sticky"><header className="header"><div className="profile-header-row"><div className="header-title"><h1>Player Profile</h1><div className="profile-header-club">{clubName}</div></div><button className="secondary-btn profile-home-button" type="button" onClick={onBack} aria-label="Home">🏠</button></div></header></div>
+    <ClubPageRibbon title={<>Player Profile</>} onHome={onBack}/>
     <section className="card profile-signin-wall"><span className="profile-studio-eyebrow">PLAYER STUDIO</span><h2>Make your player card yours</h2><p className="muted">Sign in with your registered Google account to view and edit your personal profile.</p><button className="primary-btn" type="button" onClick={()=>signInWithGoogle().catch(reason=>setError(reason.message))}>Sign in with Google</button>{error&&<p className="error-text" role="alert">{error}</p>}</section>
   </main>;
   return <main className={`page player-profile-page${editing?" profile-is-editing":""}`}>
-    <div className={`landing-header-sticky ${headerScrolled?"is-scrolled":""}`}><header className="header"><div className="profile-header-row">
-      <div className="header-title"><h1>Player Profile</h1><div className="profile-header-club">{clubName}</div></div>
-      <div className="profile-header-actions">
-        <button type="button" className="secondary-btn profile-home-button" onClick={back} disabled={saving} aria-label="Home" title="Home">🏠</button></div>
-    </div></header></div>
+    <ClubPageRibbon title={<>Player Profile</>} onHome={back}/>
     {loading&&!member&&<p className="muted" role="status">Loading your FANM profile…</p>}
     {error&&<div className="card profile-alert" role="alert"><p className="error-text">{error}</p></div>}
     {!loading&&!member&&<div className="profile-signin"><button type="button" className="primary-btn" onClick={()=>signInWithGoogle().catch(reason=>setError(reason.message))}>Confirm your Google account</button></div>}

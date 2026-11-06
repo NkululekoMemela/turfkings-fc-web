@@ -12,7 +12,7 @@ function eligible(h){
 function queueId(path){return createHash('sha256').update(path).digest('hex');}
 function mediaURL(h){return str(h.downloadUrl||h.videoUrl||h.mediaUrl||h.fileUrl||h.publicUrl||h.url);}
 function validMedia(value){try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password&&['firebasestorage.googleapis.com','storage.googleapis.com'].includes(u.hostname);}catch{return false;}}
-function caption({playerName,clubName,fieldName}){return `🔥 WHAT A MOMENT! ${playerName} brings the heat for ${clubName} at ${fieldName}! ⚽\n\nYour voted goal of the night. Watch it again and give the scorer some love!\n\n#5AsidesNearMe #GoalOfTheNight #CapeTownFootball`;}
+function caption({playerName,clubName,fieldName}){return `🔥 WHAT A MOMENT! ${playerName} brings the heat for ${clubName} at ${fieldName}! ⚽\n\nYour voted goal of the night. Watch it again and give the scorer some love!\n\n#5AsidesNearMe #GoalOfTheNight #CapeTownFootball\n\n5asidenearme.com`;}
 function validateDraft(d){for(const key of ['playerName','clubName','fieldName'])if(!str(d[key])||d[key].length>160)throw Error('Enter the scorer, Club and Field names.');if(!validMedia(d.videoUrl))throw Error('This clip needs a playable Firebase Storage video URL.');if(!str(d.caption)||d.caption.length>4000)throw Error('Enter a caption of 1–4000 characters.');for(const key of ['playerName','clubName','fieldName'])if(!d.caption.toLowerCase().includes(d[key].toLowerCase()))throw Error('The caption must include the scorer, Club and Field names.');}
 async function capture({db,path,h,historical=false}){
  if(!eligible(h))return;
@@ -21,7 +21,7 @@ async function capture({db,path,h,historical=false}){
  const field=parts[0]==='leagueVenues';
  const draft={playerName:str(h.playerName||h.goalScorerName||h.scorerName||(typeof h.scorer==='string'?h.scorer:'')),clubName:str(field?h.teamName||h.scoringClubName:h.clubName||info.name),fieldName:str(field?info.name||info.venueName:h.fieldName||h.venueName||info.locationDetails?.venueName||info.venueName),videoUrl:mediaURL(h)};
  const ref=db.collection(QUEUE).doc(queueId(path));
- await db.runTransaction(async tx=>{const old=await tx.get(ref);if(old.exists)return;tx.create(ref,{...draft,caption:historical?`⚽ Throwback: ${draft.playerName}’s voted winning goal for ${draft.clubName} at ${draft.fieldName}.\n\n#5AsidesNearMe #FootballHighlights`:caption(draft),historical,sourcePath:path,scope:field?'field':'club',matchId:parts[3],clipId:parts[5],status:'pending',revision:1,createdAt:Date.now(),updatedAt:Date.now(),pageId:PAGE_ID});});
+ await db.runTransaction(async tx=>{const old=await tx.get(ref);if(old.exists)return;tx.create(ref,{...draft,caption:historical?`⚽ Throwback: ${draft.playerName}’s voted winning goal for ${draft.clubName} at ${draft.fieldName}.\n\n#5AsidesNearMe #FootballHighlights\n\n5asidenearme.com`:caption(draft),historical,sourcePath:path,scope:field?'field':'club',matchId:parts[3],clipId:parts[5],status:'pending',revision:1,createdAt:Date.now(),updatedAt:Date.now(),pageId:PAGE_ID});});
 }
 async function meta(token,path,body){
  const response=await fetch(`https://graph.facebook.com/v26.0/${path}`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/x-www-form-urlencoded'}:{})},...(body?{body:new URLSearchParams(body)}:{}),signal:AbortSignal.timeout(90000)});
@@ -57,7 +57,7 @@ async function handle({db,user,body,token,liveEnabled=false}){
    const result=await fetch(upload.href,{method:'POST',headers:{Authorization:`OAuth ${token}`,file_url:approved.videoUrl},signal:AbortSignal.timeout(90000)});
    const data=await result.json();if(!result.ok||data.success!==true)throw Error('Facebook could not upload this clip. Check its format and availability.');
    await ref.update({phase:'finish',updatedAt:Date.now()});
-   const finish=await meta(token,`${PAGE_ID}/video_reels`,{upload_phase:'finish',video_id:String(start.video_id),video_state:'PUBLISHED',description:approved.caption});
+   const finish=await meta(token,`${PAGE_ID}/video_reels`,{upload_phase:'finish',video_id:String(start.video_id),video_state:'PUBLISHED',description:approved.caption.toLowerCase().includes("5asidenearme.com")?approved.caption:approved.caption+"\n\n5asidenearme.com"});
    if(finish.success!==true)throw Error('Facebook has not confirmed the publishing request.');
    await ref.update({status:'processing',phase:'processing',updatedAt:Date.now()});return {ok:true};
   }catch(e){await ref.update({status:'needs_attention',lastError:e.message,updatedAt:Date.now()});return {ok:false,error:e.message};}

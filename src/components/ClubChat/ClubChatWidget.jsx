@@ -1,3 +1,4 @@
+import VideoFramePreview from "../VideoFramePreview.jsx";
 import TeamChatBadge from "../TeamChatBadge.jsx";
 import TeamChatLauncher from "../TeamChatLauncher.jsx";
 import ChatNotificationToggle from "../ChatNotificationToggle.jsx";
@@ -1585,7 +1586,7 @@ export function ClubChatWidget({
                           }}
                         >
                           {message.highlightMediaUrl ? (
-                            <video
+                            <VideoFramePreview
                               src={message.highlightMediaUrl}
                               muted
                               playsInline

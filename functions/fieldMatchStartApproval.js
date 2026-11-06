@@ -60,6 +60,8 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
           await import("./fieldMatchDayProgression.mjs");
         assertFieldMatchDayProgression({season, matchDayId: day.id});
         const earlyStartConfirmed = req.body?.earlyStartConfirmed === true;
+        const earlyStartReason=String(req.body?.earlyStartReason||'').trim().slice(0,300);
+        if(earlyStartConfirmed&&earlyStartReason.length<5)throw new Error('Give a short reason for starting outside the schedule.');
         const {assertFieldStartTiming} = await import("./fieldStartTiming.mjs");
         assertFieldStartTiming({season, fixture, confirmed: earlyStartConfirmed});
         const minimum = {
@@ -82,10 +84,11 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
           await require("./fieldStartingFormation").build({
             season, fixture, squads, squadFingerprints,
           });
+        const stockConfig=(await transaction.get(venueRef.collection("bibHireConfig").doc("stock"))).data()||{};
         transaction.set(approvalRef, {
           venueId, seasonId, fixtureId, matchDayId: day.id,
-          actorUid: user.uid, gameFormat: season.gameFormat,
-          earlyStartConfirmed, earlyStartConfirmedAtMs: earlyStartConfirmed ? Date.now() : null,
+          actorUid: user.uid, gameFormat: season.gameFormat, stockRevision:stockConfig.revision||0,
+          earlyStartConfirmed, earlyStartReason, earlyStartConfirmedAtMs: earlyStartConfirmed ? Date.now() : null,
           clubAId: fixture.clubAId, clubBId: fixture.clubBId,
           bookingVersions, squadVersions, squads, used: false,
           startingLineups, sourceFormations,

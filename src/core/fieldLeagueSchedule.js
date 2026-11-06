@@ -8,7 +8,7 @@ export function validLeagueDate(value) {
 export function buildFieldLeagueSchedule({
   seasonId, clubs, startsOn, startTime = "18:00",
   matchMinutes = 40, halftimeMinutes = 5, turnaroundMinutes = 5,
-  intervalDays = 7,
+  intervalDays = 7, legs = 2,
 }) {
   if (!seasonId || !validLeagueDate(startsOn)) {
     throw new Error("Choose a valid season and first match date.");
@@ -24,6 +24,7 @@ export function buildFieldLeagueSchedule({
       throw new Error("Choose valid scheduling intervals and durations.");
     }
   }
+  if (![1, 2].includes(legs)) throw new Error("Choose one or two league legs.");
   const entries = clubs instanceof Map ? [...clubs.entries()] : [];
   if (entries.length < 2 ||
       entries.some(([id]) => typeof id !== "string" || !id.trim()) ||
@@ -39,7 +40,8 @@ export function buildFieldLeagueSchedule({
   const matchDays = [];
   const fixtures = [];
 
-  for (let round = 0; round < rotation.length - 1; round++) {
+  const roundsPerLeg = rotation.length - 1;
+  for (let round = 0; round < roundsPerLeg * legs; round++) {
     const date = new Date(`${startsOn}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate() + round * intervalDays);
     const dateLocal = date.toISOString().slice(0, 10);
@@ -49,8 +51,9 @@ export function buildFieldLeagueSchedule({
     let slot = 0;
 
     for (let index = 0; index < rotation.length / 2; index++) {
-      const clubAId = rotation[index];
-      const clubBId = rotation[rotation.length - 1 - index];
+      const reverse = round >= roundsPerLeg;
+      const clubAId = reverse ? rotation[rotation.length - 1 - index] : rotation[index];
+      const clubBId = reverse ? rotation[index] : rotation[rotation.length - 1 - index];
       if (!clubAId || !clubBId) {
         byeClubIds.push(clubAId || clubBId);
         continue;

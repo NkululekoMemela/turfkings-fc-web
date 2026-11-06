@@ -98,3 +98,8 @@
 .field-fixtures-page .header h1 {
   margin-bottom: 6px;
 }
+
+.field-fixtures-download .field-fixtures-export{width:auto!important;min-width:0!important;min-height:36px!important;height:auto!important;flex:0 1 auto!important;padding:8px 12px!important;font-size:12px!important;border-radius:12px!important;}
+
+.field-fixtures .field-fixtures-download{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.field-fixtures-export::before{display:inline;font-size:16px;margin:0 6px 0 0;}

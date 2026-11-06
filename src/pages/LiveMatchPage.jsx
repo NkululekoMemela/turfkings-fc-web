@@ -44,17 +44,22 @@ export function LiveMatchPage(props) {
   const scope = useMemo(()=>({environment:props.dataScope?.environment || (props.isPracticeMode?"practice":"official"),
     ...(props.dataScope?.venueId?{venueId:props.dataScope.venueId,seasonId:props.dataScope.seasonId}:{clubId:props.activeClubId || "turf-kings",seasonId:props.activeSeasonId || ""}),
     ...(props.dataScope?.practiceSessionId?{practiceSessionId:props.dataScope.practiceSessionId}:{})}),[props.dataScope,props.activeClubId,props.activeSeasonId,props.isPracticeMode]);
-  const matchKey=String(props.currentVideoHighlightsMatchId || props.videoHighlightsMatchId || props.matchId || liveCurrentMatch?.id || `${scope.seasonId || "football"}__${new Date().toLocaleDateString("en-CA",{timeZone:"Africa/Johannesburg"})}__${props.currentMatchNo || 1}`);
+  const matchKey=String(props.currentVideoHighlightsMatchId || props.videoHighlightsMatchId || props.matchId || liveCurrentMatch?.fixtureId || liveCurrentMatch?.id || `${scope.seasonId || "football"}__${new Date().toLocaleDateString("en-CA",{timeZone:"Africa/Johannesburg"})}__${props.currentMatchNo || 1}`);
   const rawTeams=props.pendingMatchStartContext?.teams || (classification.matchMode===MATCH_MODE.FRIENDLY && props.fiveVFiveTeams?.length?props.fiveVFiveTeams:props.teams) || [];
   const profiles=useFootballProfiles(rawTeams,scope.venueId?"":scope.clubId);
   const playingIds=[liveCurrentMatch?.teamAId || liveCurrentMatch?.clubAId,liveCurrentMatch?.teamBId || liveCurrentMatch?.clubBId].filter(Boolean).map(String);
   const participating=rawTeams.filter(team=>!playingIds.length || playingIds.includes(String(team.id))).slice(0,2);
-  const {sheet,error:sheetError}=useMatchNumberSheet(scope,matchKey);
+  const boothNumbers=Boolean(scope.venueId)&&scope.environment!=="practice"&&props.currentLive?.boothVersion===1;
+  const {sheet,error:sheetError}=useMatchNumberSheet(boothNumbers?{...scope,environment:"practice"}:scope,matchKey);
   const [localSheet,setLocalSheet]=useState(null),[overrides,setOverrides]=useState({}),[numberError,setNumberError]=useState("");
   const workspaceKey=JSON.stringify([scope,matchKey]);
   useEffect(()=>{setLocalSheet(null);setOverrides({});setNumberError("");},[workspaceKey]);
   const numbersEnabled=Boolean(scope.venueId)||rawTeams.some(team=>team.usePlayerNumbers!==false);
-  const currentSheet=localSheet?.matchKey===matchKey&&(!sheet||localSheet.revision>=sheet.revision)?localSheet:sheet;
+  const snapshotTeams=participating.map(team=>({id:String(team.id),players:props.confirmedLineupSnapshot?.[team.id]?.kitNumbers||[]}));
+  const snapshotSheet=boothNumbers&&snapshotTeams.length===2&&snapshotTeams.every(team=>team.players.length&&props.confirmedLineupSnapshot?.[team.id]?.kitVerification)
+    ? {teams:snapshotTeams,matchKey,rosterSignature:kitRosterSignature(snapshotTeams),revision:Math.max(...snapshotTeams.map(team=>props.confirmedLineupSnapshot?.[team.id]?.kitVerification?.revision||1))} : null;
+  const storedSheet=boothNumbers?snapshotSheet:sheet;
+  const currentSheet=localSheet?.matchKey===matchKey&&(!storedSheet||localSheet.revision>=storedSheet.revision)?localSheet:storedSheet;
   const draftKit=buildKitRoster(participating,profiles,props.confirmedLineupSnapshot||{});
   const applyNumbers=teams=>teams.map(team=>({...team,players:team.players.map(row=>({...row,number:!numbersEnabled?null:Object.hasOwn(overrides,`${team.id}:${row.key}`)?overrides[`${team.id}:${row.key}`]:row.number,noNumberReason:!numbersEnabled?"not_used":row.noNumberReason||"not_recorded"}))}));
   const rosterMatches=currentSheet?.rosterSignature===kitRosterSignature(draftKit);
@@ -63,8 +68,8 @@ export function LiveMatchPage(props) {
   const saveNumbers=async(teams,snapshots=props.confirmedLineupSnapshot||{})=>{
     if(!canVerify)throw Error("Sign in as the controlling referee to update numbers.");
     const checked=validateKitTeams(teams,{referee:true,requireNumbered:Boolean(scope.venueId)&&scope.environment!=="practice"});
-    const saved=scope.environment==="practice"?{teams:checked,matchKey,rosterSignature:kitRosterSignature(checked),revision:(currentSheet?.revision||0)+1,verifiedAtMs:Date.now()}:await verifyPlayerKit({scope,matchKey,teams:checked,expectedRevision:currentSheet?.revision||0});
-    const enriched=Object.fromEntries(Object.entries(snapshots).map(([teamId,snapshot])=>[teamId,{...snapshot,kitNumbers:checked.find(team=>team.id===teamId)?.players||[],kitVerification:{sheetId:saved.sheetId||"practice",revision:saved.revision,verifiedAtMs:saved.verifiedAtMs}}]));
+    const saved=(scope.environment==="practice"||boothNumbers)?{teams:checked,matchKey,rosterSignature:kitRosterSignature(checked),revision:(currentSheet?.revision||0)+1,verifiedAtMs:Date.now()}:await verifyPlayerKit({scope,matchKey,teams:checked,expectedRevision:currentSheet?.revision||0});
+    const enriched=Object.fromEntries(Object.entries(snapshots).map(([teamId,snapshot])=>[teamId,{...snapshot,kitNumbers:checked.find(team=>team.id===teamId)?.players||[],kitVerification:{sheetId:saved.sheetId||(boothNumbers?`field-booth-${matchKey}`:"practice"),revision:saved.revision,verifiedAtMs:saved.verifiedAtMs}}]));
     await props.onConfirmPreMatchLineups?.(enriched);setLocalSheet(saved);setOverrides({});setNumberError("");return enriched;
   };
   const confirmLineups=async snapshots=>saveNumbers(applyNumbers(buildKitRoster(participating,profiles,snapshots)),snapshots);

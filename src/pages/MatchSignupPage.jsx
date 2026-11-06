@@ -1,3 +1,5 @@
+import FieldPageFrame from "../components/FieldPageFrame.jsx";
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import NotificationTicketNotice from "../components/NotificationTicketNotice.jsx";
 import {selectNotificationCredit} from "../core/notificationDestination.mjs";
 import "../components/NotificationFocus.css";
@@ -955,6 +957,7 @@ function statusFromWeekState(selectedWeeks, paidWeeks) {
 }
 
 export default function MatchSignupPage({
+  clubModeLabel = "Friendly",
   identity,
   activeRole = "",
   currentUser,
@@ -5495,6 +5498,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 };
 
   return (
+    <FieldPageFrame venue={activeClub} page="signup" titleOverride="Match signup" modeLabel={clubModeLabel} onHome={onBack}>
     <div
       className="page match-signup-page"
       style={{ maxWidth: contentMaxWidth, margin: "0 auto" }}
@@ -6042,7 +6046,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                       Player
                     </label>
 
-                    <select
+                    <PremiumSelect
                       id="dangerZonePlayerId"
                       value={dangerZonePlayerId}
                       onChange={(event) => {
@@ -6064,7 +6068,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                           {player.fullName}
                         </option>
                       ))}
-                    </select>
+                    </PremiumSelect>
                   </div>
 
                   <div className="signup-reminder-choice">
@@ -6072,7 +6076,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                       Number of Match Tickets
                     </label>
 
-                    <select
+                    <PremiumSelect
                       id="dangerZoneTicketCount"
                       value={dangerZoneTicketCount}
                       onChange={(event) =>
@@ -6093,7 +6097,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                           {count}
                         </option>
                       ))}
-                    </select>
+                    </PremiumSelect>
                   </div>
 
                   <p
@@ -6361,7 +6365,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
         <section className="card signup-summary-card">
           <div className="signup-reminder-choice">
             <label htmlFor="adminCleanupTargetId">Manage player</label>
-            <select
+            <PremiumSelect
               id="adminCleanupTargetId"
               value={adminCleanupTargetId}
               onChange={(e) => setAdminCleanupTargetId(e.target.value)}
@@ -6375,7 +6379,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                   {Array.isArray(user.paidWeeks) ? user.paidWeeks.length : 0} paid
                 </option>
               ))}
-            </select>
+            </PremiumSelect>
             <p className="muted small">
               Select a player, then manage their bookings and payments.
             </p>
@@ -7138,14 +7142,14 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 
             <div className="signup-reminder-choice">
               <label htmlFor="reminderPreference">WhatsApp reminder time</label>
-              <select
+              <PremiumSelect
                 id="reminderPreference"
                 value={reminderPreference}
                 onChange={(e) => setReminderPreference(e.target.value)}
               >
                 <option value="12:00">12:00 midday</option>
                 <option value="17:00">17:00 afternoon</option>
-              </select>
+              </PremiumSelect>
               <p className="muted small">
                 If you choose “I’ll pay later”, you’ll get a WhatsApp reminder at
                 this time each day until payment is completed or weeks are removed.
@@ -7770,6 +7774,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           </>
         )}
       </section>
-    </div>
+    </div></FieldPageFrame>
   );
 }

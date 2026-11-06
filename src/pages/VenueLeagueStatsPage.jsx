@@ -1,3 +1,7 @@
+import {getPlayerPhotosCollection} from '../core/clubFirestorePaths.js';
+import {indexPlayerPortraits,resolvePlayerPortrait} from '../core/playerPortrait.mjs';
+import PlayerTableIdentity from '../components/PlayerTableIdentity.jsx';
+import PremiumSelect from "../components/PremiumSelect.jsx";
 import {fieldMatchStatEvents} from "../core/fieldDefensiveStats.mjs";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import "./VenueStatsToggles.css";
@@ -36,7 +40,7 @@ const TABS = [
   ["results", "Match Results"],
   ["goals", "Top Scorers"],
   ["assists", "Playmakers"],
-  ["defensiveBlocks", "Defensive Blocks"],
+  ["defensiveBlocks", "5-min defensive blocks"],
   ["cleansheets", "Clean Sheets"],
   ["combined", "Summary Player Stats"],
 ];
@@ -59,22 +63,7 @@ function compactPlayerName(value) {
 }
 
 function compactClubName(value) {
-  const parts = clean(value)
-    .replace(/\s+/g, " ")
-    .split(" ")
-    .filter(Boolean);
-
-  if (!parts.length) {
-    return "Club";
-  }
-
-  const firstWord = parts[0].slice(0, 4);
-
-  if (parts.length === 1) {
-    return firstWord;
-  }
-
-  return `${firstWord} ${parts[1].charAt(0).toUpperCase()}`;
+  return clean(value).replace(/\s+/g, "").slice(0, 4) || "Club";
 }
 
 function seasonLabel(season) {
@@ -178,6 +167,16 @@ export default function VenueLeagueStatsPage({
 
   const [clubLogos, setClubLogos] = useState({});
   const [playerNamesByClub, setPlayerNamesByClub] = useState({});
+  const [playerProfiles,setPlayerProfiles]=useState([]);
+  const [playerPhotos,setPlayerPhotos]=useState({});
+  const photoClubIds=clubs.map(club=>club.id||club.clubId).filter(Boolean).sort().join('|');
+  useEffect(()=>{let cancelled=false;setPlayerPhotos({});
+    if(isPractice)return;
+    Promise.all(photoClubIds.split('|').filter(Boolean).map(async id=>{
+      try{const snapshot=await getDocs(getPlayerPhotosCollection(db,id));return [id,indexPlayerPortraits(snapshot.docs.map(doc=>({id:doc.id,data:doc.data()})))];}catch{return [id,{}];}
+    })).then(entries=>{if(!cancelled)setPlayerPhotos(Object.fromEntries(entries));});
+    return()=>{cancelled=true;};
+  },[photoClubIds,isPractice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -242,6 +241,7 @@ export default function VenueLeagueStatsPage({
     rosterRequest
       .then((snapshot) => {
         if (cancelled) return;
+        setPlayerProfiles(snapshot.docs.map(doc=>({id:doc.id,...doc.data()})));
         const grouped = {};
         snapshot.docs.forEach((player) => {
           const data = player.data() || {};
@@ -414,8 +414,10 @@ export default function VenueLeagueStatsPage({
           >
             Previous
           </button>
-          {seasonMode === "previous" && archivedSeasons.length > 1 && (
-            <select aria-label="Previous Field season"
+
+        </div>
+          {seasonMode === "previous" && archivedSeasons.length > 0 && (
+            <div className="field-stats-season-picker"><label>Choose a previous season</label><PremiumSelect aria-label="Previous Field season"
               value={selectedArchive?.id || ""}
               onChange={(event) => setSelectedArchiveId(event.target.value)}>
               {archivedSeasons.map((item) => (
@@ -424,9 +426,8 @@ export default function VenueLeagueStatsPage({
                     .toLocaleDateString()}
                 </option>
               ))}
-            </select>
+            </PremiumSelect></div>
           )}
-        </div>
 
       {canCorrectResults &&
         seasonMode === "current" &&
@@ -526,7 +527,7 @@ export default function VenueLeagueStatsPage({
       <section className="venue-stats-card card venue-stats-content">
         <h2>
           {activeTabLabel}
-          {activeTab === "teams"
+      {activeTab === "teams"
             ? seasonMode === "previous"
               ? " — Previous Season"
               : viewMode === "current"
@@ -613,8 +614,8 @@ export default function VenueLeagueStatsPage({
             <table className="venue-standings-table stats-table">
               <thead>
                 <tr>
-                  <th>Match #</th><th>Club A</th><th>Score</th>
-                  <th>Club B</th><th>Result</th>
+                  <th>Match · Club A</th><th>Score</th>
+                  <th>Club B</th>
                 </tr>
               </thead>
               <tbody>
@@ -638,7 +639,7 @@ export default function VenueLeagueStatsPage({
                         {logo ? <img src={logo} alt="" /> : (
                           <span className="venue-result-logo-fallback">⚽</span>
                         )}
-                        <span>{name}</span>
+                        <span className="result-full-club-name">{name}</span>
                       </span>
                     );
                   };
@@ -670,7 +671,7 @@ export default function VenueLeagueStatsPage({
                         <div className="tk-admin-grid">
                           <div>
                             <label className="tk-small-label">Scorer</label>
-                            <select className="tk-small-select" value={goalDraft.scorer}
+                            <PremiumSelect className="tk-small-select" value={goalDraft.scorer}
                               onChange={(event) => setGoalDraft((previous) => ({
                                 ...previous,
                                 scorer: event.target.value,
@@ -681,11 +682,11 @@ export default function VenueLeagueStatsPage({
                               {choices.map((name) => (
                                 <option key={name} value={name}>{name}</option>
                               ))}
-                            </select>
+                            </PremiumSelect>
                           </div>
                           <div>
                             <label className="tk-small-label">Assist</label>
-                            <select className="tk-small-select" value={goalDraft.assist}
+                            <PremiumSelect className="tk-small-select" value={goalDraft.assist}
                               onChange={(event) => setGoalDraft((previous) => ({
                                 ...previous, assist: event.target.value,
                               }))}>
@@ -694,17 +695,17 @@ export default function VenueLeagueStatsPage({
                                 .map((name) => (
                                   <option key={name} value={name}>{name}</option>
                                 ))}
-                            </select>
+                            </PremiumSelect>
                           </div>
                           <div>
                             <label className="tk-small-label">Type</label>
-                            <select className="tk-small-select" value="goal" disabled>
+                            <PremiumSelect className="tk-small-select" value="goal" disabled>
                               <option value="goal">goal</option>
-                            </select>
+                            </PremiumSelect>
                           </div>
                           <div>
                             <label className="tk-small-label">Club</label>
-                            <select className="tk-small-select" value={goalDraft.teamId}
+                            <PremiumSelect className="tk-small-select" value={goalDraft.teamId}
                               onChange={(event) => setGoalDraft((previous) => ({
                                 ...previous,
                                 teamId: event.target.value,
@@ -717,7 +718,7 @@ export default function VenueLeagueStatsPage({
                               <option value={result.teamBId}>
                                 {clubNames[result.teamBId] || result.teamBId}
                               </option>
-                            </select>
+                            </PremiumSelect>
                           </div>
                         </div>
                         {correctionError && (
@@ -747,8 +748,8 @@ export default function VenueLeagueStatsPage({
                       {goals.filter((event) =>
                         event.teamId === teamId && event.scorer
                       ).map((event, goalIndex) => {
-                        const shortName = (name) =>
-                          String(name || "").trim().split(/\s+/)[0] || "Unknown";
+                        const playerLabel = (name) =>
+                          String(name || "").trim().replace(/\s+/g," ") || "Unknown";
                         const minute = `${Math.floor(
                           Math.max(0, Number(event.timeSeconds) || 0) / 60
                         )}'`;
@@ -760,11 +761,11 @@ export default function VenueLeagueStatsPage({
                                   <span className="tk-expanded-goal-minute">
                                     {minute}
                                   </span>
-                                  {shortName(event.scorer)}
+                                  {playerLabel(event.scorer)}
                                 </span>
                                 {event.assist && (
                                   <span className="tk-expanded-assist">
-                                    assist: {shortName(event.assist)}
+                                    assist: {playerLabel(event.assist)}
                                   </span>
                                 )}
                               </div>
@@ -801,14 +802,6 @@ export default function VenueLeagueStatsPage({
                     </div>
                   );
 
-                  const winnerId = result.winnerId ||
-                    (Number(result.goalsA) === Number(result.goalsB)
-                      ? null
-                      : Number(result.goalsA) > Number(result.goalsB)
-                        ? result.teamAId : result.teamBId);
-                  const resultText = winnerId
-                    ? `${clubNames[winnerId] || winnerId} won`
-                    : "Draw";
                   const toggle = () =>
                     setExpandedResultId(expanded ? null : resultId);
 
@@ -827,29 +820,13 @@ export default function VenueLeagueStatsPage({
                         tabIndex={0}
                         aria-expanded={expanded}
                       >
-                        <td className="tk-match-no-cell">
-                          <div className="tk-match-no-inner">
-                            <span className="match-toggle-indicator">
-                              {expanded ? "▾" : "▸"}
-                            </span>
-                            <span className="tk-match-no-main">
-                              {result.matchNo || index + 1}
-                            </span>
-                          </div>
-                        </td>
-                        <td>{clubBadge(result.teamAId, result.teamAName)}</td>
+                        <td><div className="fanm-result-home"><span className="fanm-result-number">{expanded?'▾':'▸'} {result.matchNo||index+1}</span>{clubBadge(result.teamAId,result.teamAName)}</div></td>
                         <td>{result.goalsA} – {result.goalsB}</td>
                         <td>{clubBadge(result.teamBId, result.teamBName)}</td>
-                        <td>{resultText}</td>
+
                       </tr>
                       {expanded && (
-                        <tr className="match-details-row">
-                          <td />
-                          <td>{goals.length ? goalLines(result.teamAId)
-                            : "No goal or assist breakdown recorded."}</td>
-                          <td />
-                          <td>{goalLines(result.teamBId)}</td>
-                          <td>
+                        <tr className="match-details-row"><td colSpan="3"><div className="field-result-events"><section aria-label={clubNames[result.teamAId]||result.teamAName}>{goals.length?goalLines(result.teamAId):"No goal or assist breakdown recorded."}</section><section aria-label={clubNames[result.teamBId]||result.teamBName}>{goalLines(result.teamBId)}</section></div>
                             {canCorrectResults && seasonMode === "current" && (
                               <div className="tk-match-admin-box">
                                 <div className="tk-match-admin-label">ADMIN TOOLS</div>
@@ -864,11 +841,13 @@ export default function VenueLeagueStatsPage({
                                         "This will remove the match result and all linked scorer/assist events for that match."
                                       ));
                                       if (!ok) return;
+                                      const reason=await fieldPrompt("Why is this official result being reversed? (For example, practice recorded as official.)");
+                                      if(!reason||reason.trim().length<5)return;
                                       try {
                                         requireOfficialWrite();
       await deleteVenueRecordedMatch({
                                           venueId: venue.id,
-                                          fixtureId: resultId,
+                                          fixtureId: resultId, seasonId: season.id, reason: reason.trim(),
                                         });
                                         setExpandedResultId(null);
                                         setGoalDraft(null);
@@ -876,7 +855,7 @@ export default function VenueLeagueStatsPage({
                                         (await fieldAlert(error?.message || "Could not delete the match."));
                                       }
                                     }}>
-                                    Delete match
+                                    Reverse official match
                                   </button>
                                 </div>
                                 {goalDraft?.action === "add" &&
@@ -891,7 +870,7 @@ export default function VenueLeagueStatsPage({
                   );
                 })}
                 {!visibleResults.length && (
-                  <tr><td colSpan="5">No completed matches in this view.</td></tr>
+                  <tr><td colSpan="3">No completed matches in this view.</td></tr>
                 )}
               </tbody>
             </table>
@@ -904,30 +883,23 @@ export default function VenueLeagueStatsPage({
                 : "tk-player-small-table"
             }`}
             style={{
-              "--venue-player-club-width": `${
-                Math.max(
-                  7,
-                  2.9 + Math.max(
-                    0,
-                    ...statRows.map((player) =>
-                      clean(player.teamName).length
-                    )
-                  ) * 0.52
-                )
-              }rem`,
+              "--venue-number-columns": activeTab === "combined" ? 5 : 1,
+              "--venue-number-width": `${Math.max(7,...statRows.flatMap(player=>[player.goals,player.assists,player.defensiveBlocks,player.cleanSheets,player.total].map(value=>String(value??0).length)))+1}ch`,
+              "--venue-player-club-width": activeTab === "combined" ? "2.7rem" : "4.8rem",
+
             }}
           >
-            <table className="venue-standings-table stats-table">
+            <table className="venue-standings-table stats-table fanm-player-stats-table"><colgroup><col className="stat-rank-col"/><col className="stat-player-col"/>{activeTab!=="combined"&&<col className="stat-club-col"/>}{Array.from({length:activeTab==="combined"?5:1},(_,index)=><col key={index} className="stat-number-col"/>)}</colgroup>
               <thead>
                 <tr>
-                  <th>#</th><th>Player</th><th>Club</th>
+                  <th>#</th><th>Player</th>{activeTab!=="combined"&&<th>Club</th>}
                   {activeTab === "combined" ? (
                     <>
-                      <th>Goals</th><th>Assists</th><th>DB</th><th>Clean sheets</th><th>Total</th>
+                      <th>Goals</th><th>Assists</th><th>5-min DB</th><th title="Clean sheets">CS</th><th>Total</th>
                     </>
                   ) : (
                     <th>{activeTab === "goals" ? "Goals"
-                      : activeTab === "assists" ? "Assists" : activeTab === "defensiveBlocks" ? "DB" : "Clean sheets"}</th>
+                      : activeTab === "assists" ? "Assists" : activeTab === "defensiveBlocks" ? "5-min DB" : "CS"}</th>
                   )}
                 </tr>
               </thead>
@@ -939,12 +911,11 @@ export default function VenueLeagueStatsPage({
                       className="venue-player-name-cell"
                       title={player.displayName || player.name}
                     >
-                      {compactPlayerName(
-                        player.displayName || player.name
-                      )}
+                      <div className="fanm-player-cell"><PlayerTableIdentity name={player.displayName||player.name} label={compactPlayerName(player.displayName||player.name)} image={resolvePlayerPortrait(player.name,playerProfiles.filter(profile=>profile.clubId===player.teamId),playerPhotos[player.teamId]||{})}/>
+                      {activeTab==="combined"&&<span className="summary-player-club" title={player.teamName}>{clubLogos[player.teamId]?<img src={clubLogos[player.teamId]} alt={player.teamName}/>:<span role="img" aria-label={player.teamName}>⚽</span>}</span>}</div>
                     </td>
 
-                    <td
+                    {activeTab!=="combined"&&<td
                       className="venue-player-club-logo-cell"
                       title={player.teamName}
                       aria-label={player.teamName}
@@ -966,11 +937,11 @@ export default function VenueLeagueStatsPage({
                           </span>
                         )}
 
-                        <span className="venue-player-club-short-name">
-                          {player.teamName}
+                        <span className={`venue-player-club-short-name${activeTab === "combined" ? " is-logo-only" : ""}`}>
+                          <span className="stats-mobile-name">{compactClubName(player.teamName)}</span><span className="stats-desktop-name">{player.teamName}</span>
                         </span>
                       </span>
-                    </td>
+                    </td>}
                     {activeTab === "combined" ? (
                       <>
                         <td>{player.goals}</td><td>{player.assists}</td>

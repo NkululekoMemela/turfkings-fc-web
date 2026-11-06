@@ -1,3 +1,4 @@
+import {recordVenueAction} from "./leagueSeasonRepository.js";
 import {
   collection, doc, onSnapshot, runTransaction, serverTimestamp,
 } from "firebase/firestore";
@@ -52,6 +53,7 @@ export async function saveVenueStaffPermissions({
       throw new Error("This staff member must sign in and claim their profile first.");
     }
 
+    recordVenueAction(transaction,{venueId,action:'staff_permissions_changed',label:'Staff powers updated',details:`Staff UID: ${staffUid}; end matchday: ${endMatchDay}; end season: ${endSeason}`});
     transaction.set(permissionRef, {
       uid: staffUid,
       endMatchDay,

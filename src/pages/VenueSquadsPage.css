@@ -52,3 +52,14 @@
   margin-right: 0 !important;
   box-sizing: border-box;
 }
+
+.field-matchday-squads-page .teamsheet-export-actions{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:10px;}
+.field-matchday-squads-page .teamsheet-export-actions h3{margin:0;font-size:16px;}
+.field-matchday-squads-page .teamsheet-export-actions button{padding:8px 10px;font-size:12px;white-space:nowrap;}
+.field-teamsheet-export-options{position:fixed;inset:0;z-index:32000;background:#020817bd;display:grid;place-items:center;padding:18px;}
+.field-teamsheet-export-options>section{width:min(360px,100%);display:grid;gap:10px;background:linear-gradient(145deg,#143b3b,#0c182b);border:1px solid #8abebd66;border-radius:20px;padding:18px;box-sizing:border-box;}
+.field-teamsheet-export-options header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;}
+.field-teamsheet-export-options header button{border:0;background:transparent;color:white;font-size:24px;}
+@media(min-width:681px){.field-matchday-squads-page .teamsheet-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}}
+
+.field-teamsheet-toast{position:fixed;bottom:calc(88px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:19000;background:#133d35;color:#e8fff3;border:1px solid #87d9ad66;border-radius:18px;padding:10px 15px;font-size:12px;white-space:nowrap;box-shadow:0 5px 20px #0005;}

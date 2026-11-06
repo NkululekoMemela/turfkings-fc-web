@@ -6004,3 +6004,21 @@ exports.chooseFieldMatchPairing = require("./fieldPairingOverride.cjs").chooseFi
 Object.assign(exports, require("./fieldSeasonPaymentDeadlines.cjs").buildHandlers({
   db, region: REGION, sendBatch: sendPaymentNotificationBatch,
 }));
+
+// Field integrity and video retention, scoped to official group records.
+exports.reverseFieldRecordedMatch=require("./fieldResultReversal.cjs").reverseFieldRecordedMatch;
+exports.permanentlyDeleteHighlight=require("./highlightPermanentDeletion.cjs").permanentlyDeleteHighlight;
+exports.processHighlightRetention=require("./highlightPermanentDeletion.cjs").processHighlightRetention;
+exports.onFieldAuditAction=require("./fieldAuditNotifications.cjs").buildHandler({db,region:REGION,sendBatch:options=>require("./notificationRuntime.cjs").reliableBatch({db,messaging:admin.messaging(),...options})});
+
+exports.closeHighlightWeek=require("./highlightPermanentDeletion.cjs").closeHighlightWeek;
+
+exports.fieldRefereeBooth=require("./fieldBooth.cjs").fieldRefereeBooth;
+
+exports.onFieldLiveScore=require("./fieldLiveScore.cjs").buildHandler({db,messaging:admin.messaging(),auth:admin.auth(),region:REGION});
+
+// Server-owned debut projection survives season changes without touching baselines.
+exports.onClubPlayerDebut = onDocumentWritten({document:"clubs/{clubId}/state/main",region:REGION,retry:true},event=>event.data?.after.exists ? require("./playerDebutProjection.cjs").syncClub(db,event.params.clubId,event.data.before.data()||{},event.data.after.data()) : null);
+exports.onFieldPlayerDebut = onDocumentWritten({document:"leagueVenues/{venueId}",region:REGION,retry:true},event=>event.data?.after.exists ? require("./playerDebutProjection.cjs").syncField(db,event.data.before.data()||{},event.data.after.data()) : null);
+exports.onArchivedFieldPlayerDebut = onDocumentWritten({document:"leagueVenues/{venueId}/seasons/{seasonId}",region:REGION,retry:true},event=>event.data?.after.exists ? require("./playerDebutProjection.cjs").syncField(db,event.data.before.data()||{},event.data.after.data()) : null);
+exports.preparePlayerDebuts = onSchedule({region:REGION,schedule:"every 5 minutes",timeoutSeconds:540},()=>require("./playerDebutProjection.cjs").backfill(db));

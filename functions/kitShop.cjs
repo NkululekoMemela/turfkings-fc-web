@@ -31,7 +31,7 @@ function requestData(body){
 }
 async function handle({db,user,body}){
  signed(user);const action=body.action;
- if(["hireView","saveHireStock","placeHire","returnHire"].includes(action))return require("./fieldBibHire.cjs").handle({db,user,body});
+ if(["hireView","saveHireStock","placeHire","returnHire","recordBibHandout","recordBibReturn","bibReturnsView","saveBibReturnPolicy","reviewBibReturn","confirmBibReturn","disputeBibReturn","recordBibReimbursement","ackBibReimbursement"].includes(action))return require("./fieldBibHire.cjs").handle({db,user,body});
  if(["requestBib","confirmBibContribution"].includes(action))return require("./kitBulk.cjs").handle({db,user,body});
  const configRef=db.doc("kitShopConfig/store"),accessRef=db.doc("kitShopConfig/operators");
  const access=(await accessRef.get()).data(),isOperator=operator(user,access);

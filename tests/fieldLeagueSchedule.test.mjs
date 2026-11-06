@@ -13,13 +13,15 @@ function schedule(count, extra = {}) {
   });
 }
 
-for (const count of [3, 6, 10]) {
-  test(`${count} Clubs: unique pairings and one appearance per day`, () => {
-    const { fixtures, matchDays } = schedule(count);
-    assert.equal(fixtures.length, count * (count - 1) / 2);
+for (const count of [2,3,6,10]) for(const legs of [1,2]) {
+  test(`${count} Clubs, ${legs} leg(s): complete pairings and one appearance per day`, () => {
+    const { fixtures, matchDays } = schedule(count,{legs});
+    assert.equal(fixtures.length, count * (count - 1) / 2 * legs);
     const pairs = fixtures.map(f =>
       [f.clubAId, f.clubBId].sort().join("|"));
-    assert.equal(new Set(pairs).size, pairs.length);
+    assert.equal(new Set(pairs).size, pairs.length / legs);
+    assert.equal(new Set(fixtures.map(f=>`${f.clubAId}|${f.clubBId}`)).size,fixtures.length);
+    assert.equal(new Set(fixtures.map(f=>f.id)).size,fixtures.length);
     for (const day of matchDays) {
       const games = fixtures.filter(f => f.matchDayId === day.id);
       assert.equal(games.length, Math.floor(count / 2));
@@ -27,7 +29,7 @@ for (const count of [3, 6, 10]) {
       assert.equal(new Set(appearances).size, appearances.length);
       assert.equal(day.byeClubIds.length, count % 2);
     }
-    assert.equal(matchDays[1].dateLocal, "2026-10-10");
+    if(matchDays.length>1)assert.equal(matchDays[1].dateLocal, "2026-10-10");
     assert.equal(fixtures[0].matchSeconds, 2400);
   });
 }
@@ -46,3 +48,5 @@ test("weekly rounds cross month and year boundaries", () => {
   const result = schedule(6, { startsOn: "2026-12-28" });
   assert.equal(result.matchDays[1].dateLocal, "2027-01-04");
 });
+
+test("home and away is the default, invalid leg counts are rejected",()=>{assert.equal(schedule(4).fixtures.length,12);assert.throws(()=>schedule(4,{legs:0}));assert.throws(()=>schedule(4,{legs:3}));});

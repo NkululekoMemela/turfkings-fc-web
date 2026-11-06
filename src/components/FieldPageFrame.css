@@ -486,3 +486,15 @@
   flex: 0 0 56px;
   object-fit: contain;
 }
+
+.field-ribbon-frame>.landing-header-sticky{margin-left:calc(-1 * var(--ribbon-left-gutter,0px))!important;margin-right:calc(-1 * var(--ribbon-right-gutter,0px))!important;margin-top:calc(-1 * var(--ribbon-top-gutter,0px))!important;width:calc(100% + var(--ribbon-left-gutter,0px) + var(--ribbon-right-gutter,0px));max-width:none!important;top:0!important;transform:none!important;transition:none!important;padding:0!important;}
+.field-ribbon-frame .landing-wave-header{transform:none!important;}
+
+@media(max-width:640px){
+ .app-root.app-root--field .field-ribbon-frame>.landing-header-sticky{width:100vw!important;max-width:none!important;margin-left:calc(50% - 50vw)!important;margin-right:calc(50% - 50vw)!important;box-sizing:border-box;}
+}
+
+/* A referee booth is a single vertical workspace, including the half-time clock. */
+.field-referee-booth-content,.field-live-runtime{display:block!important;width:100%!important;min-width:0;max-width:100%;box-sizing:border-box;}
+.field-live-runtime>.page.field-referee-booth{width:100%!important;max-width:none!important;margin:0!important;}
+.field-live-runtime>*{box-sizing:border-box;max-width:100%;}

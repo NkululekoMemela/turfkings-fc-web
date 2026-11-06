@@ -21334,3 +21334,22 @@ footer.club-marketing-footer > section {
   overflow-wrap: anywhere;
   text-shadow: 0 1px 3px rgba(0,0,0,.85);
 }
+
+/* Fixed dimensions prevent the ribbon's contents shifting on scroll. */
+.landing-header-sticky.is-scrolled{transform:none!important;}
+.tk-bottom-nav-flat,.field-bottom-nav{overscroll-behavior:contain;bottom:0!important;}
+
+/* Distinct Club management actions share the FANM palette. */
+.modal[aria-label="Club management"] .club-management-choice.is-profiles{background:linear-gradient(125deg,#382b75,#151a39)!important;border:1px solid #9a83e066!important;}
+.modal[aria-label="Club management"] .club-management-choice.is-admins{background:linear-gradient(125deg,#14529a,#112642)!important;border:1px solid #55b2ec77!important;}
+.modal[aria-label="Club management"] .club-management-choice.is-cleanup{background:linear-gradient(125deg,#7b334c,#2b2034)!important;border:1px solid #e898ad66!important;}
+.modal[aria-label="Club management"] .club-admin-promote{background:linear-gradient(125deg,#2563eb,#087fbd)!important;border:1px solid #74c8ff!important;color:white!important;box-shadow:0 5px 18px #0754ad40;}
+.modal[aria-label="Club management"] .club-admin-promote:disabled{opacity:.55;}
+.news-recap-fold>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px;justify-content:space-between;}
+.news-recap-fold>summary::-webkit-details-marker{display:none;}
+.news-recap-fold>summary::after{content:'▸';margin-left:auto;color:#a6d9dd;}
+.news-recap-fold[open]>summary::after{content:'▾';}
+.news-recap-fold[open]>summary{margin-bottom:14px;}
+/* Shared Club and Field cards use the same circular crest framing. */
+.player-cards-page .player-card-watermark-logo{border-radius:50%;border:2px solid #e4cd7b;background:#071b2c;box-sizing:border-box;padding:3px;box-shadow:0 0 0 3px #07132199,0 4px 14px #0005;}
+.player-cards-page .player-card-team-badge{border-radius:50%;border:1px solid #b6dbe980;background:#0a2034;box-sizing:border-box;padding:2px;object-fit:contain;aspect-ratio:1;}

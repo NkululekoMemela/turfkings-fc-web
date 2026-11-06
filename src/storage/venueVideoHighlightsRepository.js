@@ -50,7 +50,7 @@ const DEFAULT_HIGHLIGHT_VISIBILITY_DAYS = 5;
 const RECORDING_DEVICE_ONLINE_WINDOW_SECONDS = 45;
 
 function venueIdFromMatch(matchId, suppliedVenueId = "") {
-  const match = String(matchId || "").match(/^venue__([^_]+)__/);
+  const match = String(matchId || "").match(/^venue__(.+?)__/);
   const venueId = match?.[1] || "";
   const supplied = String(suppliedVenueId || "").trim();
 
@@ -239,11 +239,20 @@ export async function uploadHighlightVideoFile({
   const storageRef = ref(storage, path);
 
   return new Promise((resolve, reject) => {
-    const uploadTask = uploadBytesResumable(storageRef, file);
+    const extension=String(file.name||'').split('.').pop().toLowerCase();
+    const contentType=String(file.type||'').startsWith('video/')?file.type:({mp4:'video/mp4',m4v:'video/mp4',webm:'video/webm',mov:'video/quicktime'})[extension];
+    if(!contentType){reject(new Error('Choose an MP4, WebM or MOV video.'));return;}
+    const uploadTask = uploadBytesResumable(storageRef, file, {contentType});
+    let previousBytes=-1;
+    let idleTimer=setTimeout(stalled,60000);
+    function stalled(){uploadTask.cancel();reject(new Error('Upload stopped receiving data. Check your connection and retry. No clip has been published.'));}
+    const touch=()=>{clearTimeout(idleTimer);idleTimer=setTimeout(stalled,60000);};
+
 
     uploadTask.on(
       "state_changed",
       (snapshot) => {
+        if(snapshot.bytesTransferred>previousBytes){previousBytes=snapshot.bytesTransferred;touch();}
         const progress =
           snapshot.totalBytes > 0
             ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
@@ -259,9 +268,11 @@ export async function uploadHighlightVideoFile({
         });
       },
       (error) => {
+        clearTimeout(idleTimer);
         reject(error);
       },
       async () => {
+        clearTimeout(idleTimer);
         try {
           const url = await getDownloadURL(uploadTask.snapshot.ref);
 
@@ -1596,71 +1607,10 @@ export async function deleteRawHighlightFromFirebase({
   storagePath,
   clubId = "",
 }) {
-  if (!matchId) throw new Error("Missing matchId.");
-  if (!clipId) throw new Error("Missing clipId.");
-
-  /*
-   * Older UI calls did not pass clubId. Derive it from the
-   * canonical Storage path so deletion still targets the correct
-   * club instead of silently defaulting to Turf Kings.
-   */
-  const storageClubId = String(storagePath || "")
-    .match(/^clubs\/([^/]+)\/video_highlights\//)?.[1] || "";
-
-  const safeClubId =
-    String(
-      clubId ||
-      storageClubId ||
-      DEFAULT_CLUB_ID
-    ).trim().toLowerCase() ||
-    DEFAULT_CLUB_ID;
-
-  /*
-   * Delete Storage first. If this fails for a real reason, retain
-   * Firestore metadata so the operation remains recoverable.
-   */
-  if (storagePath) {
-    const fileRef = ref(storage, storagePath);
-
-    try {
-      await deleteObject(fileRef);
-    } catch (error) {
-      if (error?.code !== "storage/object-not-found") {
-        console.error(
-          "[TK HIGHLIGHTS] Storage deletion failed; " +
-          "Firestore metadata retained.",
-          {
-            clubId: safeClubId,
-            matchId,
-            clipId,
-            storagePath,
-            code: error?.code,
-            message: error?.message,
-          }
-        );
-
-        throw error;
-      }
-    }
-  }
-
-  await deleteDoc(
-    rawDoc(matchId, clipId, safeClubId)
-  );
-
-  console.log("[TK HIGHLIGHTS] Clip deleted", {
-    clubId: safeClubId,
-    matchId,
-    clipId,
-    storagePath: storagePath || null,
-  });
-
-  return {
-    clubId: safeClubId,
-    matchId,
-    clipId,
-    deleted: true,
-  };
+  const user=auth.currentUser;if(!user?.uid||!user.emailVerified)throw Error('Sign in with your verified account.');
+  const {getActiveFirebaseFunctionsBaseUrl}=await import('../firebaseConfig.js');
+  const response=await fetch(`${getActiveFirebaseFunctionsBaseUrl()}/permanentlyDeleteHighlight`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({kind:'field',ownerId:venueIdFromMatch(matchId,clubId),matchId,clipId}),signal:AbortSignal.timeout(45000)});
+  const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'Could not permanently delete this clip.');return result;
 }
 
 // ============================

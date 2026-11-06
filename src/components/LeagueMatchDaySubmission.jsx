@@ -1,3 +1,4 @@
+import PremiumSelect from "./PremiumSelect.jsx";
 import {kitColourClashes,kitColourKey} from "../../functions/opponentKitColours.mjs";
 import {suggestMatchBibs} from "../core/automaticMatchBibs.mjs";
 import {leagueBibIssues} from "../core/leagueBibPolicy.mjs";
@@ -137,12 +138,12 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
     <section className="card league-send-panel" aria-label="Weekly availability">
       <div className="league-send-heading">
         <div><h3>Weekly availability</h3><small>Your season squad, carried forward</small></div>
-        <select aria-label="Match day" value={dayId}
+        <PremiumSelect aria-label="Match day" value={dayId}
           disabled={busy} onChange={event => setDayId(event.target.value)}>
           {upcoming.map(({day}) => (
             <option key={day.id} value={day.id}>{day.dateLocal}</option>
           ))}
-        </select>
+        </PremiumSelect>
       </div>
       {loading && <p className="muted small" role="status">Checking squad readiness…</p>}
       {error && <p role="alert">{error}</p>}
@@ -151,14 +152,15 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
           <p className="muted small">
             {unchanged ? "✓ Availability confirmed." :
               ready ? "Season squad, colours and numbers are ready automatically. Change only exceptions." :
+              data.stockConfirmed===false ? "Waiting for Field bib stock." :
               selected.length>=5 ? "Check the kit warnings below and confirm the actual bibs." : `${selected.length}/6 selected. Choose 5 or 6 players.`}
           </p>
           {data.matchColour&&<p className="muted small">Match colour: <strong>{data.matchColour}</strong> · numbers assigned by the Field.</p>}
           <details open={!data.ready || data.needsSelection} className="league-weekly-adjustments">
             <summary>{selected.length} players · View or adjust squad</summary>
           {data.opponentColours?.length>0&&<small className="muted">Opponent: {data.opponentColours.join(", ")} · choose a different colour.</small>}
-          <label className="league-shared-bib-color">Match bibs<select aria-label="Team bib source" value={teamBibSource} disabled={busy} onChange={event=>{const source=event.target.value;setTeamBibSource(source);fillTeamBibs(source,sharedBibColor);}}><option value="">Individual kit</option><option value="hired">Hired bibs where needed</option><option value="club">Club bibs where needed</option></select></label>
-          <label className="league-shared-bib-color">Club / hire bib colour<select value={sharedBibColor} onChange={event=>{const color=event.target.value;setSharedBibColor(color);fillTeamBibs(teamBibSource,color);setKitConfirmed(false);if(!teamBibSource)setKitAssignments(current=>Object.fromEntries(Object.entries(current).map(([key,bib])=>[key,{...bib,color}])));}}><option value="">Choose colour</option>{data.matchColour&&!["Blue","Green","Orange","Gold","Red","White","Black"].includes(data.matchColour)&&<option value={data.matchColour}>{data.matchColour} · fixture</option>}{["Blue","Green","Orange","Gold","Red","White","Black"].map(color=><option key={color} value={color} disabled={(data.opponentColours||[]).map(kitColourKey).includes(kitColourKey(color)) || Boolean(data.matchColour&&kitColourKey(color)!==kitColourKey(data.matchColour))}>{color}{(data.opponentColours||[]).map(kitColourKey).includes(kitColourKey(color))?" · opponent":""}</option>)}</select></label>
+          <label className="league-shared-bib-color">Match bibs<PremiumSelect aria-label="Team bib source" value={teamBibSource} disabled={busy} onChange={event=>{const source=event.target.value;setTeamBibSource(source);fillTeamBibs(source,sharedBibColor);}}><option value="">Individual kit</option><option value="hired">Hired bibs where needed</option><option value="club">Club bibs where needed</option></PremiumSelect></label>
+          <label className="league-shared-bib-color">Club / hire bib colour<PremiumSelect value={sharedBibColor} onChange={event=>{const color=event.target.value;setSharedBibColor(color);fillTeamBibs(teamBibSource,color);setKitConfirmed(false);if(!teamBibSource)setKitAssignments(current=>Object.fromEntries(Object.entries(current).map(([key,bib])=>[key,{...bib,color}])));}}><option value="">Choose colour</option>{data.matchColour&&!["Blue","Green","Orange","Gold","Red","White","Black"].includes(data.matchColour)&&<option value={data.matchColour}>{data.matchColour} · fixture</option>}{["Blue","Green","Orange","Gold","Red","White","Black"].map(color=><option key={color} value={color} disabled={(data.opponentColours||[]).map(kitColourKey).includes(kitColourKey(color)) || Boolean(data.matchColour&&kitColourKey(color)!==kitColourKey(data.matchColour))}>{color}{(data.opponentColours||[]).map(kitColourKey).includes(kitColourKey(color))?" · opponent":""}</option>)}</PremiumSelect></label>
           {teamBibSource&&<small className="muted">Owned bibs keep their numbers when colours match. Hired bibs use (1)–(6). Confirm the supplied bibs match.</small>}
           <div className="league-send-players">
             {data.candidates.map(player => {
@@ -177,7 +179,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
                   </span>
                   {!player.isFillIn&&<button type="button" className="secondary-btn" disabled={busy} onClick={event=>{event.preventDefault();run(setSeasonAvailability,{memberId:player.memberId,available:false});}}>Unavailable</button>}
                 </label>
-                {index>=0&&<details className="league-bib-adjust"><summary>Adjust kit</summary><div className="league-match-bib-controls"><select aria-label={`${player.fullName} bib source`} value={kitAssignments[player.sourcePlayerId]?.source||player.matchBib?.source||"own"} disabled={busy} onChange={event=>{const source=event.target.value;setKitConfirmed(false);setKitAssignments(current=>{const next={...current};if(source==='own')delete next[player.sourcePlayerId];else next[player.sourcePlayerId]={source,color:sharedBibColor||player.bibColor||'',number:kitNumbers[player.sourcePlayerId]??player.jerseyNumber??''};return next;});}}><option value="own" disabled={player.matchBib?.allocationSource==='field'}>Own bib</option><option value="club">Club bib</option><option value="hired">Hired bib</option></select><input aria-label={`${player.fullName} match bib number`} inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} placeholder="Number" disabled={busy} value={kitNumbers[player.sourcePlayerId]??''} onChange={event=>{const number=event.target.value;setKitNumbers(current=>({...current,[player.sourcePlayerId]:number}));setKitConfirmed(false);setKitAssignments(current=>current[player.sourcePlayerId]?{...current,[player.sourcePlayerId]:{...current[player.sourcePlayerId],number}}:current);}}/>{kitAssignments[player.sourcePlayerId]&&<input aria-label={`${player.fullName} bib colour`} placeholder="Colour" disabled={busy} value={kitAssignments[player.sourcePlayerId].color} onChange={event=>{const color=event.target.value;setKitAssignments(current=>({...current,[player.sourcePlayerId]:{...current[player.sourcePlayerId],color}}));setKitConfirmed(false);}}/>}</div></details>}
+                {index>=0&&<details className="league-bib-adjust"><summary>Adjust kit</summary><div className="league-match-bib-controls"><PremiumSelect aria-label={`${player.fullName} bib source`} value={kitAssignments[player.sourcePlayerId]?.source||player.matchBib?.source||"own"} disabled={busy} onChange={event=>{const source=event.target.value;setKitConfirmed(false);setKitAssignments(current=>{const next={...current};if(source==='own')delete next[player.sourcePlayerId];else next[player.sourcePlayerId]={source,color:sharedBibColor||player.bibColor||'',number:kitNumbers[player.sourcePlayerId]??player.jerseyNumber??''};return next;});}}><option value="own" disabled={player.matchBib?.allocationSource==='field'}>Own bib</option><option value="club">Club bib</option><option value="hired">Hired bib</option></PremiumSelect><input aria-label={`${player.fullName} match bib number`} inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} placeholder="Number" disabled={busy} value={kitNumbers[player.sourcePlayerId]??''} onChange={event=>{const number=event.target.value;setKitNumbers(current=>({...current,[player.sourcePlayerId]:number}));setKitConfirmed(false);setKitAssignments(current=>current[player.sourcePlayerId]?{...current,[player.sourcePlayerId]:{...current[player.sourcePlayerId],number}}:current);}}/>{kitAssignments[player.sourcePlayerId]&&<input aria-label={`${player.fullName} bib colour`} placeholder="Colour" disabled={busy} value={kitAssignments[player.sourcePlayerId].color} onChange={event=>{const color=event.target.value;setKitAssignments(current=>({...current,[player.sourcePlayerId]:{...current[player.sourcePlayerId],color}}));setKitConfirmed(false);}}/>}</div></details>}
                 </div>
               );
             })}
@@ -207,7 +209,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
               <input type="search" placeholder="Find Club player"
                 aria-label="Find replacement player" value={search}
                 onChange={event => setSearch(event.target.value)} />
-              <select aria-label="Replacement player" value={coverId}
+              <PremiumSelect aria-label="Replacement player" value={coverId}
                 onChange={event => setCoverId(event.target.value)}>
                 <option value="">Choose player</option>
                 {(directory || []).filter(player =>
@@ -215,7 +217,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
                 ).map(player => (
                   <option key={player.memberId} value={player.memberId}>{player.fullName}</option>
                 ))}
-              </select>
+              </PremiumSelect>
               <button type="button" disabled={busy || !coverId}
                 onClick={() => {
                   const player = directory?.find(item => item.memberId === coverId);
