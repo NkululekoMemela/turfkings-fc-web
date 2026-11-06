@@ -6610,6 +6610,7 @@ onClick={() => {
                     current === "profiles" ? null : "profiles"
                   )
                 }
+                className="club-management-choice is-profiles"
                 aria-expanded={clubManagementSection === "profiles"}
                 style={{
                   width: "100%",
@@ -6885,6 +6886,7 @@ onClick={() => {
                     current === "admins" ? null : "admins"
                   )
                 }
+                className="club-management-choice is-admins"
                 aria-expanded={clubManagementSection === "admins"}
                 style={{
                   width: "100%",
@@ -7058,7 +7060,7 @@ onClick={() => {
                   >
                     <button
                       type="button"
-                      className="primary-btn"
+                      className={`primary-btn${adminPrivilegesMemberIsAdmin ? "" : " club-admin-promote"}`}
                       disabled={
                         !adminPrivilegesMember ||
                         adminPrivilegesSaving ||
@@ -7116,6 +7118,7 @@ onClick={() => {
                     current === "cleanup" ? null : "cleanup"
                   )
                 }
+                className="club-management-choice is-cleanup"
                 aria-expanded={clubManagementSection === "cleanup"}
                 style={{
                   width: "100%",

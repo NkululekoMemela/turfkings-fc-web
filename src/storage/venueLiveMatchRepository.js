@@ -1,3 +1,5 @@
+import {readBooth, queueBoothPatch, rememberBoothContext} from "./fieldBoothJournal.js";
+import {recoverFieldClock, applyPendingBooth, sameBooth} from "../core/fieldBoothRecovery.mjs";
 import {
   auth as rosterAuth,
   getActiveFirebaseFunctionsBaseUrl as rosterFunctionsUrl,
@@ -315,32 +317,30 @@ export function loadVenueLeaguePlayerPhotos({
 export { normalizePlayerNames };
 
 
-export function subscribeVenueLiveMatch({
-  scope,
-  onData,
-  onError,
-}) {
-  return onSnapshot(
-    getVenueLiveMatchDoc(db, scope, "current"),
-    (snapshot) => {
-      onData?.(
-        snapshot.exists()
-          ? {
-              id: snapshot.id,
-              ...snapshot.data(),
-            }
-          : null,
-        {fromCache:snapshot.metadata.fromCache}
-      );
-    },
-    (error) => {
-      console.error(
-        "[VenueLiveMatch] Subscription failed:",
-        error
-      );
-      onError?.(error);
+export function subscribeVenueLiveMatch({scope,onData,onError}) {
+  const official = scope.environment !== "practice";
+  const saved = official ? readBooth(scope) : null;
+  if (saved?.state) onData?.(recoverFieldClock(saved.state), {fromCache: true});
+  return onSnapshot(getVenueLiveMatchDoc(db, scope, "current"), {includeMetadataChanges:true}, snapshot => {
+    const local = official ? readBooth(scope) : null;
+    if (snapshot.metadata.fromCache && local?.state) {
+      onData?.(recoverFieldClock(local.state), {fromCache:true}); return;
     }
-  );
+    let state = snapshot.exists() ? {id:snapshot.id,...snapshot.data()} : null;
+    if (official && state && local) {
+      if (!sameBooth(state,local.state)) {
+        rememberBoothContext(scope,{...local.context,live:state});
+      } else {
+        state = applyPendingBooth(state,local);
+        if (sameBooth(state,local.state) && Number(local.state.clockObservedAtMs)>Number(state.clockObservedAtMs||0) &&
+            Number(state.boothLastSeq||0)<=Number(local.state.boothLastSeq||0)) {
+          const {secondsLeft,running,timeUp,clockPhase,halftimeEndsAtMs,clockObservedAtMs}=local.state;
+          state={...state,secondsLeft,running,timeUp,clockPhase,halftimeEndsAtMs,clockObservedAtMs};
+        }
+      }
+    }
+    onData?.(official && state ? recoverFieldClock(state) : state, {fromCache:snapshot.metadata.fromCache});
+  }, onError);
 }
 
 export async function saveVenueLiveMatchState({
@@ -352,6 +352,8 @@ export async function saveVenueLiveMatchState({
       "A valid Field live-match update is required."
     );
   }
+
+  if (scope.environment !== "practice") return queueBoothPatch(scope, patch);
 
   await updateDoc(
     getVenueLiveMatchDoc(db, scope, "current"),

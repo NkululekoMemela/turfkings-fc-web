@@ -1,3 +1,4 @@
+import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
 import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
@@ -2119,44 +2120,7 @@ export function FormationsPage({
 
   const renderTopHeader = (isEmpty = false) => (
     <>
-      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
-        <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>Lineups &amp; Formations</h1>
-            </div>
-
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
+      <ClubPageRibbon title={<>Lineups &amp; Formations</>} onHome={onBack}/>
 
       <header className="header" style={{ marginBottom: isEmpty ? undefined : "0.35rem" }}>
         <div className="header-top-row">

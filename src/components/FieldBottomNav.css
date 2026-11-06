@@ -207,3 +207,5 @@
     max-width: 72px !important;
   }
 }
+
+.field-bottom-nav button:disabled {opacity:.35;cursor:default;}

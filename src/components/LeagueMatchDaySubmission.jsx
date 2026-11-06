@@ -152,6 +152,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
           <p className="muted small">
             {unchanged ? "✓ Availability confirmed." :
               ready ? "Season squad, colours and numbers are ready automatically. Change only exceptions." :
+              data.stockConfirmed===false ? "Waiting for Field bib stock." :
               selected.length>=5 ? "Check the kit warnings below and confirm the actual bibs." : `${selected.length}/6 selected. Choose 5 or 6 players.`}
           </p>
           {data.matchColour&&<p className="muted small">Match colour: <strong>{data.matchColour}</strong> · numbers assigned by the Field.</p>}

@@ -29,6 +29,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "FieldNotifications")
 public class FieldNotificationsPlugin extends Plugin {
+    @PluginMethod
+    public void capabilities(PluginCall call) { JSObject result=new JSObject(); result.put("liveScore",1); call.resolve(result); }
     private static volatile boolean appVisible = false;
     public static boolean isAppVisible() { return appVisible; }
     @Override protected void handleOnResume() { appVisible = true; }

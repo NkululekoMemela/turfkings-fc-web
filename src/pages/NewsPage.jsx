@@ -1,3 +1,4 @@
+import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import "../components/NewsPagePolish.css";
 import CompactNewsPoll from "../components/CompactNewsPoll.jsx";
@@ -3159,24 +3160,7 @@ Votes for this poll will no longer be shown.`
   // ---------- RENDER ----------
   return (
     <div className="page news-page">
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
-        <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>News &amp; highlights</h1>
-              <div
+      <ClubPageRibbon title={<>News &amp; highlights</>} onHome={onBack} meta={<><div
                 style={{
                   marginTop: "0.18rem",
                   fontSize: "0.72rem",
@@ -3187,31 +3171,7 @@ Votes for this poll will no longer be shown.`
                 }}
               >
                 {newsSeasonContext.pageContextLabel}
-              </div>
-            </div>
-
-            <button
-              className="secondary-btn"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
+              </div></>}/>
 
       <header className="header">
         <p className="subtitle">
@@ -4368,11 +4328,11 @@ Votes for this poll will no longer be shown.`
       {renderCustomStoriesAt("before-recap")}
 
       {/* MATCH-BY-MATCH RECAP */}
-      <section className="card">
-        <div className="news-recap-header">
-          <h2>Match-by-match recap</h2>
+      <details className="card news-recap-fold">
+        <summary className="news-recap-header">
+          <strong>Match recaps</strong>
           <span className="news-recap-subtitle">Match-day {latestMatchDayLabel}</span>
-        </div>
+        </summary>
 
         {recapResults.length === 0 ? (
           <p className="muted">No matches recorded for the latest saved match-day yet.</p>
@@ -4424,7 +4384,7 @@ Votes for this poll will no longer be shown.`
             })}
           </ul>
         )}
-      </section>
+      </details>
 
       {isTurfKingsClub && showRSVP && (
         <RSVPModal

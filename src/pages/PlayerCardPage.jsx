@@ -1,3 +1,4 @@
+import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 // src/pages/PlayerCardPage.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebaseConfig";
@@ -1685,6 +1686,7 @@ function buildPlayerActivityByName(matchHistory = [], canonicalMap) {
 // ---------------- PAGE ----------------
 
 export function PlayerCardPage({
+  fieldCards = null,
   teams,
   matchHistory = [],
   allEvents,
@@ -1774,6 +1776,10 @@ export function PlayerCardPage({
     let isMounted = true;
 
     async function loadPageData() {
+      if (fieldCards !== null) {
+        setPlayersLoaded(true); setParticipationLoaded(true); setBaselineLoaded(true);
+        return;
+      }
       try {
         setPlayersLoaded(false);
         setParticipationLoaded(false);
@@ -1893,6 +1899,7 @@ export function PlayerCardPage({
       isMounted = false;
     };
   }, [
+    fieldCards,
     activeSeasonId,
     finalPlayerCardSnapshot,
     safeActiveClubId,
@@ -2128,6 +2135,7 @@ export function PlayerCardPage({
     activeClubPlayerNames.size > 0;
 
   const playersWithRatings = useMemo(() => {
+    if (fieldCards !== null) return fieldCards;
     const allNames = new Set([
       ...Object.keys(ratingStatsByPlayer || {}),
       ...Object.keys(leagueStatsByPlayer || {}),
@@ -2495,6 +2503,7 @@ export function PlayerCardPage({
       honorBadges: awardBadgesByPlayerId[player.id] || [],
     }));
   }, [
+    fieldCards,
     ratingStatsByPlayer,
     leagueStatsByPlayer,
     friendlyStatsByPlayer,
@@ -2515,6 +2524,7 @@ export function PlayerCardPage({
   ]);
 
   useEffect(() => {
+    if (fieldCards !== null) return;
     if (typeof window === "undefined") return;
     if (!activeSeasonId) return;
     if (!playersLoaded || !participationLoaded || !baselineLoaded) return;
@@ -2617,6 +2627,7 @@ export function PlayerCardPage({
   );
 
   const playersWithPeriodLeader = useMemo(() => {
+    if (fieldCards !== null) return fieldCards;
     const candidates = playersWithRatings
       .map((player) => {
         const canonName = player.name || player.displayName || "";
@@ -2704,6 +2715,7 @@ export function PlayerCardPage({
   }, [
     playersWithRatings,
     matchHistory,
+    fieldCards,
     cardMode,
     nameToCanonical,
   ]);
@@ -2714,7 +2726,7 @@ export function PlayerCardPage({
     return playersWithPeriodLeader.filter((p) => {
       const playerKey = safeLower(p.name || p.displayName || "");
       const activity = playerActivityByName[playerKey] || null;
-      const playedThisSeason =
+      const playedThisSeason = fieldCards !== null ? p.gamesPlayed > 0 :
         activity?.hasCurrentSeasonAppearance === true;
       const playedThisMonth =
         Number(activity?.latestAppearanceAt || 0) >= thirtyDaysAgo;
@@ -2768,6 +2780,7 @@ export function PlayerCardPage({
     });
   }, [
     playersWithPeriodLeader,
+    fieldCards,
     playerActivityByName,
     seasonActivityFilter,
     attendanceFilter,
@@ -2781,10 +2794,10 @@ export function PlayerCardPage({
 
     const set = new Set();
     (teams || []).forEach((t) => {
-      if (t?.label) set.add(t.label);
+      if (t?.label || (fieldCards !== null && t?.name)) set.add(t.label || t.name);
     });
     return ["ALL", ...Array.from(set)];
-  }, [teams, friendlyCardMode]);
+  }, [teams, friendlyCardMode, fieldCards]);
 
   const teamFilterOptions = useMemo(
     () =>
@@ -2919,32 +2932,10 @@ export function PlayerCardPage({
 
   return (
     <div className="page player-cards-page">
-      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
-        <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>
+      {fieldCards === null && <ClubPageRibbon title={<>
                 Player cards
-                <span
-                  style={{
-                    marginLeft: "0.45rem",
-                    fontSize: "0.72rem",
-                    letterSpacing: "0.08em",
-                    opacity: 0.78,
-                  }}
-                >
-                  {friendlyCardMode ? "FRIENDLY VIEW" : "LEAGUE VIEW"}
-                </span>
-              </h1>
-              <div
+
+              </>} onHome={onBack} meta={<><div
                 style={{
                   marginTop: "0.18rem",
                   fontSize: "0.72rem",
@@ -2955,31 +2946,7 @@ export function PlayerCardPage({
                 }}
               >
                 {seasonContextLabel}
-              </div>
-            </div>
-
-            <button
-              className="secondary-btn"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
+              </div></>}/>}
 
       <section className="card player-card-filters">
         <div className="player-card-filters-row">
@@ -3166,6 +3133,7 @@ export function PlayerCardPage({
                   {activeClubWatermarkLogo && (
                     <img
                       src={activeClubWatermarkLogo}
+                      className="player-card-watermark-logo"
                       alt=""
                       aria-hidden="true"
                       style={{
@@ -3389,9 +3357,9 @@ export function PlayerCardPage({
                         <span className="chip-value">{p.statsScore10.toFixed(1)}/10</span>
                       </div>
                       <div className="fifa-chip">
-                        <span className="chip-label">Peer</span>
+                        <span className="chip-label">{fieldCards !== null ? "Source" : "Peer"}</span>
                         <span className="chip-value">
-                          {p.peerScore10 != null
+                          {fieldCards !== null ? "Match performance" : p.peerScore10 != null
                             ? `${p.peerScore10.toFixed(1)}/10`
                             : "Not rated yet"}
                         </span>
@@ -3407,7 +3375,7 @@ export function PlayerCardPage({
                             <span className="fifa-attr-desc">ATTACK</span>
                           </>
                         ) : (
-                          <span className="fifa-attr-desc fifa-attr-unrated">No votes yet</span>
+                          <span className="fifa-attr-desc fifa-attr-unrated">{fieldCards !== null ? "Not assessed" : "No votes yet"}</span>
                         )}
                       </div>
 
@@ -3419,7 +3387,7 @@ export function PlayerCardPage({
                             <span className="fifa-attr-desc">DEFENCE</span>
                           </>
                         ) : (
-                          <span className="fifa-attr-desc fifa-attr-unrated">No votes yet</span>
+                          <span className="fifa-attr-desc fifa-attr-unrated">{fieldCards !== null ? "Not assessed" : "No votes yet"}</span>
                         )}
                       </div>
 
@@ -3431,7 +3399,7 @@ export function PlayerCardPage({
                             <span className="fifa-attr-desc">PLAYMAKING</span>
                           </>
                         ) : (
-                          <span className="fifa-attr-desc fifa-attr-unrated">No votes yet</span>
+                          <span className="fifa-attr-desc fifa-attr-unrated">{fieldCards !== null ? "Not assessed" : "No votes yet"}</span>
                         )}
                       </div>
 
@@ -3446,7 +3414,7 @@ export function PlayerCardPage({
                       </div>
                     </div>
 
-                    {friendlyCardMode ? (
+                    {friendlyCardMode || fieldCards !== null ? (
                       <div className="fifa-bottom-stats">
                         <span>⚽ {p.goals} Goals</span>
                         <span>🎯 {p.assists} Assists</span>

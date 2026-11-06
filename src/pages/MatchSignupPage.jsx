@@ -957,6 +957,7 @@ function statusFromWeekState(selectedWeeks, paidWeeks) {
 }
 
 export default function MatchSignupPage({
+  clubModeLabel = "Friendly",
   identity,
   activeRole = "",
   currentUser,
@@ -5497,7 +5498,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 };
 
   return (
-    <FieldPageFrame venue={activeClub} page="signup" titleOverride="Match signup" modeLabel={isPracticeMode?"PRACTICE MODE":"MATCH BOOKINGS"} onHome={onBack}>
+    <FieldPageFrame venue={activeClub} page="signup" titleOverride="Match signup" modeLabel={clubModeLabel} onHome={onBack}>
     <div
       className="page match-signup-page"
       style={{ maxWidth: contentMaxWidth, margin: "0 auto" }}

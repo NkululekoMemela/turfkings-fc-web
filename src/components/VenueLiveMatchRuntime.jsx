@@ -1,3 +1,5 @@
+import {boothRequest, readBooth, rememberBoothContext, rememberBoothState, finishBooth, queueBoothPatch, flushBooth, watchBooth, markBoothCancelled} from "../storage/fieldBoothJournal.js";
+import {recoverFieldClock} from "../core/fieldBoothRecovery.mjs";
 import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import {normalizeVenueLeagueScope} from "../core/venueLeaguePaths.js";
 import FieldMatchHalfClock from "./FieldMatchHalfClock.jsx";
@@ -44,6 +46,8 @@ export default function VenueLiveMatchRuntime({
   viewerOnly = false,
   onBack,
   onGoToStats,
+  onControlState,
+  temporaryReferee = false,
 }) {
   const scope = useMemo(() => {
     const value = dataScope || {
@@ -60,6 +64,12 @@ export default function VenueLiveMatchRuntime({
     venue?.id, season?.id, dataScope?.environment,
     dataScope?.practiceSessionId, dataScope?.venueId, dataScope?.seasonId,
   ]);
+
+  useEffect(()=>{
+    if(scope.environment==="practice" || !canOperateMatch)return;
+    window.dispatchEvent(new CustomEvent("fanm:booth-visibility",{detail:true}));
+    return()=>window.dispatchEvent(new CustomEvent("fanm:booth-visibility",{detail:false}));
+  },[scope,canOperateMatch]);
 
   const refereeDeviceId = useMemo(
     () => getVenueRefereeDeviceId(),
@@ -95,6 +105,12 @@ export default function VenueLiveMatchRuntime({
     useRef(currentEvents);
 
   const [loadAttempt,setLoadAttempt]=useState(0);
+  const [finishPending,setFinishPending]=useState(()=>scope.environment!=="practice" && Boolean(readBooth(scope)?.finishSummary));
+  const [boothBlocked,setBoothBlocked]=useState(()=>scope.environment!=="practice" && Boolean(readBooth(scope)?.conflict));
+  useEffect(()=>scope.environment==="practice"?undefined:watchBooth(scope,saved=>{
+    setBoothBlocked(Boolean(saved?.conflict));
+    setFinishPending(Boolean(saved?.finishSummary));
+  }),[scope]);
 
   const canUseRefereeControls =
     canOperateMatch && !viewerOnly;
@@ -187,7 +203,10 @@ export default function VenueLiveMatchRuntime({
     ).trim();
 
   const canControlCurrentLiveMatch =
-    canUseRefereeControls &&
+    canUseRefereeControls && liveState?.status === "live" && !finishPending && !boothBlocked &&
+    (!temporaryReferee || liveState?.boothGuest?.expiresAtMs > Date.now()) &&
+    (scope.environment === "practice" || liveState?.boothVersion === 1) &&
+    (scope.environment === "practice" || liveController?.uid === auth.currentUser?.uid) &&
     (
       !controllerDeviceId ||
       controllerDeviceId ===
@@ -195,40 +214,36 @@ export default function VenueLiveMatchRuntime({
     );
 
   useEffect(() => {
-    if (
-      !canUseRefereeControls ||
-      !liveState ||
-      liveState.status !== "live" ||
-      controllerDeviceId
-    ) {
-      return;
-    }
+    onControlState?.(Boolean(canControlCurrentLiveMatch && liveState?.status === "live"));
+  }, [canControlCurrentLiveMatch,liveState?.status,onControlState]);
 
-    saveVenueLiveMatchState({
-      scope,
-      patch: {
-        liveMatchController: buildVenueRefereeController({
-          deviceId: refereeDeviceId,
-          identity,
-          user: auth.currentUser,
-          role: activeRole,
-        }),
-      },
-    }).catch((error) => {
-      console.error(
-        "[VenueLiveMatch] Controller claim failed:",
-        error
-      );
-    });
-  }, [
-    activeRole,
-    canUseRefereeControls,
-    controllerDeviceId,
-    identity,
-    liveState,
-    refereeDeviceId,
-    scope,
-  ]);
+  useEffect(() => {
+    if (scope.environment === "practice" || !canUseRefereeControls) return;
+    let active=true;
+    const bootstrap=async()=>{
+      try {
+        const context=await boothRequest(scope,"context");
+        if(!active)return;
+        const state=rememberBoothContext(scope,context);
+        setLiveState(recoverFieldClock(state));
+        setCurrentEvents(safeArray(state.currentEvents));
+        setConfirmedLineupSnapshot(state.confirmedLineupSnapshot||null);
+        setConfirmedLineupsByMatchNo(state.confirmedLineupsByMatchNo||{});
+        setMatchTeamColorOverrides(state.matchTeamColorOverrides||{});
+      } catch(error) {
+        if(active && !readBooth(scope)?.state)setLoadError(error.message);
+      }
+    };
+    bootstrap(); window.addEventListener("online",bootstrap);
+    return()=>{active=false;window.removeEventListener("online",bootstrap);};
+  },[scope,canUseRefereeControls,loadAttempt]);
+
+  useEffect(()=>{
+    if(scope.environment!=="practice" && canControlCurrentLiveMatch && liveState) {
+      try { rememberBoothState(scope,liveState); }
+      catch { setLoadError("This phone cannot save the match. Free storage or hand over to another official before continuing."); }
+    }
+  },[scope,canControlCurrentLiveMatch,liveState]);
 
   useEffect(() => {
     if (
@@ -251,7 +266,7 @@ export default function VenueLiveMatchRuntime({
             return previous;
           }
 
-          return tickFieldMatchClock(previous);
+          return scope.environment === "practice" ? tickFieldMatchClock(previous) : recoverFieldClock(previous);
 
         });
       },
@@ -286,6 +301,7 @@ export default function VenueLiveMatchRuntime({
         saveVenueLiveMatchState({
           scope,
           patch: {
+            clockObservedAtMs: snapshot.clockObservedAtMs || Date.now(),
             clockVersion: snapshot.clockVersion || 0,
             clockPhase: snapshot.clockPhase || "legacy",
             halftimeSeconds: snapshot.halftimeSeconds || 0,
@@ -349,7 +365,7 @@ export default function VenueLiveMatchRuntime({
     if (!canControlCurrentLiveMatch) {
       throw new Error("Only the controlling referee can start the second half.");
     }
-    const patch = startFieldSecondHalf(liveStateRef.current);
+    const patch = {...startFieldSecondHalf(liveStateRef.current),clockObservedAtMs:Date.now()};
     await persistPatch(patch);
     setLiveState(previous => previous ? {...previous, ...patch} : previous);
   }, [canControlCurrentLiveMatch, persistPatch]);
@@ -433,7 +449,7 @@ export default function VenueLiveMatchRuntime({
     const previous=safeArray(live?.lineupTimeline);
     const elapsed=previous.length===0?0:Math.max(0,Number(live?.matchSeconds || 0)-Number(live?.secondsLeft || 0));
     const lineupTimeline=[...previous.filter(item=>Number(item?.timeSeconds)!==elapsed),{timeSeconds:elapsed,snapshots:snapshot}].sort((a,b)=>a.timeSeconds-b.timeSeconds);
-    const kickoff=live?.awaitingKitVerification?{awaitingKitVerification:false,running:true,startedAtMs:Date.now(),startedAtISO:new Date().toISOString()}:{};
+    const kickoff=live?.awaitingKitVerification?{clockObservedAtMs:Date.now(),awaitingKitVerification:false,running:true,startedAtMs:Date.now(),startedAtISO:new Date().toISOString()}:{};
     const patch={confirmedLineupSnapshot:snapshot,confirmedLineupsByMatchNo:next,lineupTimeline,...kickoff};
     await persistPatch(patch);
     setLiveState(previous=>({...previous,...patch}));
@@ -447,7 +463,13 @@ export default function VenueLiveMatchRuntime({
       }
 
       try {
-        await cancelVenueFixtureStart({ scope });
+        if(temporaryReferee)throw Error("A registered Field official must cancel the fixture. You can continue refereeing this match.");
+        if(scope.environment!=="practice"){
+          await flushBooth(scope);
+          await boothRequest(scope,"cancel");
+          markBoothCancelled(scope);
+          onControlState?.(false);
+        }else await cancelVenueFixtureStart({ scope });
         onBack?.();
       } catch (error) {
         console.error("[VenueLiveMatch] Cancel failed:", error);
@@ -471,6 +493,7 @@ export default function VenueLiveMatchRuntime({
           previous
             ? {
                 ...previous,
+                clockObservedAtMs: Date.now(),
                 matchSeconds: safeSeconds,
                 secondsLeft: safeSeconds,
                 running: true,
@@ -542,10 +565,15 @@ export default function VenueLiveMatchRuntime({
       user: auth.currentUser,
       role: activeRole,
     }),
-    [activeRole, identity, refereeDeviceId]
+    [activeRole, identity, refereeDeviceId, scope]
   );
 
   const handleTakeOver = useCallback(async () => {
+    if(scope.environment !== "practice") {
+      const result=await boothRequest(scope,"takeover",{fixtureId:liveStateRef.current?.fixtureId});
+      if(result.live){rememberBoothContext(scope,result);setLiveState(recoverFieldClock(result.live));}
+      return;
+    }
     const request = liveStateRef.current?.liveMatchTakeoverRequest;
     if (!canUseRefereeControls ||
         request?.status !== "pending" ||
@@ -563,12 +591,18 @@ export default function VenueLiveMatchRuntime({
     });
   }, [
     canUseRefereeControls,
+    scope,
     currentController,
     persistPatch,
     refereeDeviceId,
   ]);
 
   const handleRequestTakeOver = useCallback(async () => {
+    if(scope.environment !== "practice") {
+      const result=await boothRequest(scope,"requestTakeover",{fixtureId:liveStateRef.current?.fixtureId});
+      if(result.live){rememberBoothContext(scope,result);setLiveState(recoverFieldClock(result.live));}
+      return;
+    }
     if (!canUseRefereeControls || canControlCurrentLiveMatch) return;
 
     const requestedAt = Date.now();
@@ -590,6 +624,11 @@ export default function VenueLiveMatchRuntime({
   ]);
 
   const handleRejectTakeOver = useCallback(async () => {
+    if(scope.environment !== "practice") {
+      const result=await boothRequest(scope,"rejectTakeover",{fixtureId:liveStateRef.current?.fixtureId});
+      if(result.live){rememberBoothContext(scope,result);setLiveState(recoverFieldClock(result.live));}
+      return;
+    }
     if (!canControlCurrentLiveMatch) return;
     const request = liveStateRef.current?.liveMatchTakeoverRequest;
     if (request?.status !== "pending") return;
@@ -602,9 +641,15 @@ export default function VenueLiveMatchRuntime({
         rejectedBy: currentController(),
       },
     });
-  }, [canControlCurrentLiveMatch, currentController, persistPatch]);
+  }, [canControlCurrentLiveMatch, currentController, persistPatch, scope]);
 
   const handleAcceptTakeOver = useCallback(async () => {
+    if(scope.environment !== "practice") {
+      if(readBooth(scope)?.pending?.length)await flushBooth(scope);
+      const result=await boothRequest(scope,"acceptTakeover",{fixtureId:liveStateRef.current?.fixtureId});
+      if(result.live){rememberBoothContext(scope,result);setLiveState(recoverFieldClock(result.live));}
+      return;
+    }
     if (!canControlCurrentLiveMatch) return;
     const request = liveStateRef.current?.liveMatchTakeoverRequest;
     const nextController = request?.requester;
@@ -675,6 +720,14 @@ export default function VenueLiveMatchRuntime({
         }
 
         try {
+          if(scope.environment !== "practice") {
+            await queueBoothPatch(scope,{currentEvents:currentEventsRef.current,
+              secondsLeft:snapshot.secondsLeft,running:false,clockObservedAtMs:Date.now()});
+            const result=await finishBooth(scope,summary);
+            if(result.pending){setFinishPending(true);await fieldAlert("Match saved on this phone. Keep this phone until the result uploads. Standings will update when the connection returns.");}
+            else {onControlState?.(false);onBack?.();}
+            return;
+          }
           await completeVenueFixture({
             scope,
             venueId: scope.venueId,
@@ -850,8 +903,9 @@ export default function VenueLiveMatchRuntime({
       if(!canControlCurrentLiveMatch)return;
       const live=liveStateRef.current;
       const running=!stopped && Number(live?.secondsLeft)>0 && live?.clockPhase!=="halftime" && !live?.timeUp;
-      await persistPatch({running});
-      setLiveState(previous=>({...previous,running}));
+      const patch={running,clockObservedAtMs:Date.now()};
+      await persistPatch(patch);
+      setLiveState(previous=>({...previous,...patch}));
     },
   };
 
@@ -874,7 +928,7 @@ export default function VenueLiveMatchRuntime({
   }
 
   return (
-    <>
+    <div className="field-live-runtime">
     {halfClock}
     <LiveMatchPage
       {...sharedProps}
@@ -964,7 +1018,7 @@ export default function VenueLiveMatchRuntime({
         handleResetTeamColors
       }
     />
-    {scope.environment !== "practice" && canControlCurrentLiveMatch &&
+    {scope.environment !== "practice" && !temporaryReferee && canControlCurrentLiveMatch &&
       liveState.status === "live" &&
       liveController?.uid === auth.currentUser?.uid && (
         <VenueCameraApprovalPanel
@@ -973,6 +1027,6 @@ export default function VenueLiveMatchRuntime({
           fixtureId={liveState.fixtureId}
         />
       )}
-    </>
+    </div>
   );
 }

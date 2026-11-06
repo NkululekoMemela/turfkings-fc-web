@@ -1,3 +1,4 @@
+import RibbonArtwork from '../components/RibbonArtwork.jsx';
 import "../components/LandingDesktopLayout.css";
 import {matchTeamCaption} from "../core/matchTeamCaption.mjs";
 import MatchTeamChooser from "../components/MatchTeamChooser.jsx";
@@ -599,7 +600,7 @@ export function LandingPage({
   const fixturedMode =
     isThreeTeamLeague && resolvedLeagueMode === "scheduled_target";
 
-  const modeLipLabel = isThreeTeamLeague ? "LEAGUE MODE" : "FRIENDLY MODE";
+  const modeLipLabel = isThreeTeamLeague ? "Mini-league" : "Friendly";
   const modeLipDotColor = isThreeTeamLeague ? "#facc15" : "#38bdf8";
 
   const clubWeeklyPlayTime =
@@ -1508,128 +1509,7 @@ export function LandingPage({
         }`}
       >
         <header className="landing-wave-header">
-          <svg
-            className="tk-ribbon-wave-svg tk-ribbon-wave-svg--mobile"
-            viewBox="0 0 390 122"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <defs>
-              <linearGradient id="tkLandingRibbonWaveGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#1d4ed8" />
-                <stop offset="42%" stopColor="#071329" />
-                <stop offset="100%" stopColor="#22c55e" />
-              </linearGradient>
-              <radialGradient id="tkLandingRibbonModeGlow" cx="22%" cy="86%" r="56%">
-                <stop offset="0%" stopColor="rgba(34,211,238,0.34)" />
-                <stop offset="58%" stopColor="rgba(34,211,238,0.08)" />
-                <stop offset="100%" stopColor="rgba(34,211,238,0)" />
-              </radialGradient>
-            </defs>
-
-            <path
-              d="
-                M 0 0
-                H 390
-                V 86
-                H 190
-                C 171 86, 164 119, 144 119
-                H 55
-                C 43 119, 38 86, 28 86
-                H 0
-                Z
-              "
-              fill="url(#tkLandingRibbonWaveGradient)"
-            />
-            <path
-              d="
-                M 0 0
-                H 390
-                V 86
-                H 190
-                C 171 86, 164 119, 144 119
-                H 55
-                C 43 119, 38 86, 28 86
-                H 0
-                Z
-              "
-              fill="url(#tkLandingRibbonModeGlow)"
-              opacity="0.9"
-            />
-            <path
-              d="M 28 86 C 38 86, 43 119, 55 119 H 144 C 164 119, 171 86, 190 86"
-              fill="none"
-              stroke="rgba(34,211,238,0.35)"
-              strokeWidth="1.2"
-            />
-
-          </svg>
-
-          <svg
-            className="tk-ribbon-desktop-lip"
-            viewBox="0 0 1200 122"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <defs>
-              <linearGradient
-                id="tkLandingDesktopLipGradient"
-                gradientUnits="userSpaceOnUse"
-                x1="0"
-                y1="0"
-                x2="1200"
-                y2="0"
-              >
-                <stop offset="0%" stopColor="#1d4ed8" />
-                <stop offset="42%" stopColor="#071329" />
-                <stop offset="100%" stopColor="#22c55e" />
-              </linearGradient>
-            </defs>
-
-            {/*
-             * One continuous desktop path:
-             * full-width header and compact mode lip share
-             * the same fill, with no join between them.
-             */}
-            <path
-              d="
-                M 0 0
-                H 1200
-                V 86
-                H 240
-                C 216 86, 207 119, 182 119
-                H 69
-                C 54 119, 48 86, 35 86
-                H 0
-                Z
-              "
-              fill="url(#tkLandingDesktopLipGradient)"
-            />
-
-            <path
-              d="
-                M 35 86
-                C 48 86, 54 119, 69 119
-                H 182
-                C 207 119, 216 86, 240 86
-              "
-              fill="none"
-              stroke="rgba(34,211,238,0.38)"
-              strokeWidth="1.2"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-
-          <div className="tk-ribbon-mode-label" aria-label={modeLipLabel}>
-            <span
-              className="tk-ribbon-mode-label-dot"
-              style={{ color: modeLipDotColor }}
-              aria-hidden="true"
-            />
-            <span>{modeLipLabel}</span>
-          </div>
+          <RibbonArtwork modeLabel={modeLipLabel} dotColor={modeLipDotColor}/>
 
           <div className="header-title">
             <div
@@ -1713,7 +1593,7 @@ export function LandingPage({
       </header>
 
       <section className="card landing-first-card">
-        {!canSeeCaptainStyleControls&&onBrowseMatchType&&<nav aria-label="Match type" style={{display:'inline-flex',alignItems:'center',padding:4,borderRadius:999,background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.10)',gap:4,marginBottom:14}}>{MATCH_MODE_OPTIONS.map(option=><button key={option.value} type="button" className="secondary-btn" aria-pressed={resolvedMatchType===option.value} onClick={()=>onBrowseMatchType(option.value)} style={{borderRadius:999,padding:'.45rem .9rem',color:'#fff',border:resolvedMatchType===option.value?'1px solid rgba(34,211,238,.55)':'1px solid transparent',background:resolvedMatchType===option.value?'linear-gradient(180deg,rgba(8,145,178,.98),rgba(37,99,235,.96))':'transparent',boxShadow:resolvedMatchType===option.value?'0 0 18px rgba(34,211,238,.28)':'none'}}>{option.label}</button>)}</nav>}
+        {!canSeeCaptainStyleControls&&onBrowseMatchType&&<nav aria-label="Match type" style={{display:'inline-flex',alignItems:'center',padding:4,borderRadius:999,background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.10)',gap:4,marginBottom:14}}>{MATCH_MODE_OPTIONS.map(option=><button key={option.value} type="button" className="secondary-btn" aria-pressed={resolvedMatchType===option.value} onClick={()=>onBrowseMatchType(option.value)} style={{borderRadius:999,padding:'.45rem .9rem',color:'#fff',border:resolvedMatchType===option.value?'1px solid rgba(34,211,238,.55)':'1px solid transparent',background:resolvedMatchType===option.value?'linear-gradient(180deg,rgba(8,145,178,.98),rgba(37,99,235,.96))':'transparent',boxShadow:resolvedMatchType===option.value?'0 0 18px rgba(34,211,238,.28)':'none'}}>{option.value==="LEAGUE"?"Mini-league":option.label}</button>)}</nav>}
         {canSeeCaptainStyleControls && (
           <div style={{ marginBottom: "0.9rem" }}>
             <button
@@ -1811,7 +1691,7 @@ export function LandingPage({
                           : "none",
                       }}
                     >
-                      {option.label}
+                      {option.value==="LEAGUE"?"Mini-league":option.label}
                     </button>
                   );
                 })}
@@ -1959,7 +1839,7 @@ export function LandingPage({
                           : "none",
                       }}
                     >
-                      {option.label}
+                      {option.value==="LEAGUE"?"Mini-league":option.label}
                     </button>
                   );
                 })}

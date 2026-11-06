@@ -2,7 +2,7 @@ export function fieldNavigationReady({identity,choice,canChooseSession}){
  return Boolean(identity)&&(canChooseSession?['official','practice'].includes(choice):true);
 }
 export function fieldNeedsSeason(page,season){
- return ['squads','formations','stats','fixtures','videos','live'].includes(page)&&!season?.id;
+ return ['squads','formations','stats','cards','fixtures','videos','live'].includes(page)&&!season?.id;
 }
 export function fieldMatchDays(season){
  return (Array.isArray(season?.matchDays)?season.matchDays:[]).filter(d=>d&&typeof d.id==='string'&&typeof d.dateLocal==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d.dateLocal));

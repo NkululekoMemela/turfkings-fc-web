@@ -1,3 +1,4 @@
+import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import LeagueMatchDaySubmission from "../components/LeagueMatchDaySubmission.jsx";
 import useSignupPlayerPhotos from "../hooks/useSignupPlayerPhotos.js";
 import useLeagueSignupAttendanceBadge from "../hooks/useLeagueSignupAttendanceBadge.js";
@@ -244,7 +245,7 @@ export default function ClubLeagueSeasonPage({clubId, onBack, activeRole, identi
 
   return (
     <div className="page club-league-season-page">
-      <div className={`landing-header-sticky ${headerScrolled?"is-scrolled":""}`}><header className="header"><div className="league-studio-header"><div className="header-title"><h1>Official League Squad</h1><div className="league-studio-context">{context?.venue?.name||"Field league"} · {context?.season?.name||"Season squad"}</div></div><button type="button" className="secondary-btn league-studio-home" onClick={onBack} aria-label="Home">🏠</button></div></header></div>
+      <ClubPageRibbon title={<>Official League Squad</>} onHome={onBack} meta={<><div className="league-studio-context">{context?.venue?.name||"Field league"} · {context?.season?.name||"Season squad"}</div></>}/>
       <div className="league-season-meta"><span>{publishedDates.length?`Starts ${formatDay(publishedDates[0])} · ${games.length} match day${games.length===1?"":"s"}`:"Fixtures to be announced"}</span><button type="button" className="secondary-btn" onClick={()=>setShowLeagueCalendar(true)}>View fixtures</button></div>
       <div className="league-personal-attendance" aria-label="Your attendance"><strong>{attendanceBadgeText}</strong>{attendanceSubtext&&<span>{attendanceSubtext}</span>}</div>
       {error && <p role="alert">{error}</p>}

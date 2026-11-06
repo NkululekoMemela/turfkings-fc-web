@@ -7,6 +7,7 @@ import {toPng} from "html-to-image";
 import SharedSquadTeamsheet from "../components/SharedSquadTeamsheet.jsx";
 import {getFieldMatchDaySquads} from "../storage/fieldSeasonSquadRepository.js";
 const noop = () => {};
+const readTeamsheetMemory=(key,scope)=>{const value=readFieldPage(key);return scope?.environment==='practice'||value?.stockPolicyVersion===1?value:null;};
 const slots = [
   {label:"GK",x:50,y:88}, {label:"DEF",x:34,y:65},
   {label:"DEF",x:66,y:65}, {label:"MID",x:50,y:42},
@@ -22,14 +23,15 @@ export default function VenueSquadsPage({
   const days = fieldOpenMatchDays(season);
   const [dayId,setDayId] = useState(days[0]?.id || "");
   const memoryKey = fieldPageKey("squads", venue?.id, season?.id, dayId,scope?.environment||"official",scope?.practiceSessionId||"");
-  const [data,setData] = useState(() => readFieldPage(memoryKey));
+  const [data,setData] = useState(() => readTeamsheetMemory(memoryKey,scope));
   const [error,setError] = useState("");
   const teamsheetRef = useRef(null);
-  const [exporting,setExporting]=useState(false),[exportMenu,setExportMenu]=useState(false);
+  const [exporting,setExporting]=useState(false),[exportMenu,setExportMenu]=useState(false),[exportNotice,setExportNotice]=useState('');
+  useEffect(()=>{if(!exportNotice)return;const timer=setTimeout(()=>setExportNotice(''),3500);return()=>clearTimeout(timer);},[exportNotice]);
   async function downloadTeamsheet(format) {
     if(exporting)return;setExporting(true);setExportMenu(false);setError('');
-    try{const {downloadFieldTeamsheet}=await import('../core/fieldTeamsheetExport.mjs');await downloadFieldTeamsheet({element:teamsheetRef.current,dayId,format});}
-    catch(failure){console.error('[Teamsheet export]',failure);setError(/^(Choose PDF|No teamsheet|The teamsheet)/.test(failure.message||'')?failure.message:'Could not save the teamsheet. Please retry.');}
+    try{const {downloadFieldTeamsheet}=await import('../core/fieldTeamsheetExport.mjs');const saved=await downloadFieldTeamsheet({element:teamsheetRef.current,dayId,format});setExportNotice(saved.cancelled?'':saved.shared?'Ready to save or share':saved.location||'Teamsheet saved');}
+    catch(failure){console.error('[Teamsheet export]',failure);setError(/^(Choose PDF|No teamsheet|The teamsheet|Update the Android|Allow file access)/.test(failure.message||'')?failure.message:'Could not save the teamsheet. Please retry.');}
     finally{setExporting(false);}
   }
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function VenueSquadsPage({
   }, [season?.id, days.map(day => day.id).join("|")]);
   useEffect(() => {
     setError("");
-    setData(readFieldPage(memoryKey));
+    setData(readTeamsheetMemory(memoryKey,scope));
     if (!dayId || !season?.id || !venue?.id || !season.schedulePublishedAtMs) return undefined;
     try{
     return subscribeFieldManifest({
@@ -63,6 +65,7 @@ export default function VenueSquadsPage({
 
   return (
     <div className="page squads-page field-matchday-squads-page">
+      {exportNotice&&<div className="field-teamsheet-toast" role="status">{exportNotice}</div>}
       {exportMenu&&<div className="field-teamsheet-export-options" role="dialog" aria-modal="true" aria-label="Download teamsheet" onClick={event=>{if(event.target===event.currentTarget)setExportMenu(false);}} onKeyDown={event=>{if(event.key==='Escape')setExportMenu(false);if(event.key==='Tab'){const nodes=[...event.currentTarget.querySelectorAll('button')],first=nodes[0],last=nodes.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}}}}><section><header><strong>Download teamsheet</strong><button type="button" onClick={()=>setExportMenu(false)} aria-label="Close download options">×</button></header><button type="button" className="primary-btn" autoFocus onClick={()=>downloadTeamsheet('image')}>Image</button><button type="button" className="secondary-btn" onClick={()=>downloadTeamsheet('pdf')}>PDF</button></section></div>}
 
 

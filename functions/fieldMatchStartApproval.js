@@ -84,9 +84,10 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
           await require("./fieldStartingFormation").build({
             season, fixture, squads, squadFingerprints,
           });
+        const stockConfig=(await transaction.get(venueRef.collection("bibHireConfig").doc("stock"))).data()||{};
         transaction.set(approvalRef, {
           venueId, seasonId, fixtureId, matchDayId: day.id,
-          actorUid: user.uid, gameFormat: season.gameFormat,
+          actorUid: user.uid, gameFormat: season.gameFormat, stockRevision:stockConfig.revision||0,
           earlyStartConfirmed, earlyStartReason, earlyStartConfirmedAtMs: earlyStartConfirmed ? Date.now() : null,
           clubAId: fixture.clubAId, clubBId: fixture.clubBId,
           bookingVersions, squadVersions, squads, used: false,

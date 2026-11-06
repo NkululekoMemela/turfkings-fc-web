@@ -31,7 +31,7 @@ public final class FanmNotificationPresenter {
     private static final ExecutorService PICTURES = Executors.newFixedThreadPool(2);
     private static final LruCache<String, Bitmap> CACHE = new LruCache<>(24);
     private static final String EXTRA = "field_invitation_payload";
-    private static Bitmap notificationPicture(String address, boolean circle) {
+    static Bitmap notificationPicture(String address, boolean circle) {
         return notificationPicture(address, circle, 192);
     }
 

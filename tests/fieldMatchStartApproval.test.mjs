@@ -63,6 +63,7 @@ async function confirmFormation(clubId, count = 6) {
 beforeEach(async () => {
   await environment.clearFirestore();
   const batch = db.batch();
+  batch.set(db.doc("leagueVenues/field-one/bibHireConfig/stock"),{revision:1,confirmedAtMs:1,stock:["Blue","Orange"].flatMap(color=>[1,2,3,4,5,6].map(number=>({color,number,quantity:1})))});
   batch.set(db.doc(venuePath), {
     ownerUid: "creator",
     league: {activeSeason: {

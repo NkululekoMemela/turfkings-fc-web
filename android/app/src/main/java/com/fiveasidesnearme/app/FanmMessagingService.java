@@ -12,6 +12,7 @@ public class FanmMessagingService extends MessagingService {
     @Override
     public void onMessageReceived(RemoteMessage message) {
         Map<String,String> data = new HashMap<>(message.getData());
+        if ("field_live_score".equals(data.get("type"))) { FanmLiveScore.show(this,data); return; }
         if (!"2".equals(data.get("fanmRenderer"))) {
             super.onMessageReceived(message);
             return;

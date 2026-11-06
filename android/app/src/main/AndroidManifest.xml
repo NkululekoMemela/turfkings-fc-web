@@ -45,6 +45,7 @@
         <service android:name="com.fiveasidesnearme.app.FanmMessagingService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
         </service>
+    <receiver android:name=".FanmScoreDismissReceiver" android:exported="false" />
     </application>
 
     <!-- Permissions -->

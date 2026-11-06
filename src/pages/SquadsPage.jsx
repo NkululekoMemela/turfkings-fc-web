@@ -1,3 +1,4 @@
+import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import {saveClubMatchNumber} from "../storage/clubMatchNumberGateway.js";
 import CompactPlayerNumber from "../components/CompactPlayerNumber.jsx";
@@ -3523,7 +3524,7 @@ export function SquadsPage({
 
     return (
       <SharedSquadTeamsheet
-        headerActions={canEdit&&<label className="squad-number-toggle"><input type="checkbox" checked={sourceTeams.some(team=>team.usePlayerNumbers!==false)} onChange={event=>{const enabled=event.target.checked,apply=list=>list.map(team=>({...team,usePlayerNumbers:enabled}));if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);}}/>Player numbers</label>}
+        headerActions={canEdit&&<label className="squad-number-toggle"><input type="checkbox" checked={sourceTeams.some(team=>team.usePlayerNumbers!==false)} onChange={event=>{const enabled=event.target.checked,apply=list=>list.map(team=>({...team,usePlayerNumbers:enabled}));if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);}}/>Use player numbers</label>}
         matchTeams={matchTeams}
         isClubChallengeTeamsheet={isClubChallengeTeamsheet}
         teamsheetCardRef={teamsheetCardRef}
@@ -3609,47 +3610,7 @@ export function SquadsPage({
 
   return (
     <div className="page squads-page">
-      <div
-        className={`landing-header-sticky ${
-          headerScrolled ? "is-scrolled" : ""
-        }`}
-      >
-        <header className="header">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "0.75rem",
-              width: "100%",
-            }}
-          >
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>Manage Squads</h1>
-            </div>
-
-            <button
-              className="secondary-btn"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{
-                minWidth: "46px",
-                width: "46px",
-                height: "46px",
-                padding: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.05rem",
-                flexShrink: 0,
-              }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
+      <ClubPageRibbon title={<>Manage Squads</>} onHome={onBack}/>
 
 
 

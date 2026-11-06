@@ -75,6 +75,7 @@ export async function initialiseNativePushNotifications({
   window.addEventListener("fanm-notification-open",onToastOpen);
   listenerHandles.push({remove:()=>window.removeEventListener("fanm-notification-open",onToastOpen)});
   const deviceId = getOrCreateDeviceId();
+  const nativeCapabilities=await FieldNotifications.capabilities().catch(()=>({}));
   if (Capacitor.getPlatform() === "android" &&
       Capacitor.isPluginAvailable("FieldNotifications")) {
     listenerHandles.push(await FieldNotifications.addListener(
@@ -92,7 +93,7 @@ export async function initialiseNativePushNotifications({
           const registrationId = `${authUser.uid}_${deviceId}`;
           await setDoc(doc(db,"notificationRegistrations",deviceId),{
             token,enabled:true,firebaseUid:authUser.uid,deviceId,
-            platform:Capacitor.getPlatform(),rendererVersion:"2",updatedAt:serverTimestamp(),
+            platform:Capacitor.getPlatform(),rendererVersion:"2",liveScoreVersion:nativeCapabilities.liveScore===1?"1":"0",updatedAt:serverTimestamp(),
           });
           if(!activeClubId)return;
           await setDoc(

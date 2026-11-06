@@ -1,3 +1,5 @@
+import {ClubRibbonProvider} from "./components/ClubPageRibbon.jsx";
+import FieldRecoveryGate from "./components/FieldRecoveryGate.jsx";
 import {clubBrowseMode} from "./core/clubBrowseMode.mjs";
 import PremiumSelect from "./components/PremiumSelect.jsx";
 import {emptyClubState} from "./core/clubStateBoundary.mjs";
@@ -2582,7 +2584,9 @@ const FANM_ENVIRONMENT_BADGE = FANM_DEVELOPMENT_DEPLOYMENT
       }
     : null;
 
-export default function App() {
+export default function App() { return <FieldRecoveryGate><MainApp /></FieldRecoveryGate>; }
+
+function MainApp() {
   const [nearbyClubRequest, setNearbyClubRequest] = useState(false);
 
 
@@ -2630,6 +2634,7 @@ export default function App() {
   const [selectedLeagueVenue, setSelectedLeagueVenue] = useState(null);
   const [portalOriginClubId, setPortalOriginClubId] = useState("");
   const [fieldNav, setFieldNav] = useState({ ready: false, page: "landing" });
+  const fieldRefereeLockedRef=useRef(false);fieldRefereeLockedRef.current=fieldNav.refereeLocked===true;
   const [fieldNavTarget, setFieldNavTarget] = useState(null);
   const [squadsAdminPreviewOpen, setSquadsAdminPreviewOpen] = useState(false);
 
@@ -2944,7 +2949,8 @@ export default function App() {
           }
           return;
         }
-        if (data.type === "field_audit" || data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" || data.type === "field_match_day_squads" ||
+        if(data.type==="field_live_score"&&fieldRefereeLockedRef.current){setFieldNavTarget({page:"live",id:Date.now()});return;}
+        if (data.type === "field_live_score" || data.type === "field_audit" || data.type === "field_team_accepted" || data.type === "field_chat" || data.type === "field_club_chat" || data.type === "field_match_day_review" || data.type === "field_match_day_squads" ||
             data.type === "field_manager_approval" || data.type === "field_story" || data.type === "field_poll" || data.type === "field_winners_story_request") {
           const venueId = String(data.venueId || "").trim();
           if (!/^[A-Za-z0-9_-]{1,150}$/.test(venueId)) return;
@@ -2973,9 +2979,10 @@ export default function App() {
             setShowSessionSelector(false);
             setPortalOriginClubId("");
             setFieldNavTarget({
-              page: data.type==="field_audit" ? "actionLog" : data.type==="field_match_day_squads" ? "squads" : ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
+              page: data.type==="field_live_score" ? "liveSpectator" : data.type==="field_audit" ? "actionLog" : data.type==="field_match_day_squads" ? "squads" : ["field_chat","field_club_chat"].includes(data.type) ? "chat" : ["field_story","field_poll","field_winners_story_request"].includes(data.type) ? "news" : data.approvalKind === "banking_activation" ? "signup" : "landing",
               privateChat:data.type==="field_club_chat"?{clubId:String(data.clubId||""),openedAt:Date.now()}:null,
-              entryRequest:["field_chat","field_club_chat"].includes(data.type)?{
+              entryRequest:["field_live_score","field_chat","field_club_chat"].includes(data.type)?{
+                kind:data.type==="field_live_score"?"live_score":"chat",fixtureId:String(data.fixtureId||""),seasonId:String(data.seasonId||""),
                 venueId,privateClubId:data.type==="field_club_chat"?String(data.clubId||""):"",
                 preferredClubId:activeClubId,preferredMemberId:identity?.memberId||"",openedAt:Date.now(),
               }:null,
@@ -8621,7 +8628,7 @@ export default function App() {
   };
 
   return (
-    <div
+    <ClubRibbonProvider club={activeClubIdentity} mode={browseMatchType===MATCH_TYPE.LEAGUE?'Mini-league':'Friendly'} onHome={handleBackToLanding}><div
       className={`app-root ${showBottomNav ? "has-bottom-nav" : ""} ${
         page === PAGE_LANDING ? "app-root--landing" : ""
       } ${page === PAGE_VENUE_ENTRY ? "app-root--field" : ""}`}
@@ -9788,9 +9795,9 @@ export default function App() {
               clubName: activeClubName,
               memberId: pageIdentity?.memberId || "",
             } : null}
-            onBack={() => setPage(
-              portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES
-            )}
+            onBack={() => fieldNav.refereeLocked
+              ? setFieldNavTarget({page:"live",id:Date.now()})
+              : setPage(portalOriginClubId ? PAGE_LANDING : PAGE_LEAGUE_VENUES)}
           />
           </FieldRouteBoundary>
           </FieldPageFrame>
@@ -10098,6 +10105,7 @@ export default function App() {
       {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && !isCompanyClub && (
         <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
+          clubModeLabel={matchType===MATCH_TYPE.LEAGUE?"Mini-league":"Friendly"}
           identity={pageIdentity}
           activeRole={activeRole}
           currentUser={null}
@@ -10352,6 +10360,7 @@ export default function App() {
 
       {page === PAGE_VIEW_HIGHLIGHTS && (
         <VideoHighlightsPage
+          fixtureResults={fullResults}
           matchId={currentVideoHighlightsMatchId}
           activeClubId={activeClubId}
           identity={pageIdentity}
@@ -10515,6 +10524,7 @@ export default function App() {
         activeRole !== "spectator" && (
         <PeerReviewPage
           teams={peerReviewTeams}
+          appearanceHistory={[...(matchDayHistory||[]),...(friendlyMatchDayHistory||[])]}
           playerPhotosByName={effectivePlayerPhotosByName}
           identity={pageIdentity}
           activeSeasonId={USE_V2 ? safeV2ForStats?.activeSeasonId : null}
@@ -11689,13 +11699,13 @@ export default function App() {
         fieldNav.page !== "chat" && (
           <>
             <FieldBottomNav
-              canAccessSettings={fieldNav.canAccessSettings === true} canViewBibStock={fieldNav.canViewBibStock === true}
+              locked={fieldNav.refereeLocked===true} canAccessSettings={fieldNav.canAccessSettings === true} canViewBibStock={fieldNav.canViewBibStock === true}
               currentPage={fieldNav.page}
               onNavigate={(target) =>
                 setFieldNavTarget({ page: target, id: Date.now() })
               }
             />
-            {fieldNav.page !== "chat" && (
+            {fieldNav.page !== "chat" && !fieldNav.refereeLocked && (
               <button
                 type="button"
                 className="field-chat-launcher"
@@ -11735,6 +11745,6 @@ export default function App() {
         />
       ) : null}
 
-    </div>
+    </div></ClubRibbonProvider>
   );
 }

@@ -21,10 +21,18 @@ export async function captureTeamsheetCard(source,{start=0,count=Infinity,jpeg=f
  grid.style.setProperty('display','grid','important');grid.style.setProperty('grid-template-columns','repeat(2,minmax(0,1fr))','important');grid.style.setProperty('align-items','stretch','important');
  page.appendChild(card);context.appendChild(page);shell.appendChild(context);document.body.appendChild(shell);
  try{
-  await document.fonts?.ready;
+  // Remote logos and unavailable web fonts must never reject an otherwise valid teamsheet.
+  const placeholder='data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><text x="24" y="35" font-size="34" text-anchor="middle">⚽</text></svg>');
+  await Promise.all([...card.querySelectorAll('img')].map(async img=>{
+   if(img.src.startsWith('data:'))return;
+   const abort=new AbortController(),timeout=setTimeout(()=>abort.abort(),4000);
+   try{const response=await fetch(img.src,{signal:abort.signal,credentials:'omit'});if(!response.ok)throw Error('Logo unavailable');const blob=await response.blob();img.src=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
+   catch{img.src=placeholder;}
+   finally{clearTimeout(timeout);}
+  }));
   await Promise.all([...card.querySelectorAll('img')].map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.onload=resolve;img.onerror=resolve;setTimeout(resolve,2500);})));
   const {toCanvas}=await import('html-to-image');
-  const canvas=await toCanvas(card,{pixelRatio:2,cacheBust:false,backgroundColor:css.backgroundColor==='rgba(0, 0, 0, 0)'?'#10222b':css.backgroundColor,filter:node=>!node.classList?.contains('field-teamsheet-export-options')});
+  const canvas=await toCanvas(card,{pixelRatio:1.5,cacheBust:false,skipFonts:true,imagePlaceholder:placeholder,backgroundColor:css.backgroundColor==='rgba(0, 0, 0, 0)'?'#10222b':css.backgroundColor,filter:node=>!node.classList?.contains('field-teamsheet-export-options')});
   return canvas;
  }finally{shell.remove();}
 }

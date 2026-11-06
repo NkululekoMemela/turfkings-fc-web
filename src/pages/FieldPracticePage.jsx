@@ -1,3 +1,4 @@
+import VenuePlayerCardsPage from './VenuePlayerCardsPage.jsx';
 import FieldBibHire from "../components/FieldBibHire.jsx";
 import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
 import {buildFieldClubTeam} from "../core/fieldClubTeam.js";
@@ -361,6 +362,8 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       results={season.results || []} allEvents={season.allEvents || []}
       onGoToSquads={() => navigate("squads")}
     />;
+  } else if (page === "cards") {
+    content = <VenuePlayerCardsPage venue={practiceVenue} season={season} clubs={teams} scope={scope} onBack={()=>navigate("landing")}/>;
   } else if (page === "stats") {
     content = <VenueLeagueStatsPage venue={practiceVenue}
       season={season} clubs={teams} scope={scope}/>;

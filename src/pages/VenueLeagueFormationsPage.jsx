@@ -61,7 +61,6 @@ import {
   LINEUP_SAVE_ROLE_ADMIN,
   LINEUP_SAVE_ROLE_GENERAL,
 } from "../core/lineups.js";
-import { buildFormationDecorations } from "../core/matchDayFormationRatings.js";
 import {
   saveTeamGoalkeeperRestrictions,
   subscribeGoalkeeperRestrictions,
@@ -1956,68 +1955,6 @@ export function FormationsPage({
     });
   }, [isFriendlyMatch, todayFriendlyHistory]);
 
-  const formationEventsForDecorations = useMemo(() => {
-    const combined = [
-      ...(currentMatchDayEvents || []),
-      ...(todayFriendlyEvents || []),
-    ];
-
-    const seen = new Set();
-    return combined.filter((e) => {
-      if (!e) return false;
-
-      const key =
-        e.id ??
-        [
-          e._tkMatchDayId ?? "d?",
-          e.matchNo ?? "m?",
-          e.timeSeconds ?? "t?",
-          e.type ?? "type?",
-          e.teamId ?? "team?",
-          e.scorer ?? e.playerName ?? "p?",
-          e.assist ?? "a?",
-          e.role ?? "role?",
-        ].join("|");
-
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [currentMatchDayEvents, todayFriendlyEvents]);
-
-  const formationResultsForDecorations = useMemo(() => {
-    return [...(results || []), ...(todayFriendlyResults || [])];
-  }, [results, todayFriendlyResults]);
-
-  const matchDayDecorations = useMemo(() => {
-    if (!isSmallSidedGameType(gameType)) return {};
-    if (!selectedTeamCanonical?.id) return {};
-
-    // Use the whole selected team, not only the 5 players on the pitch,
-    // so substitutes also show rating / goals / assists after the match day.
-    const recordedNames=new Set((fieldWeek?.results||[]).flatMap(result=>{
-      const snapshot=result.confirmedLineupSnapshot?.[selectedTeamCanonical.id];
-      return [...Object.values(snapshot?.positions||{}),...(snapshot?.benchSnapshot||[]),...(snapshot?.kitNumbers||[]).map(row=>row.name)].filter(Boolean).map(canonicalName);
-    }));
-    const teamPlayers = (selectedTeamCanonical?.players || []).filter(name=>!fieldWeek||!recordedNames.size||recordedNames.has(canonicalName(name)));
-
-    return buildFormationDecorations({
-      ratingMode: "FIELD",
-      teamId: selectedTeamCanonical.id,
-      players: teamPlayers,
-      events: fieldWeek ? fieldWeek.events : formationEventsForDecorations,
-      results: fieldWeek ? fieldWeek.results : formationResultsForDecorations,
-      resolveCanonicalName: canonicalName,
-    });
-  }, [
-    gameType,
-    selectedTeamCanonical,
-    formationEventsForDecorations,
-    formationResultsForDecorations,
-    fieldWeek,
-    canonicalName,
-  ]);
-
   const benchPoolPlayers =
     gameType === GAME_TYPE_11 ? clubPlayers : selectedTeamCanonical?.players || [];
 
@@ -2887,7 +2824,7 @@ export function FormationsPage({
 
               {formation.positions.map((pos) => {
                 const name = lineup.positions[pos.id] || "";
-                const decor = matchDayDecorations[name] || matchDayDecorations[canonicalName(name)] || null;
+                const decor = null; // Match ratings and symbols belong in the fixture recap.
                 const isSelected =
                   selectedPlayer && selectedPlayer.from === "pitch" && selectedPlayer.posId === pos.id;
 
@@ -3084,7 +3021,7 @@ export function FormationsPage({
                 {subsPlayers.map((p) => {
                   const isSelected = selectedPlayer && selectedPlayer.from === "sub" && selectedPlayer.name === p;
                   const photoData = getPlayerPhoto(p);
-                  const decor = matchDayDecorations[p] || matchDayDecorations[canonicalName(p)] || null;
+                  const decor = null; // Keep formations focused on selection and positions.
 
                   return (
                     <li key={`${gameFormat}-sub-${p}`}>

@@ -4302,11 +4302,11 @@ Votes for this poll will no longer be shown.`
       {renderCustomStoriesAt("before-recap")}
 
       {/* MATCH-BY-MATCH RECAP */}
-      <section className="card">
-        <div className="news-recap-header">
-          <h2>Match-by-match recap</h2>
+      <details className="card news-recap-fold">
+        <summary className="news-recap-header">
+          <strong>Match recaps</strong>
           <span className="news-recap-subtitle">Match-day {latestMatchDayLabel}</span>
-        </div>
+        </summary>
 
         {recapResults.length === 0 ? (
           <p className="muted">No matches recorded for the latest saved match-day yet.</p>
@@ -4358,7 +4358,7 @@ Votes for this poll will no longer be shown.`
             })}
           </ul>
         )}
-      </section>
+      </details>
 
       {isTurfKingsClub && showRSVP && (
         <RSVPModal

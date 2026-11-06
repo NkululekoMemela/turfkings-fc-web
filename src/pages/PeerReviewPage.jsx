@@ -1,6 +1,8 @@
+import {clubDebutNames,missingBaselinePlayers} from '../../functions/playerDebutPolicy.mjs';
+import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 // src/pages/PeerReviewPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import {
   getPlayersCollection,
@@ -96,6 +98,7 @@ function getInitials(name) {
 
 export function PeerReviewPage({
   teams,
+  appearanceHistory = [],
   playerPhotosByName = {},
   identity = null,
   activeSeasonId = null,
@@ -390,6 +393,18 @@ export function PeerReviewPage({
     membersLoaded,
   ]);
 
+  const [recordedDebuts,setRecordedDebuts]=useState([]);
+  const [debutsLoaded,setDebutsLoaded]=useState(false);
+  const [debutError,setDebutError]=useState('');
+  useEffect(()=>{
+    setRecordedDebuts([]);setDebutsLoaded(false);setDebutError('');
+    if(isPracticeMode){setDebutsLoaded(true);return undefined;}
+    return onSnapshot(collection(db,'clubs',safeActiveClubId,'playerDebuts'),snapshot=>{
+      setRecordedDebuts(snapshot.docs.map(item=>item.data().name).filter(Boolean));setDebutsLoaded(true);
+    },()=>{setDebutError('Could not check debut records. Reopen this page to try again.');setDebutsLoaded(false);});
+  },[safeActiveClubId,isPracticeMode]);
+  const debutNames=useMemo(()=>[...recordedDebuts,...clubDebutNames({history:appearanceHistory})],[recordedDebuts,appearanceHistory]);
+
   const baselinePlayerPool = useMemo(() => {
     const combined = [...(memberPlayers || []), ...(allPlayers || [])];
     return uniqueByName(
@@ -405,7 +420,7 @@ export function PeerReviewPage({
   const allPlayerNames = useMemo(() => allPlayers.map((p) => p.name), [allPlayers]);
 
   const entryRole = identity?.role || null;
-  const isAdmin = entryRole === "admin";
+  const isAdmin = entryRole === "admin" || entryRole === "captain";
   const isEntryPlayer = entryRole === "player" || entryRole === "captain" || entryRole === "admin";
   const isSpectator = entryRole === "spectator";
   const isSignedInPlayer = !!identity && isEntryPlayer;
@@ -474,6 +489,7 @@ export function PeerReviewPage({
     let cancelled = false;
 
     async function loadBaselines() {
+      setBaselineLoaded(false);setBaselineMap({});
       try {
         const snap = await getDocs(peerRatingBaselinesCollectionRef());
         if (cancelled) return;
@@ -501,7 +517,9 @@ export function PeerReviewPage({
         setBaselineLoaded(true);
       } catch (err) {
         console.error("Failed to load peer rating baselines:", err);
-        setBaselineLoaded(true);
+        if(cancelled)return;
+        setBaselineLoaded(false);
+        setDebutError("Could not check existing baselines. Reopen this page to try again.");
       }
     }
 
@@ -657,9 +675,9 @@ export function PeerReviewPage({
   const baselineTargets = useMemo(() => {
     return baselinePlayerPool.filter((p) => {
       if (baselineFilterTeam !== "ALL" && p.teamLabel !== baselineFilterTeam) return false;
-      return true;
+      return showRatedBaselinePlayers || debutNames.some(name=>normaliseName(resolveCanonicalName(name))===normaliseName(p.name));
     });
-  }, [baselinePlayerPool, baselineFilterTeam]);
+  }, [baselinePlayerPool, baselineFilterTeam, showRatedBaselinePlayers, debutNames, memberCanonicalMap]);
 
   const currentWeekNameSet = useMemo(() => {
     return new Set((allPlayers || []).map((p) => safeLower(p.name)));
@@ -874,6 +892,10 @@ export function PeerReviewPage({
       return;
     }
 
+    const eligible=debutNames.some(name=>normaliseName(resolveCanonicalName(name))===normaliseName(resolveCanonicalName(targetName)));
+    const existing=baselineMap[safeLower(resolveCanonicalName(targetName))];
+    if(!eligible&&!existing){setBaselineStatusMsg('This player needs a recorded debut before their first baseline.');return;}
+
     const hasAnyBaseline = baselineAttack || baselineDefence || baselinePlaymaking || baselineGk;
     if (!hasAnyBaseline) {
       setBaselineStatusMsg("Give at least one baseline rating before saving.");
@@ -931,38 +953,9 @@ export function PeerReviewPage({
   };
 
   const missingBaselineCurrentWeekTargets = useMemo(() => {
-    if (
-      !isAdmin ||
-      !membersLoaded ||
-      !baselineLoaded ||
-      !allPlayers.length
-    ) {
-      return [];
-    }
-
-    return allPlayers.filter((p) => {
-      const canonicalName = resolveCanonicalName(p.name);
-      const existing =
-        baselineMap[safeLower(canonicalName)] ||
-        baselineMap[safeLower(p.name)] ||
-        null;
-
-      const hasBaseline =
-        Number(existing?.attack || 0) > 0 ||
-        Number(existing?.defence || 0) > 0 ||
-        Number(existing?.playmaking || 0) > 0 ||
-        Number(existing?.gk || 0) > 0;
-
-      return !hasBaseline;
-    });
-  }, [
-    isAdmin,
-    membersLoaded,
-    baselineLoaded,
-    allPlayers,
-    baselineMap,
-    memberCanonicalMap,
-  ]);
+    if(!isAdmin||!membersLoaded||!baselineLoaded||!debutsLoaded)return [];
+    return missingBaselinePlayers({players:baselinePlayerPool,debutNames,baselines:baselineMap,resolveName:resolveCanonicalName});
+  },[isAdmin,membersLoaded,baselineLoaded,debutsLoaded,baselinePlayerPool,debutNames,baselineMap,memberCanonicalMap]);
 
   const adminReminderCount = missingBaselineCurrentWeekTargets.length;
 
@@ -1232,24 +1225,7 @@ export function PeerReviewPage({
           }
         }
       `}</style>
-      <div className={`landing-header-sticky ${headerScrolled ? "is-scrolled" : ""}`}>
-        <header className="header">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", width: "100%" }}>
-            <div className="header-title" style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>Peer Ratings (Weekly)</h1>
-            </div>
-            <button
-              className="secondary-btn"
-              onClick={onBack}
-              aria-label="Home"
-              title="Home"
-              style={{ minWidth: "46px", width: "46px", height: "46px", padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "1.05rem", flexShrink: 0 }}
-            >
-              🏠
-            </button>
-          </div>
-        </header>
-      </div>
+      <ClubPageRibbon title={<>Peer Ratings (Weekly)</>} onHome={onBack}/>
 
       <section className="card peer-card">
         {isAdmin && (
@@ -1264,7 +1240,7 @@ export function PeerReviewPage({
               <div style={{ minWidth: 0 }}>
                 <h2 style={{ marginBottom: "0.25rem" }}>Admin baselines</h2>
                 <div className="peer-current-rater">
-                  Long-term ratings setup.
+                  {!baselineLoaded || !debutsLoaded ? "Checking unrated players…" : `${adminReminderCount} unrated ${adminReminderCount === 1 ? "player" : "players"} after debut`}
                 </div>
               </div>
 
@@ -1287,10 +1263,11 @@ export function PeerReviewPage({
               }}
             >
               <p className="muted small" style={{ margin: 0, lineHeight: 1.45 }}>
-                Global per-player baselines. Edit only when needed.
+                Rate players after their first Club or league appearance. Their baseline stays with the Club across seasons.
               </p>
             </div>
 
+            {debutError && <p role="alert" className="status-text">{debutError}</p>}
             {showAdminBaselinePanel && (
               <>
                 <div className="peer-filter-row" style={{ marginTop: "0.95rem" }}>
@@ -1325,7 +1302,7 @@ export function PeerReviewPage({
                 ) : (
                   <>
                     <div style={{ marginTop: "0.9rem" }}>
-                      <h3 style={{ marginBottom: "0.55rem" }}>Played this week</h3>
+                      <h3 style={{ marginBottom: "0.55rem" }}>Current match group</h3>
                       {baselineCurrentWeekTargets.length === 0 ? (
                         <p className="muted small">No players here.</p>
                       ) : (
@@ -1334,7 +1311,7 @@ export function PeerReviewPage({
                     </div>
 
                     <div style={{ marginTop: "1.1rem" }}>
-                      <h3 style={{ marginBottom: "0.55rem" }}>Other players / not in current week</h3>
+                      <h3 style={{ marginBottom: "0.55rem" }}>Other players who have made their debut</h3>
                       {baselineOtherTargets.length === 0 ? (
                         <p className="muted small">No players here.</p>
                       ) : (
@@ -1462,7 +1439,7 @@ export function PeerReviewPage({
               </div>
 
               <div className="peer-reminder-popup-text">
-                Some players who participated this week still need admin baseline ratings.
+                {adminReminderCount} {adminReminderCount === 1 ? "player has" : "players have"} made their debut and still need a baseline rating.
               </div>
 
               <div className="peer-reminder-player-list">
