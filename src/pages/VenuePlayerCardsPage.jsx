@@ -50,7 +50,7 @@ export default function VenuePlayerCardsPage({venue,season,clubs=[],scope=null,o
  },[root,practice,cardClubs]);
  const cards=useMemo(()=>buildFieldPlayerCards({season:selectedSeason,clubs:cardClubs,profiles,photos,logos}),[selectedSeason,cardClubs,profiles,photos,logos]);
  return <div className="venue-player-cards-page">
-  {archives.length>0&&<div className="card" style={{padding:'10px 14px',marginBottom:12}}><label>Season<PremiumSelect aria-label="Player cards season" value={selectedId} onChange={event=>setSelectedId(event.target.value)}><option value="">Current season</option>{archives.filter(item=>item.id!==season?.id).map(item=><option key={item.id} value={item.id}>{item.name||item.title||item.label||item.id}</option>)}</PremiumSelect></label></div>}
+  {archives.some(item=>item.id!==season?.id)&&<div className="card venue-card-season-picker"><label><PremiumSelect aria-label="Player cards season" value={selectedId} onChange={event=>setSelectedId(event.target.value)}><option value="">Current season</option>{archives.filter(item=>item.id!==season?.id).map(item=><option key={item.id} value={item.id}>{item.name||item.title||item.label||item.id}</option>)}</PremiumSelect></label></div>}
   {loading&&<p role="status" className="muted small">Loading player portraits…</p>}
   {error&&<p role="status" className="muted small">{error}</p>}
   <PlayerCardPage fieldCards={cards} teams={cardClubs} activeSeasonId={selectedSeason?.id} activeClub={venue} activeClubId={venue?.id} onBack={onBack}/>

@@ -1686,6 +1686,7 @@ export default function VenueLandingPage({
             {typeof onOpenEndSeasonModal === "function" && (
               <button
                 className={`secondary-btn ${showSeasonCue ? "field-season-start-cue" : ""}`}
+                data-practice-guide={seasonActionLabel === "Start Season" ? "field-season-start" : "field-season-end"}
                 onClick={onOpenEndSeasonModal}
                 type="button"
                 style={tileButtonStyle(isMobile, {
@@ -1705,6 +1706,7 @@ export default function VenueLandingPage({
 {typeof onOpenBackupModal === "function" && (
 <button
               className="secondary-btn"
+              data-practice-guide="field-day-end"
               onClick={onOpenBackupModal}
               type="button"
               style={tileButtonStyle(isMobile)}
@@ -1721,6 +1723,7 @@ export default function VenueLandingPage({
 <button
               className="primary-btn"
               style={tileButtonStyle(isMobile, activePrimaryStyle)}
+              data-practice-guide="field-match-start"
               onClick={handleStartMatchClick}
               type="button"
             >
@@ -2198,6 +2201,7 @@ export default function VenueLandingPage({
           <button
             type="button"
             className="website-btn"
+            data-practice-guide="field-bookings"
             onClick={onGoToPayments}
             style={{
               height: "48px",

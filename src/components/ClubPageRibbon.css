@@ -11,3 +11,45 @@
 .club-ribbon-context{font-size:11px;color:#b7cad9;margin:0 0 12px;}
 @media(min-width:760px){.app-root .club-page-ribbon .field-ribbon-frame .tk-ribbon-wave-svg--mobile{display:none!important;}.app-root .club-page-ribbon .field-ribbon-frame .tk-ribbon-desktop-lip{display:block!important;top:-1px!important;left:0!important;width:100%!important;height:123px!important;}}
 @media(max-width:480px){.app-root .club-page-ribbon .field-ribbon-logo{width:38px!important;height:38px!important;}.app-root .club-page-ribbon .field-ribbon-title-row{gap:9px!important;}}
+
+/* Club subpages keep the full ribbon in flow, clear of their controls and pitch. */
+.app-root .club-page-ribbon { position: relative; top: auto; }
+.app-root:not(.app-root--field) :is(.landing-wave-header .tk-logo,.field-ribbon-logo,.squad-team-identity-logo,.fanm-inline-team-logo) {
+  aspect-ratio: 1;
+  border-radius: 50% !important;
+  object-fit: contain;
+}
+
+@media (max-width: 760px) {
+  html:has(.app-root--landing), body:has(.app-root--landing) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  .app-root.app-root--landing {
+    height: 100dvh;
+    min-height: 0 !important;
+    overflow: hidden;
+    padding: 0 !important;
+  }
+  .app-root--landing > .landing-page {
+    min-width: 0;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: none;
+    touch-action: pan-y pinch-zoom;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .app-root--landing > .landing-page > .landing-header-sticky {
+    top: 0;
+    margin-top: 0 !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    background: #101a35 !important;
+  }
+  .app-root--landing .landing-page :is(input,select,textarea) {
+    font-size: max(16px, 1rem) !important;
+  }
+  .app-root--landing .landing-page :is(button,a) { touch-action: manipulation; }
+}

@@ -1,3 +1,6 @@
+import PracticeGuide from "../components/PracticeGuide.jsx";
+import FieldPracticeBookings from "../components/FieldPracticeBookings.jsx";
+import {fieldGuideSteps} from "../components/practiceGuideSteps.js";
 import VenuePlayerCardsPage from './VenuePlayerCardsPage.jsx';
 import FieldBibHire from "../components/FieldBibHire.jsx";
 import VenueLostFoundPage from "./VenueLostFoundPage.jsx";
@@ -134,6 +137,8 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   const [expired, setExpired] = useState(false);
   useEffect(()=>{if(expired)onExit?.();},[expired,onExit]);
   const [busy, setBusy] = useState(false);
+  const [practiceBookingsReady, setPracticeBookingsReady] = useState(false);
+  const [practiceMatchProgress, setPracticeMatchProgress] = useState(null);
   const season = data?.league?.activeSeason || null;
   const scope = useMemo(() => createPracticeVenueLeagueScope({
     venueId: venue.id, practiceSessionId: session.sessionId,
@@ -298,6 +303,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       seasonActionLabel={
         fieldSeasonNeedsAnnouncement(season) ? "Start Season" : "End Season"
       }
+      onGoToPayments={() => navigate("signup")}
       onGoToStats={() => navigate("stats")}
       onGoToSquads={() => navigate("squads")}
       onGoToFormations={() => navigate("formations")}
@@ -335,9 +341,12 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       venue={practiceVenue} season={season} teams={teams} dataScope={scope}
       identity={auth.currentUser} activeRole="admin"
       isAdmin canOperateMatch
+      onPracticeProgress={setPracticeMatchProgress}
       onBack={() => navigate("landing")}
       onGoToStats={() => navigate("stats")}
     />;
+  } else if (page === "signup") {
+    content = <FieldPracticeBookings scope={scope} season={season} nextFixture={nextFixture} onReady={setPracticeBookingsReady}/>;
   } else if (page === "hireStock") {
     content = <FieldBibHire venueId={venue.id} manage isPracticeMode/>;
   } else if (page === "lostFound") {
@@ -346,10 +355,10 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
     content = <VenueFixturesPage venue={practiceVenue}
       season={season} teams={teams}/>;
   } else if (page === "squads" && season) {
-    content = <VenueSquadsPage venue={practiceVenue}
-      season={season} scope={scope}/>;
+    content = <div data-practice-guide="field-squads-review"><VenueSquadsPage venue={practiceVenue}
+      season={season} scope={scope}/></div>;
   } else if (page === "formations" && season) {
-    content = <VenueLeagueFormationsPage
+    content = <div data-practice-guide="field-lineups-review"><VenueLeagueFormationsPage
       fieldSeason={season} fieldLeagueScope={scope}
       activeClub={practiceVenue} activeClubId={venue.id}
       isPracticeMode practiceSessionId={session.sessionId}
@@ -361,7 +370,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       matchType="LEAGUE" gameFormat={season.gameFormat || "5_V_5"}
       results={season.results || []} allEvents={season.allEvents || []}
       onGoToSquads={() => navigate("squads")}
-    />;
+    /></div>;
   } else if (page === "cards") {
     content = <VenuePlayerCardsPage venue={practiceVenue} season={season} clubs={teams} scope={scope} onBack={()=>navigate("landing")}/>;
   } else if (page === "stats") {
@@ -376,7 +385,24 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
     </section>;
   }
 
+  const announced = Boolean(season?.announcedAtMs);
+  const hasResult = Boolean(season?.results?.length || season?.matchDayHistory?.length);
+  const guideCompletion = [
+    showStart || announced,
+    announced && !showStart,
+    false, false, false,
+    page === "live" || hasResult,
+    Boolean(practiceMatchProgress?.verified) || hasResult,
+    Boolean(practiceMatchProgress?.hasGoal) || hasResult,
+    hasResult && page !== "live",
+    false,
+    Boolean(season?.matchDayHistory?.length),
+    !announced && Boolean(season?.previousSeasonId),
+  ];
   return <div style={{paddingBottom: 90}}>
+    <PracticeGuide sessionKey={`field:${venue.id}:${auth.currentUser?.uid}:${session.sessionId}`}
+      steps={fieldGuideSteps.map((step, index) => ({...step, completed: guideCompletion[index], nextDisabled:index === 2 && !practiceBookingsReady}))}
+      page={page} onNavigate={navigate} ready={Boolean(practiceVenue)}/>
     <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit} showSessionControl={page==="landing"}/>
     {error && <p role="alert">{error}</p>}
     {busy && <p role="status">Preparing…</p>}

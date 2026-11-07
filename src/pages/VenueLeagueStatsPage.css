@@ -2677,3 +2677,5 @@ body .app-root .venue-stats-page .venue-match-results table.stats-table tbody tr
 body .app-root .venue-stats-page .venue-match-results table.stats-table tbody tr:not(.match-details-row)>td:nth-child(3) .result-full-club-name{text-align:left!important;justify-self:start;}
 body .app-root .venue-stats-page .venue-match-results table.stats-table td .venue-result-club-badge img{width:26px!important;height:26px!important;border-radius:50%;border:1px solid #b8dcec80;background:#0b2136;box-sizing:border-box;padding:2px;}
 body .app-root .venue-stats-page .venue-match-results table.stats-table tbody tr:not(.match-details-row)>td:nth-child(2){padding-inline:4px!important;}
+
+.field-result-event-icon { display: inline-block; margin-inline: 3px 4px; font-size: .87em; }

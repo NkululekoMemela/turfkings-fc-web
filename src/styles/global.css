@@ -21353,3 +21353,46 @@ footer.club-marketing-footer > section {
 /* Shared Club and Field cards use the same circular crest framing. */
 .player-cards-page .player-card-watermark-logo{border-radius:50%;border:2px solid #e4cd7b;background:#071b2c;box-sizing:border-box;padding:3px;box-shadow:0 0 0 3px #07132199,0 4px 14px #0005;}
 .player-cards-page .player-card-team-badge{border-radius:50%;border:1px solid #b6dbe980;background:#0a2034;box-sizing:border-box;padding:2px;object-fit:contain;aspect-ratio:1;}
+
+.venue-player-cards-page .venue-card-season-picker {
+  padding: 6px 10px;
+  margin-bottom: 6px;
+}
+.venue-player-cards-page .player-card-filters { padding: 9px 10px; }
+.venue-player-cards-page .player-card-filters-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px !important;
+}
+.venue-player-cards-page .player-card-filter { min-width: 0; gap: 4px; }
+.venue-player-cards-page .player-card-filter > label { font-size: .72rem; margin: 0; }
+.venue-player-cards-page .player-card-filter:has(input) > label { display: none; }
+.venue-player-cards-page .player-card-filter > input {
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+.venue-player-cards-page .player-card-team-filter-options {
+  grid-template-rows: repeat(2, minmax(0, auto));
+  grid-auto-columns: minmax(30%, 1fr);
+  gap: 4px !important;
+  padding: 2px 0 4px;
+}
+.venue-player-cards-page .player-card-team-filter-option {
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 34px;
+  padding: 3px 5px !important;
+  gap: 4px !important;
+}
+.venue-player-cards-page .player-card-team-filter-option :is(img,.player-card-team-filter-all) {
+  width: 18px !important;
+  height: 18px !important;
+  flex: 0 0 18px;
+  border-radius: 50%;
+}
+.venue-player-cards-page .player-card-team-filter-option > span { overflow-wrap: anywhere; }
+@media (min-width: 660px) {
+  .venue-player-cards-page .player-card-team-filter-options { grid-auto-columns: minmax(130px, 1fr); }
+}

@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {
-  tickFieldMatchClock, startFieldSecondHalf, fieldHalfSecondsLeft,
+  tickFieldMatchClock, startFieldSecondHalf, fieldHalfSecondsLeft, fieldMatchProgress,
 } from "../src/core/fieldMatchClock.js";
 
 const state = () => ({
@@ -25,10 +25,11 @@ test("halftime does not consume playing time", () => {
   const value = tickFieldMatchClock({...state(), secondsLeft: 1201}, 1000);
   assert.deepEqual(tickFieldMatchClock(value, 200000), value);
 });
-test("second-half kickoff requires the full break and explicit action", () => {
+test("the referee can start the second half before the break ends", () => {
   const value = tickFieldMatchClock({...state(), secondsLeft: 1201}, 1000);
-  assert.throws(() => startFieldSecondHalf(value, 300999), /Wait/);
-  const patch = startFieldSecondHalf(value, 301000);
+  assert.ok(value.halftimeEndsAtMs > 1000);
+  assert.throws(() => startFieldSecondHalf(state()), /not at halftime/);
+  const patch = startFieldSecondHalf(value);
   assert.equal(patch.clockPhase, "second_half");
   assert.equal(patch.secondsLeft, 1200);
   assert.equal(patch.running, true);
@@ -52,4 +53,10 @@ test("halftime displays zero remaining first-half playing time", () => {
   assert.equal(fieldHalfSecondsLeft({
     ...state(), clockPhase: "halftime", secondsLeft: 1200,
   }), 0);
+});
+
+test("match progress pauses at half-time and includes added playing time", () => {
+  assert.equal(fieldMatchProgress({matchSeconds: 1200, secondsLeft: 600}), 50);
+  assert.equal(fieldMatchProgress({matchSeconds: 1200, secondsLeft: 0, additionalSeconds: 120, additionalSecondsLeft: 60}), 95.45454545454545);
+  assert.equal(fieldMatchProgress({matchSeconds: 1200, secondsLeft: 0, additionalSeconds: 120}), 100);
 });

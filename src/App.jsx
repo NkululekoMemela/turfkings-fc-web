@@ -1,3 +1,5 @@
+import PracticeGuide from "./components/PracticeGuide.jsx";
+import {clubGuideSteps} from "./components/practiceGuideSteps.js";
 import {ClubRibbonProvider} from "./components/ClubPageRibbon.jsx";
 import FieldRecoveryGate from "./components/FieldRecoveryGate.jsx";
 import {clubBrowseMode} from "./core/clubBrowseMode.mjs";
@@ -3455,6 +3457,7 @@ function MainApp() {
 
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
   const [paymentContext, setPaymentContext] = useState(null);
+  const [guidePaidSession, setGuidePaidSession] = useState(null);
   const [smartOffset, setSmartOffset] = useState(() => {
     if (typeof window === "undefined") return 5;
     try {
@@ -9082,6 +9085,27 @@ function MainApp() {
       )}
 
       {isPracticeMode && practiceRuntime?.expiresAt && <FieldPracticeTimer expiresAt={practiceRuntime.expiresAt} clubMode />}
+      {isPracticeMode && practiceRuntime?.practiceSessionId && canManageSquads && !showSessionSelector && (
+        <PracticeGuide sessionKey={`club:${activeClubId}:${authUser?.uid}:${practiceRuntime.practiceSessionId}`}
+          ready={page !== PAGE_VENUE_ENTRY}
+          page={page}
+          steps={clubGuideSteps.map((step, index) => ({...step, completed: [
+            page === PAGE_MATCH_SIGNUP || page === PAGE_PAYMENT,
+            page === PAGE_PAYMENT,
+            guidePaidSession === practiceRuntime.practiceSessionId,
+            false, false,
+            page === PAGE_LIVE || Boolean(results?.length),
+            Boolean(currentConfirmedLineupSnapshot) || Boolean(results?.length),
+            (currentEvents || []).some(event => event.type === "goal") || Boolean(results?.length),
+            page !== PAGE_LIVE && Boolean(results?.length),
+            Boolean(matchDayHistory?.length || friendlyMatchDayHistory?.length),
+          ][index]}))}
+          onNavigate={target => {
+            if (target === PAGE_MATCH_SIGNUP) handleGoToMatchSignup();
+            else if (target === PAGE_FORMATIONS) handleGoToFormations();
+            else if (target !== PAGE_PAYMENT || paymentContext) setPage(target);
+          }}/>
+      )}
 
       {officialStartWarning && (
         <div className="tk-referee-lock-backdrop" onClick={() => setOfficialStartWarning(null)}>
@@ -10148,7 +10172,10 @@ function MainApp() {
           isAdmin={isAdmin}
           isCaptain={isCaptain}
           onBack={handleBackFromPayment}
-          onDone={() => setPage(PAGE_MATCH_SIGNUP)}
+          onDone={() => {
+            if (isPracticeMode) setGuidePaidSession(practiceRuntime?.practiceSessionId);
+            setPage(PAGE_MATCH_SIGNUP);
+          }}
         />
       )}
 
@@ -11379,6 +11406,7 @@ function MainApp() {
               <button
                 className="primary-btn"
                 type="button"
+                data-practice-guide="club-day-confirm"
                 onClick={handleSaveAndClearMatchDay}
                 style={{
                   background:
@@ -11729,6 +11757,10 @@ function MainApp() {
           ticketClubId={activeClubId}
           ticketMemberId={identity?.memberId||""}
           ticketEnabled={canAccessPlayerFeatures&&!isPracticeMode}
+          baselineReminder={{
+            enabled: Boolean(canAccessPlayerFeatures && canManageSquads && !isPracticeMode && authUser?.uid && !authUser.isAnonymous),
+            matchDayHistory, friendlyMatchDayHistory, teams: peerReviewTeams,
+          }}
           persistent={activeRole==="spectator"}
           currentPage={page}
           activeClub={activeClubIdentity}

@@ -1,3 +1,4 @@
+import {captureHighlightPoster} from "../core/highlightPoster.js";
 // src/storage/VideoHighlightsRepository.js
 
 import {
@@ -362,6 +363,8 @@ export async function uploadAndSaveRawHighlight({
     message: "Preparing video upload...",
   });
 
+  const posterTask = base.thumbnailUrl || base.posterUrl || base.previewImageUrl
+    ? Promise.resolve("") : captureHighlightPoster(file).catch(() => "");
   const uploaded = await uploadHighlightVideoFile({
     file,
     matchId,
@@ -377,12 +380,14 @@ export async function uploadAndSaveRawHighlight({
     message: "Saving video highlight details...",
   });
 
+  const poster = await posterTask;
   const saved = await saveRawHighlightDoc({
     matchId,
     clubId,
     highlight: {
       ...base,
       ...uploaded,
+      ...(poster ? {thumbnailUrl: poster} : {}),
       clubId,
       activeClubId: base.activeClubId || clubId,
     },

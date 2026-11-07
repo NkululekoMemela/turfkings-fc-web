@@ -5881,7 +5881,8 @@ export function FriendlyLiveMatchPage({
             <button
               className="primary-btn"
               type="button"
-              onClick={handleStartGoalRecord}
+              data-practice-guide="match-goal"
+                onClick={handleStartGoalRecord}
               disabled={!canControlMatch || !hasVerifiedLineups}
             >
               ⚽ Record Goal
@@ -5933,6 +5934,7 @@ export function FriendlyLiveMatchPage({
             <button
               className="primary-btn"
               type="button"
+              data-practice-guide="match-close"
               onClick={handleEndMatchClick}
             >
               🤝 End & Close Match
@@ -6554,6 +6556,7 @@ export function FriendlyLiveMatchPage({
                 <button
                   className="primary-btn"
                   type="button"
+                  data-practice-guide="match-verify"
                   onClick={handleConfirmLineups}
                   disabled={!playersReady}
                 >
@@ -6757,7 +6760,7 @@ export function FriendlyLiveMatchPage({
                     onClick={editingGoalIndex !== null ? handleSaveEditedGoal : handleAddGoalEvent}
                     disabled={!hasVerifiedLineups || !scorerName}
                   >
-                    {editingGoalIndex !== null ? "Save Changes" : "Save Goal"}
+                    <span data-practice-guide="match-save-goal">{editingGoalIndex !== null ? "Save Changes" : "Save Goal"}</span>
                   </button>
 
                   <button
@@ -6834,7 +6837,7 @@ export function FriendlyLiveMatchPage({
                 type="button"
                 onClick={handleConfirmFinal}
               >
-                Confirm &amp; lock
+                <span data-practice-guide="match-close-confirm">Confirm &amp; lock</span>
               </button>
             </div>
           </div>

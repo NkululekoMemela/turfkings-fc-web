@@ -394,13 +394,15 @@ export function LandingPage({
   }, []);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 6);
+    const handleScroll = (event) => {
+      const offset = event?.target?.classList?.contains("landing-page")
+        ? event.target.scrollTop : window.scrollY;
+      setHeaderScrolled(offset > 6);
     };
 
     handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true, capture: true });
+    return () => window.removeEventListener("scroll", handleScroll, true);
   }, []);
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -2003,6 +2005,7 @@ export function LandingPage({
             <button
               className="primary-btn"
               style={tileButtonStyle(isMobile, activePrimaryStyle)}
+              data-practice-guide="club-match-start"
               onClick={handleStartMatchClick}
               type="button"
             >
@@ -2162,6 +2165,7 @@ export function LandingPage({
             {isThreeTeamLeague && isAdmin && (
               <button
                 className="secondary-btn"
+                data-practice-guide="club-day-end"
                 onClick={onOpenBackupModal}
                 type="button"
                 style={tileButtonStyle(isMobile)}
@@ -2502,6 +2506,7 @@ export function LandingPage({
           <button
             type="button"
             className="website-btn"
+            data-practice-guide="club-bookings"
             onClick={onGoToPayments}
             style={{
               height: "48px",

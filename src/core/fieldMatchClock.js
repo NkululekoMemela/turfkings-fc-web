@@ -21,12 +21,9 @@ export function tickFieldMatchClock(state, now = Date.now()) {
   };
 }
 
-export function startFieldSecondHalf(state, now = Date.now()) {
+export function startFieldSecondHalf(state) {
   if (state?.clockVersion !== 1 || state.clockPhase !== "halftime") {
     throw new Error("This match is not at halftime.");
-  }
-  if (!Number.isFinite(state.halftimeEndsAtMs) || now < state.halftimeEndsAtMs) {
-    throw new Error("Wait for the halftime break to finish.");
   }
   return {
     clockPhase: "second_half", running: true, timeUp: false,
@@ -41,4 +38,15 @@ export function fieldHalfSecondsLeft(state) {
   return state?.clockPhase === "first_half"
     ? Math.max(0, remaining - Math.floor(Number(state.matchSeconds) / 2))
     : remaining;
+}
+
+export function fieldMatchProgress({matchSeconds, secondsLeft, additionalSeconds = 0,
+  additionalSecondsLeft = 0, timeUp = false}) {
+  const regulation = Math.max(0, Number(matchSeconds) || 0);
+  const extra = Math.max(0, Number(additionalSeconds) || 0);
+  const total = regulation + extra;
+  const remaining = Math.max(0, Number(secondsLeft) || 0)
+    + Math.max(0, Number(additionalSecondsLeft) || 0);
+  if (!total) return timeUp ? 100 : 0;
+  return Math.max(0, Math.min(100, (1 - remaining / total) * 100));
 }

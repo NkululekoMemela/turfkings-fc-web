@@ -7448,7 +7448,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                             ]
                               .filter(Boolean)
                               .join(" ")}
-                            onClick={() => toggleWeek(week)}
+                            data-practice-guide="club-booking-select" onClick={() => toggleWeek(week)}
                             disabled={
                               beneficiaryNeedsSelection ||
                               (status.key === "full" && !signed)
@@ -7532,7 +7532,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                           ]
                             .filter(Boolean)
                             .join(" ")}
-                          onClick={() => toggleWeek(week)}
+                          data-practice-guide="club-booking-select" onClick={() => toggleWeek(week)}
                           disabled={
                             beneficiaryNeedsSelection ||
                             isPaid ||
@@ -7752,6 +7752,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             <button
               type="button"
               className="primary-btn signup-pay-btn"
+              data-practice-guide={weeksToPayNow.length > 0 ? "club-payment-next" : undefined}
               disabled={beneficiaryNeedsSelection || weeksToPayNow.length === 0}
               onClick={handlePayNow}
               style={{

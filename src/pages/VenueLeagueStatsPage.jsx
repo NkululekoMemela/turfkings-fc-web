@@ -1,3 +1,4 @@
+import {boothRequest} from "../storage/fieldBoothJournal.js";
 import {getPlayerPhotosCollection} from '../core/clubFirestorePaths.js';
 import {indexPlayerPortraits,resolvePlayerPortrait} from '../core/playerPortrait.mjs';
 import PlayerTableIdentity from '../components/PlayerTableIdentity.jsx';
@@ -28,12 +29,17 @@ import {
 } from "../core/venueLeagueStandings.js";
 import { buildPlayerEventStats } from "../core/playerEventStats.js";
 import {
-  correctVenueRecordedGoal,
   deleteVenueRecordedMatch,
   deleteCurrentEmptyVenueSeason,
 } from "../storage/leagueSeasonRepository.js";
 import { loadVenueLeaguePlayers } from "../storage/venueLiveMatchRepository.js";
 import "./VenueLeagueStatsPage.css";
+
+const RESULT_EVENTS = {
+  goal: ["⚽", "Goal"], yellow_card: ["🟨", "Yellow card"],
+  red_card: ["🟥", "Red card"], injury_knock: ["🩹", "Playing with a knock"],
+  injury_sitting_out: ["🤕", "Sitting out injured"], injury_recovered: ["🩹", "Recovered"],
+};
 
 const TABS = [
   ["teams", "Team Standings"],
@@ -82,6 +88,8 @@ export default function VenueLeagueStatsPage({
   season: currentSeason = null,
   clubs = [],
   canCorrectResults = false,
+  canReverseResults = canCorrectResults,
+  refereeUid = "",
   onBack,
 }) {
   const resolvedScope = scope
@@ -96,7 +104,7 @@ export default function VenueLeagueStatsPage({
     ? venueLeagueRootPath(resolvedScope) : "";
   const isPractice = resolvedScope?.environment === "practice";
   const requireOfficialWrite = () => {
-    if (!canCorrectResults) throw new Error("Only authorized Field staff may correct results.");
+    if (!canCorrectResults && !refereeUid) throw new Error("Only authorized Field staff may correct results.");
     if (isPractice) {
       throw new Error(
         "This correction needs its sandbox adapter. Official data was not changed."
@@ -299,21 +307,21 @@ export default function VenueLeagueStatsPage({
   const saveGoalDraft = async (draft = goalDraft) => {
     if (!draft || savingCorrection) return;
     if (draft.action !== "delete" && !clean(draft.scorer)) {
-      setCorrectionError("Choose a scorer.");
+      setCorrectionError("Choose a player.");
       return;
     }
     setSavingCorrection(true);
     setCorrectionError("");
     try {
       requireOfficialWrite();
-      await correctVenueRecordedGoal({
-        venueId: venue.id,
+      await boothRequest({...resolvedScope, seasonId: currentSeason.id}, "correctResultEvent", {
         fixtureId: draft.fixtureId,
         action: draft.action,
         eventId: draft.eventId,
-        goal: {
+        event: {
+          type: draft.type,
           teamId: draft.teamId,
-          scorer: draft.scorer,
+          playerName: draft.scorer,
           assist: draft.assist,
           timeSeconds: draft.timeSeconds,
         },
@@ -429,7 +437,7 @@ export default function VenueLeagueStatsPage({
             </PremiumSelect></div>
           )}
 
-      {canCorrectResults &&
+      {canReverseResults &&
         seasonMode === "current" &&
         currentSeason?.status === "active" &&
         archivedSeasons.some((item) =>
@@ -516,6 +524,7 @@ export default function VenueLeagueStatsPage({
                 activeTab === id ? "secondary-btn active" : "secondary-btn"
               }
               aria-current={activeTab === id ? "page" : undefined}
+              data-practice-guide={id === "results" ? "field-stats-review" : undefined}
               onClick={() => setActiveTab(id)}
             >
               {label}
@@ -622,10 +631,10 @@ export default function VenueLeagueStatsPage({
                 {visibleResults.map((result, index) => {
                   const resultId = result.fixtureId || result.id || String(index);
                   const expanded = expandedResultId === resultId;
-                  const goals = (result.events || [])
-                    .filter((event) =>
-                      String(event?.type || "").toLowerCase() === "goal"
-                    )
+                  const canEditEvents = !isPractice && seasonMode === "current" && result.status === "completed" &&
+                    (canCorrectResults || Boolean(refereeUid && result.completedByUid === refereeUid));
+                  const matchEvents = (result.events || [])
+                    .filter(event => Object.hasOwn(RESULT_EVENTS, event?.type))
                     .slice()
                     .sort((a, b) =>
                       Number(a.timeSeconds || 0) - Number(b.timeSeconds || 0)
@@ -645,21 +654,22 @@ export default function VenueLeagueStatsPage({
                   };
 
                   const openGoalEditor = (action, event = null) => {
-                    if (!canCorrectResults) return;
+                    if (!canEditEvents) return;
                     setCorrectionError("");
                     setGoalDraft({
                       action,
                       fixtureId: resultId,
                       eventId: event?.id || "",
                       teamId: event?.teamId || result.teamAId,
-                      scorer: event?.scorer || "",
+                      type: event?.type || "goal",
+                      scorer: event?.scorer || event?.playerName || "",
                       assist: event?.assist || "",
                       timeSeconds: Number(event?.timeSeconds) || 0,
                     });
                   };
 
                   const renderInlineEditor = () => {
-                    if (!canCorrectResults || !goalDraft || goalDraft.fixtureId !== resultId) return null;
+                    if (!canEditEvents || !goalDraft || goalDraft.fixtureId !== resultId) return null;
                     const choices = [...new Set([
                       ...(playerNamesByClub[goalDraft.teamId] || []),
                       goalDraft.scorer,
@@ -670,7 +680,7 @@ export default function VenueLeagueStatsPage({
                         onClick={(event) => event.stopPropagation()}>
                         <div className="tk-admin-grid">
                           <div>
-                            <label className="tk-small-label">Scorer</label>
+                            <label className="tk-small-label">{goalDraft.type === "goal" ? "Scorer" : "Player"}</label>
                             <PremiumSelect className="tk-small-select" value={goalDraft.scorer}
                               onChange={(event) => setGoalDraft((previous) => ({
                                 ...previous,
@@ -684,7 +694,7 @@ export default function VenueLeagueStatsPage({
                               ))}
                             </PremiumSelect>
                           </div>
-                          <div>
+                          {goalDraft.type === "goal" && <div>
                             <label className="tk-small-label">Assist</label>
                             <PremiumSelect className="tk-small-select" value={goalDraft.assist}
                               onChange={(event) => setGoalDraft((previous) => ({
@@ -696,14 +706,16 @@ export default function VenueLeagueStatsPage({
                                   <option key={name} value={name}>{name}</option>
                                 ))}
                             </PremiumSelect>
-                          </div>
-                          <div>
+                          </div>}
+                          {goalDraft.action === "add" && <div>
                             <label className="tk-small-label">Type</label>
-                            <PremiumSelect className="tk-small-select" value="goal" disabled>
-                              <option value="goal">goal</option>
+                            <PremiumSelect className="tk-small-select" aria-label="Event type" value={goalDraft.type}
+                              onChange={event => setGoalDraft(previous => ({...previous, type: event.target.value, assist: ""}))}>
+                              {Object.entries(RESULT_EVENTS).map(([type, [icon, label]]) =>
+                                <option key={type} value={type}>{icon} {label}</option>)}
                             </PremiumSelect>
-                          </div>
-                          <div>
+                          </div>}
+                          {(goalDraft.type === "goal" || goalDraft.action === "add") && <div>
                             <label className="tk-small-label">Club</label>
                             <PremiumSelect className="tk-small-select" value={goalDraft.teamId}
                               onChange={(event) => setGoalDraft((previous) => ({
@@ -719,7 +731,7 @@ export default function VenueLeagueStatsPage({
                                 {clubNames[result.teamBId] || result.teamBId}
                               </option>
                             </PremiumSelect>
-                          </div>
+                          </div>}
                         </div>
                         {correctionError && (
                           <p className="error-text">{correctionError}</p>
@@ -743,10 +755,10 @@ export default function VenueLeagueStatsPage({
                     );
                   };
 
-                  const goalLines = (teamId) => (
+                  const eventLines = (teamId) => (
                     <div className="team-scorers">
-                      {goals.filter((event) =>
-                        event.teamId === teamId && event.scorer
+                      {matchEvents.filter((event) =>
+                        event.teamId === teamId && (event.scorer || event.playerName)
                       ).map((event, goalIndex) => {
                         const playerLabel = (name) =>
                           String(name || "").trim().replace(/\s+/g," ") || "Unknown";
@@ -761,30 +773,33 @@ export default function VenueLeagueStatsPage({
                                   <span className="tk-expanded-goal-minute">
                                     {minute}
                                   </span>
-                                  {playerLabel(event.scorer)}
+                                  <span className="field-result-event-icon" role="img" aria-label={RESULT_EVENTS[event.type][1]}
+                                    title={RESULT_EVENTS[event.type][1]}>{RESULT_EVENTS[event.type][0]}</span>
+                                  {playerLabel(event.scorer || event.playerName)}
                                 </span>
-                                {event.assist && (
+                                {event.type === "goal" && event.assist && (
                                   <span className="tk-expanded-assist">
                                     assist: {playerLabel(event.assist)}
                                   </span>
                                 )}
                               </div>
-                              {canCorrectResults && seasonMode === "current" && (
+                              {canEditEvents && event.id != null && (
                                 <span className="tk-mini-admin-actions">
                                   <button type="button" className="tk-mini-admin-btn"
-                                    title="Edit goal" aria-label="Edit goal"
+                                    title="Edit event" aria-label={`Edit ${RESULT_EVENTS[event.type][1].toLowerCase()}`}
                                     onClick={() => openGoalEditor("edit", event)}>✎</button>
                                   <button type="button" className="tk-mini-admin-btn danger"
-                                    title="Delete goal" aria-label="Delete goal"
+                                    title="Delete event" aria-label={`Delete ${RESULT_EVENTS[event.type][1].toLowerCase()}`}
                                     onClick={async () => {
-                                      if (!(await fieldConfirm("Delete this recorded goal and recalculate the match score?"
+                                      if (!(await fieldConfirm(event.type === "goal" ? "Delete this recorded goal and adjust the score?" : "Delete this recorded event?"
                                       ))) return;
                                       saveGoalDraft({
                                         action: "delete",
                                         fixtureId: resultId,
                                         eventId: event.id,
                                         teamId: event.teamId,
-                                        scorer: event.scorer,
+                                        type: event.type,
+                                        scorer: event.scorer || event.playerName,
                                         assist: event.assist,
                                         timeSeconds: event.timeSeconds,
                                       });
@@ -826,16 +841,16 @@ export default function VenueLeagueStatsPage({
 
                       </tr>
                       {expanded && (
-                        <tr className="match-details-row"><td colSpan="3"><div className="field-result-events"><section aria-label={clubNames[result.teamAId]||result.teamAName}>{goals.length?goalLines(result.teamAId):"No goal or assist breakdown recorded."}</section><section aria-label={clubNames[result.teamBId]||result.teamBName}>{goalLines(result.teamBId)}</section></div>
-                            {canCorrectResults && seasonMode === "current" && (
+                        <tr className="match-details-row"><td colSpan="3"><div className="field-result-events"><section aria-label={clubNames[result.teamAId]||result.teamAName}>{matchEvents.length ? eventLines(result.teamAId) : "No match events recorded."}</section><section aria-label={clubNames[result.teamBId]||result.teamBName}>{eventLines(result.teamBId)}</section></div>
+                            {canEditEvents && (
                               <div className="tk-match-admin-box">
-                                <div className="tk-match-admin-label">ADMIN TOOLS</div>
+                                <div className="tk-match-admin-label">MATCH TOOLS</div>
                                 <div className="tk-match-admin-row">
                                   <button type="button" className="tk-admin-compact-btn primary"
                                     onClick={() => openGoalEditor("add")}>
-                                    + Goal
+                                    + Event
                                   </button>
-                                  <button type="button" className="tk-admin-compact-btn danger"
+                                  {canReverseResults && <button type="button" className="tk-admin-compact-btn danger"
                                     onClick={async () => {
                                       const ok = (await fieldConfirm(`Delete saved match #${result.matchNo}?\n\n` +
                                         "This will remove the match result and all linked scorer/assist events for that match."
@@ -856,7 +871,7 @@ export default function VenueLeagueStatsPage({
                                       }
                                     }}>
                                     Reverse official match
-                                  </button>
+                                  </button>}
                                 </div>
                                 {goalDraft?.action === "add" &&
                                   goalDraft.fixtureId === resultId &&

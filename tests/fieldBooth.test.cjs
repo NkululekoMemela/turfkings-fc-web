@@ -60,3 +60,32 @@ test('an official finish updates standings once and still preserves kit verifica
  const next=database(),snapshots=Object.fromEntries(['a','b'].map(id=>[id,{kitVerification:{revision:1},kitNumbers:[{key:'one',name:'One',number:1},{key:'two',name:'Two',number:1}]}]));
  await assert.rejects(call(next,'sync',{seq:1,patch:{confirmedLineupSnapshot:snapshots}}),/number|Number|duplicate|Duplicate|share/i);
 });
+
+test('recorded event corrections are scoped to active administrators and the finishing referee',async()=>{
+ const db=database(), venuePath=`leagueVenues/${venueId}`;
+ const live=db.docs.get(livePath);
+ live.currentEvents=[{id:'card-one',type:'yellow_card',teamId:'a',playerName:'Old name',timeSeconds:60}];
+ const summary={teamAId:'a',teamBId:'b',goalsA:2,goalsB:1};
+ await call(db,'finish',{summary});
+ const before=db.docs.get(venuePath).league.activeSeason;
+ before.matchDayHistory=[{results:before.results,allEvents:before.allEvents}];
+ const edit={action:'edit',eventId:'card-one',event:{playerName:'New name',timeSeconds:75}};
+ await assert.rejects(call(db,'correctResultEvent',edit,'other'),/Only a Field administrator/);
+ await assert.rejects(call(db,'correctResultEvent',edit,'guest'),/Only a Field administrator/);
+ await call(db,'correctResultEvent',edit);
+ let season=db.docs.get(venuePath).league.activeSeason;
+ assert.equal(season.results[0].goalsA,2);
+ assert.equal(season.results[0].goalsB,1);
+ for(const events of [season.results[0].events,season.allEvents,season.matchDayHistory[0].allEvents,db.docs.get(livePath).currentEvents]){
+   assert.equal(events.find(e=>e.id==='card-one').playerName,'New name');
+ }
+ db.docs.set(`${venuePath}/staff/admin-two`,{status:'active',isAdministrator:true});
+ await call(db,'correctResultEvent',{action:'add',event:{type:'goal',teamId:'b',playerName:'Striker',assist:'Helper'}},'admin-two');
+ season=db.docs.get(venuePath).league.activeSeason;
+ assert.equal(season.results[0].goalsA,2);
+ assert.equal(season.results[0].goalsB,2);
+ assert.equal(season.results[0].isDraw,true);
+ assert.equal(season.fixtures[0].goalsB,2);
+ db.docs.get(`${venuePath}/staff/referee`).status='inactive';
+ await assert.rejects(call(db,'correctResultEvent',edit),/Only a Field administrator/);
+});

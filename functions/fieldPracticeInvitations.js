@@ -1,6 +1,6 @@
 const {randomUUID} = require("node:crypto");
 const {Timestamp} = require("firebase-admin/firestore");
-const {loadPracticeClubCopies} = require("./fieldPracticeSessionService");
+const {loadSimulatedFieldClubs} = require("./simulatedFieldPracticeClubs.cjs");
 
 function validId(value) {
   return typeof value === "string" && value.length > 0 &&
@@ -70,18 +70,19 @@ function seasonSettings(settings) {
 
 async function announce({
   db, user, venueId, sessionId, settings, now = Date.now(),
-  loadCopies = loadPracticeClubCopies,
+  loadCopies = loadSimulatedFieldClubs,
 }) {
   if (!validId(venueId) || !validId(sessionId)) {
     throw new Error("Choose a valid Field Practice session.");
   }
   const config = seasonSettings(settings);
+  if (config.gameFormat !== "5_V_5") throw Error("Field Practice currently uses five-a-side.");
   const sessionRef = db.doc(`practiceSessions/${sessionId}`);
   validateSession((await sessionRef.get()).data(),
     user, venueId, sessionId, now);
 
-  const clubs = await loadCopies({db, venueId, minimumClubs:config.minimumClubs});
-  if (!clubs.length) throw new Error("No suitable published Club squads are available.");
+  const clubs = await loadCopies({db, venueId, minimumClubs:config.minimumClubs, gameFormat:config.gameFormat});
+  if (!clubs.length) throw new Error("No simulated Practice Clubs are available.");
   if (clubs.length > 6 || clubs.some(c => c.players.length > 6)) {
     throw new Error("Practice supports six Clubs with six players each.");
   }

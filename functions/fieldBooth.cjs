@@ -1,5 +1,6 @@
 const {onRequest} = require('firebase-functions/v2/https');
 const {getAuth} = require('firebase-admin/auth');
+const {getApps, getApp, initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const {randomBytes, createHash} = require('node:crypto');
 const {isOperator, holdsBooth, validGrant, checkedPatch, transfer} = require('./fieldBoothPolicy.cjs');
@@ -31,6 +32,30 @@ async function operate({db, user, body, now = Date.now()}) {
   return db.runTransaction(async tx => {
     const [v, l, s] = await Promise.all([tx.get(venueRef), tx.get(liveRef),
       tx.get(venueRef.collection('staff').doc(user.uid))]);
+    if (op === 'correctResultEvent') {
+      const venue = v.data(), staff = s.data();
+      const season = venue?.league?.activeSeason;
+      if (season?.id !== seasonId) throw denied('This Field season has ended.');
+      const result = (season.results || []).find(item => item.status === 'completed' &&
+        (item.fixtureId || item.id) === body.fixtureId);
+      const {canCorrectRecordedMatch, correctRecordedMatchEvent} = await import('./fieldBoothShared/recordedEvents.mjs');
+      if (!result || !canCorrectRecordedMatch({venue, staff, uid: user.uid, result})) {
+        throw denied('Only a Field administrator or the referee who completed this match can correct its events.');
+      }
+      const {next, type} = correctRecordedMatchEvent({season, result, action: body.action,
+        eventId: body.eventId, draft: body.event, uid: user.uid, now});
+      tx.update(venueRef, {'league.activeSeason': next, updatedAt: FieldValue.serverTimestamp()});
+      if (l.data()?.status === 'completed' && l.data().fixtureId === body.fixtureId) {
+        const corrected = next.results.find(item => (item.fixtureId || item.id) === body.fixtureId);
+        tx.update(liveRef, {goalsA: corrected.goalsA, goalsB: corrected.goalsB,
+          finalSummary: {...l.data().finalSummary, goalsA: corrected.goalsA, goalsB: corrected.goalsB},
+          events: corrected.events, currentEvents: corrected.events, updatedAt: FieldValue.serverTimestamp()});
+      }
+      tx.create(venueRef.collection('actionLog').doc(), {venueId, seasonId, fixtureId: body.fixtureId,
+        action: 'match_corrected', label: 'Official result corrected', details: `${body.action} ${type}`,
+        actorUid: user.uid, actorEmail: user.email || '', actorName: profile.name, at: FieldValue.serverTimestamp()});
+      return {corrected: true};
+    }
     if (!v.exists || !l.exists) throw denied('No saved live match was found.');
     const venue = v.data(), live = l.data(), staff = s.exists ? s.data() : null;
     const season = venue.league?.activeSeason;
@@ -187,9 +212,10 @@ exports.fieldRefereeBooth = onRequest({region: 'us-central1', invoker: 'public',
   try {
     const bearer = String(req.headers.authorization || '').match(/^Bearer (.+)$/)?.[1];
     if (!bearer) throw denied('Sign in with your own account.');
-    const user = await getAuth().verifyIdToken(bearer, true);
+    const app = getApps().length ? getApp() : initializeApp();
+    const user = await getAuth(app).verifyIdToken(bearer, true);
     if (!user.email_verified || user.cameraSession || user.firebase?.sign_in_provider === 'anonymous') throw denied('Use your own verified account.');
-    return res.json(await operate({db: getFirestore(), user, body: req.body || {}}));
+    return res.json(await operate({db: getFirestore(app), user, body: req.body || {}}));
   } catch (error) {
     console.error('[Field referee booth]', error.status || 500, error.message);
     return res.status(error.status || 400).json({error: error.message || 'The referee action could not be completed.'});

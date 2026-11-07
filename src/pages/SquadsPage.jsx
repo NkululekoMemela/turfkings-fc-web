@@ -3636,7 +3636,7 @@ export function SquadsPage({
             Set Squad ✏️
           </button>
 
-          <button className="primary-btn" onClick={handleSaveClick}>
+          <button className="primary-btn" data-practice-guide="club-squads-save" onClick={handleSaveClick}>
             Save Squads
           </button>
 

@@ -5843,37 +5843,7 @@ exports.cleanupFieldPracticeSessions =
     }
   );
 
-exports.announceFieldPracticeSeason = onRequest(
-  {region: REGION},
-  async (req, res) => {
-    setCors(res);
-    if (handleOptions(req, res)) return;
-    if (req.method !== "POST") {
-      return res.status(405).json({error: "POST is required."});
-    }
-    const bearer = String(req.headers.authorization || "")
-      .match(/^Bearer (.+)$/);
-    if (!bearer) return res.status(401).json({error: "Sign in first."});
-    let user;
-    try {
-      user = await admin.auth().verifyIdToken(bearer[1], true);
-    } catch {
-      return res.status(401).json({error: "Sign in again."});
-    }
-    try {
-      const result = await require("./fieldPracticeInvitations").announce({
-        db, user, venueId: req.body?.venueId,
-        sessionId: req.body?.sessionId, settings: req.body?.settings,
-      });
-      return res.status(200).json({ok: true, ...result});
-    } catch (error) {
-      console.error("[Field Practice invitation]", error);
-      return res.status(400).json({
-        ok: false, error: error.message || "Practice invitation failed.",
-      });
-    }
-  }
-);
+exports.announceFieldPracticeSeason = require("./fieldPracticeAnnouncementHttp.cjs").announceFieldPracticeSeason;
 
 // Field logo stock and atomic registration.
 const {installFieldLogoStudio} = require("./fieldLogoStudio.cjs");

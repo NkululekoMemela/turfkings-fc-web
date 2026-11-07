@@ -140,3 +140,28 @@ test("Official and other session workspaces reject invitations", async () => {
     assert.deepEqual(fixture.writes, []);
   }
 });
+
+test("Practice can invite fictional Clubs without reading any real Club or player", async () => {
+  const writes = [];
+  const root = "sandboxes/practice/leagueVenues/field/sessions/session";
+  const snap = path => {
+    assert.ok(path === "practiceSessions/session" || path === root);
+    return {exists:true, data:() => path === root
+      ? {environment:"practice", practiceSessionId:"session", league:{activeSeason:null}} : session};
+  };
+  const db = {
+    doc:path => ({path, get:async () => snap(path)}),
+    runTransaction:async fn => fn({
+      get:async ref => snap(ref.path),
+      update:(ref, data) => writes.push({path:ref.path, data}),
+      set:(ref, data) => writes.push({path:ref.path, data}),
+    }),
+  };
+  await announce({db, user:{uid:"owner"}, venueId:"field", sessionId:"session",
+    now:1000, settings:{name:"First run", startsOn:"2026-11-07", minimumClubs:4}});
+  const clubs = writes.filter(row => row.path.startsWith(`${root}/clubs/`));
+  assert.equal(clubs.length, 4);
+  assert.ok(clubs.every(({data}) => data.simulated && data.players.length === 6 &&
+    data.players.every(player => player.simulated && player.memberId.startsWith("sandbox-"))));
+  assert.ok(writes.every(row => row.path.startsWith(root)));
+});

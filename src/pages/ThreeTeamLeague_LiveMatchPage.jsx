@@ -6917,6 +6917,7 @@ export function ThreeTeamLeagueLiveMatchPage({
               <button
                 className="primary-btn"
                 type="button"
+                data-practice-guide="match-goal"
                 onClick={handleStartGoalRecord}
                 disabled={!hasVerifiedLineups}
               >
@@ -6980,6 +6981,7 @@ export function ThreeTeamLeagueLiveMatchPage({
             <button
               className="primary-btn"
               type="button"
+              data-practice-guide="match-close"
               onClick={handleEndMatchClick}
             >
               🤝 End & Close Match
@@ -8019,7 +8021,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                         onClick={editingGoalIndex !== null ? handleSaveEditedGoal : handleAddEvent}
                         disabled={!hasVerifiedLineups || !scorerName}
                       >
-                        {editingGoalIndex !== null ? "Save Changes" : "Save Goal"}
+                        <span data-practice-guide="match-save-goal">{editingGoalIndex !== null ? "Save Changes" : "Save Goal"}</span>
                       </button>
                       <button
                         className="secondary-btn"
@@ -8499,6 +8501,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                 <button
                   className="primary-btn"
                   type="button"
+                  data-practice-guide="match-verify"
                   onClick={handleConfirmLineups}
                   disabled={!playersReady}
                 >
@@ -8535,7 +8538,7 @@ export function ThreeTeamLeagueLiveMatchPage({
                 type="button"
                 onClick={handleConfirmFinal}
               >
-                Confirm &amp; lock
+                <span data-practice-guide="match-close-confirm">Confirm &amp; lock</span>
               </button>
             </div>
           </div>

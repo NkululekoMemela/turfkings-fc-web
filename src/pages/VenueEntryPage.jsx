@@ -776,7 +776,7 @@ export default function VenueEntryPage({
       if (root) delete root.dataset.fieldTheme;
     };
   }, [fieldTheme]);
-  const [portalStatus, setPortalStatus] = useState("");
+  const [portalError, setPortalError] = useState("");
   const [portalRetry, setPortalRetry] = useState(0);
 
   const [venuePage, setVenuePageState] = useState("landing");
@@ -818,7 +818,7 @@ export default function VenueEntryPage({
     const request=fieldNavTarget?.entryRequest;
     if(!request||request.venueId!==venue?.id)return;
     let active=true;
-    setEnteredIdentity(null);setNotificationEntryStatus("Checking your Field access…");
+    setEnteredIdentity(null);setNotificationEntryStatus("");
     if(!currentUser?.uid)return ()=>{active=false;};
     if(request.kind==="live_score"){
       setEnteredIdentity({uid:currentUser.uid,email:currentUser.email||"",venueId:venue.id,venueName:venue.name||"",role:"spectator",actingRole:"spectator",isAdministrator:false,fullName:currentUser.displayName||"Spectator",status:"active"});
@@ -872,28 +872,30 @@ export default function VenueEntryPage({
     let generation = 0;
     let timer;
     setEnteredIdentity(null);
-    setPortalStatus("Connecting your Club account...");
+    setPortalError("");
 
     const stopAuth = onAuthStateChanged(auth, user => {
       const attempt = ++generation;
       window.clearTimeout(timer);
       setEnteredIdentity(null);
       if (!user?.uid || !user.email) {
-        setPortalStatus("Sign in with your Club player account.");
+        setPortalError("Sign in with your Club player account.");
         return;
       }
-      setPortalStatus("Checking club membership...");
+      setPortalError("");
       timer = window.setTimeout(() => {
         if (!cancelled && attempt === generation) {
           ++generation;
-          setPortalStatus("The membership check timed out. Check your connection and retry.");
+          setPortalError("The membership check timed out. Check your connection and retry.");
         }
       }, 15000);
 
       async function enter() {
         const clubId = String(portalClubIdentity.clubId || "").trim();
         if (!clubId) throw new Error("The originating Club is missing.");
-        const membershipSnapshot = await readPortalMembership(clubId);
+        const [membershipSnapshot, owned] = await Promise.all([
+          readPortalMembership(clubId), ownMembershipSnapshots(clubId),
+        ]);
         const membership = membershipSnapshot.data();
         if (!membershipSnapshot.exists() || membership.status !== "active" ||
             membership.venueId !== venue.id) {
@@ -902,7 +904,6 @@ export default function VenueEntryPage({
 
         // Public football projections intentionally have no email or UID.
         // Resolve only memberships verified for this signed-in account by the server.
-        const owned=await ownMembershipSnapshots(clubId);
         const member=resolvePortalClubMember(owned.docs.map(item=>({...item.data(),id:item.id})),user,portalClubIdentity.memberId);
         const memberId=member.id;
         if (cancelled || attempt !== generation ||
@@ -920,15 +921,16 @@ export default function VenueEntryPage({
           email: user.email,
           fullName: member.fullName || member.name || user.displayName || "",
         });
+        setFieldSessionChoice("official");
         setVenuePage("landing");
-        setPortalStatus("");
+        setPortalError("");
       }
 
       enter().catch(cause => {
         if (cancelled || attempt !== generation) return;
         window.clearTimeout(timer);
         console.error("[Club to Field portal]", cause);
-        setPortalStatus(
+        setPortalError(
           cause.code === "permission-denied"
             ? "Field access was denied. Check that staging has the current membership rules."
             : cause.code === "unavailable"
@@ -941,7 +943,7 @@ export default function VenueEntryPage({
     }, cause => {
       window.clearTimeout(timer);
       console.error("[Club portal authentication]", cause);
-      if (!cancelled) setPortalStatus("Could not verify your signed-in account. Refresh and retry.");
+      if (!cancelled) setPortalError("Could not verify your signed-in account. Refresh and retry.");
     });
 
     return () => {
@@ -5340,7 +5342,7 @@ export default function VenueEntryPage({
 
 
     if(fieldNavTarget?.page==="chat" && fieldNavTarget?.entryRequest && !enteredIdentity){
-      return <FieldTravelSplash destination={venue?.name||"your Field"} status={notificationEntryStatus||"Opening Field chat…"} onRetry={()=>setNotificationEntryRetry(v=>v+1)} onReturn={onBack}/>;
+      return <FieldTravelSplash destination={venue?.name||"your Field"} status={notificationEntryStatus} failed={Boolean(notificationEntryStatus)} onRetry={()=>setNotificationEntryRetry(v=>v+1)} onReturn={onBack}/>;
     }
 
     if(fieldNavTarget?.page==="news" && venuePage==="news" && !enteredIdentity){
@@ -5352,7 +5354,8 @@ export default function VenueEntryPage({
         <FieldTravelSplash
           key={`${venue?.id}:${portalRetry}`}
           destination={venue?.name || "your Field"}
-          status={portalStatus}
+          status={portalError}
+          failed={Boolean(portalError)}
           onRetry={() => setPortalRetry(value => value + 1)}
           onReturn={onBack}
         />
@@ -5683,10 +5686,9 @@ export default function VenueEntryPage({
           venue={venue}
           season={venueSeason}
           clubs={mappedTeams}
-          canCorrectResults={Boolean(
-            canAccessFieldSettings &&
-            currentUser?.uid && venue?.ownerUid === currentUser.uid
-          )}
+          canCorrectResults={isFieldAdministrator}
+          canReverseResults={Boolean(isVenueOwner)}
+          refereeUid={hasActiveFieldRole && effectiveRole === "referee" ? currentUser?.uid : ""}
           onBack={() => setVenuePage("landing")}
         />
       );

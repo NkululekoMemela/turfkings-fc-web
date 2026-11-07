@@ -1,0 +1,18 @@
+.practice-guide-layer{position:fixed;inset:0;pointer-events:none;z-index:32000}
+.practice-guide,.practice-guide-launch{position:absolute;pointer-events:auto;right:12px;bottom:calc(92px + env(safe-area-inset-bottom,0px));color:#f0f6ff;border:1px solid #6de5d37a;background:linear-gradient(145deg,#17264a,#101a30 65%,#112e39);box-shadow:0 14px 38px #01051196;border-radius:17px}
+.practice-guide{box-sizing:border-box;width:min(360px,calc(100% - 24px));padding:10px 13px;font-size:13px}
+.practice-guide--above{bottom:auto;top:calc(12px + env(safe-area-inset-top,0px))}
+.practice-guide-top,.practice-guide-actions{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.practice-guide-top>span{font-size:10px;font-weight:850;letter-spacing:.09em;color:#9ffae1}
+.practice-guide-top b{margin-inline-start:5px;color:#d8eaff}
+.practice-guide strong{display:block;margin-top:4px;font-size:15px}
+.practice-guide p{margin:3px 0 7px;line-height:1.36;color:#c8daef}
+.practice-guide button,.practice-guide-launch{font:inherit;font-weight:750;cursor:pointer;padding:6px 10px;color:#e9fbff;border:1px solid #91c4df55;border-radius:10px;background:#1c3850}
+.practice-guide-top button{font-size:11px;background:transparent}
+.practice-guide button:disabled{opacity:.45;cursor:default}
+.practice-guide-launch{border-radius:999px;font-size:12px}
+.practice-guide-marker{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#8af6d9;color:#071f28;box-shadow:0 0 0 3px #0c223b,0 0 15px #5eead4b0;font-size:13px;font-weight:900}
+.practice-booking-review{max-width:760px;margin-inline:auto}
+.practice-booking-review ul{list-style:none;margin:0;padding:0}
+.practice-booking-review li{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 18px;padding:10px 0;border-top:1px solid #7da4d33b}
+.practice-booking-review li span{color:#afe6d7}

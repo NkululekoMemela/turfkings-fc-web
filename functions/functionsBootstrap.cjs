@@ -1,6 +1,9 @@
 // Keep discovery complete; isolate frequently used HTTP targets on cold start.
-const targets={facebookReview:"./facebookReviewHttp.cjs",kitShop:"./kitShopHttp.cjs",companyClubs:"./companyClubsHttp.cjs"};
-const loaded=require(targets[process.env.FUNCTION_TARGET]||"./index.js");
+const targets={facebookReview:"./facebookReviewHttp.cjs",kitShop:"./kitShopHttp.cjs",companyClubs:"./companyClubsHttp.cjs",announceFieldPracticeSeason:"./fieldPracticeAnnouncementHttp.cjs"};
+const target=process.env.FUNCTION_TARGET;
+const loaded=target==="fieldRefereeBooth"
+  ? {fieldRefereeBooth:require("./fieldBooth.cjs").fieldRefereeBooth}
+  : require(targets[target]||"./index.js");
 // Opt-in deploy discovery only. Normal runtime and full deployments remain unchanged.
 const selected=String(process.env.FANM_DEPLOY_EXPORTS||"").split(",").filter(Boolean);
 if(selected.length&&!process.env.FUNCTION_TARGET){

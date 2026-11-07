@@ -2952,7 +2952,7 @@ export function PlayerCardPage({
         <div className="player-card-filters-row">
           {!friendlyCardMode && (
             <div className="player-card-filter player-card-filter-view">
-              <label>Season</label>
+              <label>{fieldCards ? "Participation" : "Season"}</label>
 
             <div
               className="segmented-toggle"
@@ -3083,6 +3083,7 @@ export function PlayerCardPage({
             <label>Search</label>
             <input
               type="text"
+              aria-label="Search by player or team"
               placeholder="Search by player or team"
               value={search}
               onChange={(e) => setSearch(e.target.value)}

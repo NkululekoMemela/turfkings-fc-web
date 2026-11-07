@@ -2205,6 +2205,7 @@ export function FormationsPage({
       <section
         ref={exportRef}
         className="card lineups-card"
+        data-practice-guide="club-lineups-review"
         onDoubleClick={saveFormationImage}
         onTouchStart={startLongPressSave}
         onTouchEnd={clearLongPress}
