@@ -967,6 +967,7 @@ export default function PaymentPage({
                 <button
                   type="button"
                   className="primary-btn payment-action-btn"
+                  data-practice-guide="club-pay"
                   disabled={
                     creatingCheckout ||
                     amountToPayNow <= 0 ||

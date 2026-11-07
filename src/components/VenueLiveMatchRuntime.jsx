@@ -48,6 +48,7 @@ export default function VenueLiveMatchRuntime({
   onGoToStats,
   onControlState,
   temporaryReferee = false,
+  onPracticeProgress,
 }) {
   const scope = useMemo(() => {
     const value = dataScope || {
@@ -103,6 +104,15 @@ export default function VenueLiveMatchRuntime({
   const liveStateRef = useRef(null);
   const currentEventsRef =
     useRef(currentEvents);
+
+  const practiceVerified = Boolean(liveState?.confirmedLineupSnapshot &&
+    !liveState.awaitingKitVerification);
+  const practiceHasGoal = currentEvents.some(event => event.type === "goal");
+  useEffect(() => {
+    if (scope.environment !== "practice" || !onPracticeProgress) return undefined;
+    onPracticeProgress({verified: practiceVerified, hasGoal: practiceHasGoal});
+    return () => onPracticeProgress(null);
+  }, [scope.environment, onPracticeProgress, practiceVerified, practiceHasGoal]);
 
   const [loadAttempt,setLoadAttempt]=useState(0);
   const [finishPending,setFinishPending]=useState(()=>scope.environment!=="practice" && Boolean(readBooth(scope)?.finishSummary));

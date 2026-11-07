@@ -110,7 +110,7 @@ export function FieldSeasonStartModal({
   const [firstPrize, setFirstPrize] = useState("");
   const [secondPrize, setSecondPrize] = useState("");
   const [thirdPrize, setThirdPrize] = useState("");
-  const [gameFormat, setGameFormat] = useState(season?.gameFormat || "5_V_5");
+  const [gameFormat, setGameFormat] = useState(isPractice ? "5_V_5" : season?.gameFormat || "5_V_5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(0);
@@ -124,7 +124,7 @@ export function FieldSeasonStartModal({
           <p>{isPractice
             ? "Sandbox captains have accepted. No real Clubs were contacted."
             : "Their administrators can sign up from their Club entry page."}</p>
-          <button type="button" className="primary-btn" onClick={onClose}>Done</button>
+          <button type="button" className="primary-btn" data-practice-guide="field-season-done" onClick={onClose}>Done</button>
         </>
       ) : (
         <form onInvalidCapture={event => {
@@ -150,7 +150,7 @@ export function FieldSeasonStartModal({
             setError(failure.message || "Could not announce this season.");
           } finally { setBusy(false); }
         }}>
-          <p>{isPractice?"Use your Field’s clubs first, then available public squads. Acceptance is simulated; no real clubs are contacted.":`Invite all member Clubs at ${venue.name} to the upcoming season.`}</p>
+          <p>{isPractice?"This session uses simulated Clubs. No real Clubs will be contacted.":`Invite all member Clubs at ${venue.name} to the upcoming season.`}</p>
           {[
             ["Season name", "text", name, setName],
             ["First match day", "date", date, setDate],
@@ -162,7 +162,7 @@ export function FieldSeasonStartModal({
             ["Minimum Clubs required", "number", minimum, setMinimum],
             ["Entry fee per Club (R)", "number", fee, setFee],
           ].map(([label, type, value, setter]) => (
-            <label key={label} style={{ display: "grid", gap: ".3rem", margin: ".8rem 0" }}>
+            <label key={label} data-practice-guide={label === "Season name" ? "field-season-form" : undefined} style={{ display: "grid", gap: ".3rem", margin: ".8rem 0" }}>
               {label}
               <input className="text-input" type={type} value={value}
                 required disabled={busy} min={type === "number" ? 0 : undefined}
@@ -175,7 +175,7 @@ export function FieldSeasonStartModal({
             League size
             <PremiumSelect className="text-input" value={gameFormat} disabled={busy}
               onChange={event => setGameFormat(event.target.value)}>
-              {FIELD_GAME_FORMATS.map(([value, label]) => (
+              {FIELD_GAME_FORMATS.filter(([value]) => !isPractice || value === "5_V_5").map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </PremiumSelect>
@@ -443,7 +443,7 @@ export function FieldSeasonEndModal({
         <div className="actions-row">
           <button type="button" className="secondary-btn"
             disabled={busy} onClick={onClose}>Go back</button>
-          <button type="submit" className="primary-btn" disabled={
+          <button type="submit" className="primary-btn" data-practice-guide="field-season-end-confirm" disabled={
             busy || confirmation.trim() !== venue.name?.trim()
             || (cancelling && !practice && reason.trim().length < 10)
           }>{busy ? "Saving…" : action}</button>

@@ -4,17 +4,21 @@ import "./FieldBottomNav.css";
 const items = [
   { key: "landing", emoji: "🏡", label: "Home" },
   { key: "stats", emoji: "📊", label: "Stats" },
-  { key: "cards", emoji: "🪪", label: "Cards" },
   { key: "squads", emoji: "👥", label: "Squads" },
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },
   { key: "news", emoji: "📰", label: "News" },
   { key: "videos", image: "/videotape.png", label: "Videos" },
+  { key: "cards", emoji: "🪪", label: "Cards" },
   { key: "hireStock", emoji: "👕", label: "Bib Stock" },
   { key: "settings", emoji: "⚙️", label: "Settings" },
 ];
 
 export default function FieldBottomNav({ currentPage, onNavigate, canAccessSettings = false, canViewBibStock = false, locked = false }) {
-  const visibleItems = items.filter(item => item.key==="hireStock" ? canAccessSettings||canViewBibStock : !["settings","actionLog"].includes(item.key) || canAccessSettings);
+  const showStock = canAccessSettings || canViewBibStock;
+  const visibleItems = items.filter(item => item.key === "hireStock" ? showStock
+    : item.key === "settings" ? canAccessSettings : showStock || item.key !== "news");
+  // When stock isn't available, News is the last destination after Cards.
+  if (!showStock) visibleItems.push(items.find(item => item.key === "news"));
   const navScroller = useRef(null);
   const [isHidden,setIsHidden]=useState(false);
   useEffect(() => {

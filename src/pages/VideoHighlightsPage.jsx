@@ -6240,7 +6240,7 @@ export function VideoHighlightsPage({
 
             {clipPreviewUrl && (
               <div style={{ marginTop: 12 }}>
-                <video className="tkh-preview-video" controls playsInline preload="metadata" src={clipPreviewUrl} />
+                <video className="tkh-preview-video" controls playsInline preload="auto" src={clipPreviewUrl} />
               </div>
             )}
 

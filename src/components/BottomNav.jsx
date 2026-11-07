@@ -1,3 +1,4 @@
+import ClubBaselinePeek, {useClubBaselineDue} from "./ClubBaselinePeek.jsx";
 import ClubTicketPeek from "./ClubTicketPeek.jsx";
 // src/components/BottomNav.jsx
 // Flat integrated footer version with NO rounded outer edges.
@@ -23,6 +24,7 @@ const items = [
 export default function BottomNav({
   currentPage,
   ticketClubId="", ticketMemberId="", ticketEnabled=false,
+  baselineReminder,
   onNavigate,
   activeClub = null,
   activeClubName = "Club",
@@ -37,6 +39,8 @@ export default function BottomNav({
   const [isHidden, setIsHidden] = useState(false);
   const navScroller = useRef(null);
   const payButtonRef=useRef(null);
+  const rateButtonRef = useRef(null);
+  const due = useClubBaselineDue({clubId: ticketClubId, ...baselineReminder});
   useEffect(() => {
     const scroller = navScroller.current;
     const current = scroller?.querySelector('[aria-current="page"]');
@@ -50,7 +54,7 @@ export default function BottomNav({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    if(persistent){setIsHidden(false);return undefined;}
+    if(persistent || currentPage === "landing"){setIsHidden(false);return undefined;}
 
     let hideTimer = null;
 
@@ -113,7 +117,8 @@ export default function BottomNav({
 
               return (
                 <button
-                  ref={item.key==="match-signup"?payButtonRef:undefined}
+                  ref={item.key==="match-signup"?payButtonRef:item.key==="peer-review"?rateButtonRef:undefined}
+                  aria-label={item.key === "peer-review" && due ? `Rate ${due} ${due === 1 ? "player" : "players"} after debut` : undefined}
                   key={item.key}
                   type="button"
                   onClick={() => {
@@ -149,9 +154,24 @@ export default function BottomNav({
           </div>
         </div>
       </nav>
+      <ClubBaselinePeek buttonRef={rateButtonRef} count={due} enabled={!isHidden && !hidden && !locked && canAccessPeerReview && currentPage !== "peer-review"} />
       <ClubTicketPeek buttonRef={payButtonRef} clubId={ticketClubId} memberId={ticketMemberId} enabled={ticketEnabled&&canAccessPayments&&!locked} navHidden={isHidden||hidden}/>
 
       <style>{`
+        .club-baseline-peek {
+          position: fixed;
+          z-index: 11000;
+          transform: translate(-50%, -100%);
+          padding: 7px 10px;
+          border-radius: 10px;
+          background: #e9b94b;
+          color: #17212c;
+          box-shadow: 0 4px 14px #0006;
+          pointer-events: none;
+          white-space: nowrap;
+          font-size: .8rem;
+          font-weight: 800;
+        }
         .app-root {
           padding-bottom: 82px;
         }

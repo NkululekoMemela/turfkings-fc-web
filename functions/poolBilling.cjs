@@ -7,12 +7,10 @@ const fresh=()=>({used:0,deferred:{}});
 const total=account=>Object.values(account.deferred||{}).reduce((sum,n)=>sum+n,0);
 const assert= (ok,message)=>{if(!ok)throw Error(message);};
 function eligible(night){return night.pool.matches.length>=10;}
-function decisionRequired(night,uid){const bill=night.contribution||{state:"due"};return night.lifecycle!=="ended"&&night.lifecycle!=="deleted"&&night.ownerUid===uid&&eligible(night)&&bill.state==="due"&&!bill.addressedAt&&!bill.requestedUid&&!bill.orderId;}
-async function checkCreate(db,user){
- const account=(await accountRef(db,accountId(user)).get()).data()||fresh();assert(total(account)<cap,"You’ve reached the limit on deferred payments. Open a previous night to contribute before starting another.");
- const previous=await db.collection("poolNights").where("ownerUid","==",user.uid).limit(100).get();
- assert(!previous.docs.some(doc=>{const n=doc.data();return n.contribution?.state==="due";}),"Choose Pay, a free coupon, or Pay next time in your previous night before starting another. Your existing night is safe.");
-}
+// Contributions never gate tournament operation or the creation of a night.
+function decisionRequired(){return false;}
+async function checkCreate(){return;}
+
 async function handle({db,user,body}){
  assert(user?.uid&&user.email_verified===true&&!user.cameraSession,"Sign in with a verified account.");
  const code=String(body.code||"").toUpperCase();assert(/^[A-F0-9]{10}$/.test(code),"Choose a valid night.");

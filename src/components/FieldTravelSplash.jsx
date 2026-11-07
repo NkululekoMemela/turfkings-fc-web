@@ -2,7 +2,7 @@ import React, { useEffect, useId, useState } from "react";
 import "./FieldTravelSplash.css";
 
 export default function FieldTravelSplash({
-  destination, status, onRetry, onReturn, destinationKind = "field",
+  destination, status, onRetry, onReturn, failed = false, destinationKind = "field",
 }) {
   const [delayed, setDelayed] = useState(false);
   const ballId=useId().replace(/:/g, "");
@@ -13,7 +13,7 @@ export default function FieldTravelSplash({
   }, []);
 
   return (
-    <main className="football-travel" aria-busy="true">
+    <main className="football-travel" aria-busy={!failed}>
       <div className="football-travel__content">
         <div className="football-travel__scene" aria-hidden="true">
           <div className="football-travel__glow" />
@@ -56,10 +56,10 @@ export default function FieldTravelSplash({
               ? "Returning to your Club"
               : "The Field you play on."}
           </p>
-          {delayed && (onRetry || onReturn) && (
+          {(failed || delayed) && (onRetry || onReturn) && (
             <div className="football-travel__delayed">
               <p>{status || "Connecting your Club account…"}</p>
-              <div className="football-travel__actions">
+              {failed && <div className="football-travel__actions">
                 {onRetry && (
                   <button type="button" className="primary-btn"
                     onClick={onRetry}>Retry entry</button>
@@ -68,7 +68,7 @@ export default function FieldTravelSplash({
                   <button type="button" className="secondary-btn"
                     onClick={onReturn}>Return to Club</button>
                 )}
-              </div>
+              </div>}
             </div>
           )}
         </div>

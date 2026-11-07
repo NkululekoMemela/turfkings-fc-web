@@ -7,3 +7,11 @@
 .field-futsal-rules { padding: 10px; border: 1px solid #5c78934d; border-radius: 12px; margin-bottom: 10px; font-size: 12px; }
 .field-futsal-rules summary { cursor: pointer; font-weight: 750; color: #dbeafe; }
 .field-futsal-rules p { margin: 8px 0 0; font-size: 12px; line-height: 1.45; }
+
+button.primary-btn.field-end-match-progress {
+  background: linear-gradient(90deg, #22c55e 0 var(--match-progress),
+    #145239 var(--match-progress) 100%) !important;
+  border: 1px solid #22c55e90;
+  color: #fff !important;
+  text-shadow: 0 1px 3px #042d20, 0 1px 5px #042d20;
+}

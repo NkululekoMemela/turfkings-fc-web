@@ -11,7 +11,7 @@ import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait
 import {InlineLineupNumber} from "../components/PlayerNumberContext.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from '../components/FieldDialog.jsx';
 import {usePlayerNumberLabel} from "../components/PlayerNumberContext.jsx";
-import { fieldHalfSecondsLeft } from "../core/fieldMatchClock.js";
+import { fieldHalfSecondsLeft, fieldMatchProgress } from "../core/fieldMatchClock.js";
 // src/pages/ThreeTeamLeague_LiveMatchPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -7045,6 +7045,7 @@ export function VenueLeagueLiveMatchPage({
               <button
                 className="primary-btn"
                 type="button"
+                data-practice-guide="match-goal"
                 onClick={handleStartGoalRecord}
                 disabled={!hasVerifiedLineups}
               >
@@ -7106,8 +7107,14 @@ export function VenueLeagueLiveMatchPage({
 
           {canControlMatch && (
             <button
-              className="primary-btn"
+              className="primary-btn field-end-match-progress"
+              style={{"--match-progress": `${fieldMatchProgress({
+                matchSeconds, secondsLeft: displaySeconds, timeUp,
+                additionalSeconds: additionalTimeTotalSeconds || pendingAdditionalTimeSeconds,
+                additionalSecondsLeft: additionalTimeSecondsLeft || pendingAdditionalTimeSeconds,
+              })}%`}}
               type="button"
+              data-practice-guide="match-close"
               onClick={handleEndMatchClick}
             >
               🤝 End & Close Match
@@ -8075,7 +8082,7 @@ export function VenueLeagueLiveMatchPage({
                         onClick={editingGoalIndex !== null ? handleSaveEditedGoal : handleAddEvent}
                         disabled={!hasVerifiedLineups || !scorerName}
                       >
-                        {editingGoalIndex !== null ? "Save Changes" : "Save Goal"}
+                        <span data-practice-guide="match-save-goal">{editingGoalIndex !== null ? "Save Changes" : "Save Goal"}</span>
                       </button>
                       <button
                         className="secondary-btn"
@@ -8716,6 +8723,7 @@ export function VenueLeagueLiveMatchPage({
                 <button
                   className="primary-btn"
                   type="button"
+                  data-practice-guide="match-verify"
                   onClick={handleConfirmLineups}
                   disabled={!playersReady}
                 >
@@ -8752,7 +8760,7 @@ export function VenueLeagueLiveMatchPage({
                 type="button"
                 onClick={handleConfirmFinal}
               >
-                Confirm &amp; lock
+                <span data-practice-guide="match-close-confirm">Confirm &amp; lock</span>
               </button>
             </div>
           </div>

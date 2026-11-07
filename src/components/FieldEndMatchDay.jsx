@@ -104,7 +104,7 @@ export default function FieldEndMatchDay({
                 }}>
                 {confirmEndMatchDay ? "Back" : "Cancel"}
               </button>
-              <button type="button" className="primary-btn"
+              <button type="button" className="primary-btn" data-practice-guide="field-day-confirm"
                 style={{
                   gridColumn: "1 / -1",
                   width: "100%",

@@ -1,0 +1,24 @@
+.field-half-clock-status { margin-bottom: 12px; padding: 12px; color: #fbbf24; }
+.field-half-clock-dock {
+  position: fixed;
+  z-index: 1100;
+  inset-inline: 0;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  width: min(calc(100% - 24px), 460px);
+  box-sizing: border-box;
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #fbbf2460;
+  border-radius: 16px;
+  background: #101c30;
+  color: #f8fafc;
+  box-shadow: 0 8px 32px #0008;
+}
+.field-half-clock-dock strong { color: #fbbf24; font-variant-numeric: tabular-nums; }
+.field-half-clock-dock small { display: block; margin-top: 3px; }
+.field-half-clock-dock button { min-height: 44px; padding: 8px 12px; }

@@ -44,13 +44,24 @@ export function HighlightPlaybackProvider({children}){
 }
 export function HighlightThumbnail({highlight,onWatched,onFinish}){
  const playback=useContext(Playback),preview=useRef(null),timer=useRef(null),point=useRef(null),held=useRef(false);
+ const poster = highlight.thumbnailUrl || highlight.posterUrl || highlight.previewImageUrl;
  const [near,setNear]=useState(false);
- useEffect(()=>{const node=preview.current;if(!node)return;const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){setNear(true);observer.disconnect();}},{rootMargin:"250px"});observer.observe(node);return()=>observer.disconnect();},[highlight.mediaUrl]);
+ useLayoutEffect(()=>{
+  const node=preview.current;
+  if(!node)return;
+  const {top,bottom}=node.getBoundingClientRect();
+  if(typeof IntersectionObserver!=="function" || (top < innerHeight && bottom > 0)){
+    setNear(true);return;
+  }
+  setNear(false);
+  const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){setNear(true);observer.disconnect();}},{rootMargin:"350px"});
+  observer.observe(node);return()=>observer.disconnect();
+ },[highlight.mediaUrl]);
  const [previewing,setPreviewing]=useState(false),[previewError,setPreviewError]=useState("");
- const stop=()=>{clearTimeout(timer.current);preview.current?.pause();if(preview.current)preview.current.currentTime=0;setPreviewing(false);};
+ const stop=()=>{clearTimeout(timer.current);preview.current?.pause();if(preview.current?.readyState>=2 && preview.current.currentTime>.15)preview.current.currentTime=.1;setPreviewing(false);};
  useEffect(()=>{const hide=()=>{if(document.hidden)stop();};document.addEventListener("visibilitychange",hide);return()=>{clearTimeout(timer.current);preview.current?.pause();document.removeEventListener("visibilitychange",hide);};},[]);
- const down=e=>{if(e.button!==0||playback?.selectedUrl===highlight.mediaUrl)return;held.current=false;point.current={x:e.clientX,y:e.clientY};timer.current=setTimeout(()=>{held.current=true;setPreviewError("");setPreviewing(true);const element=preview.current;if(element){element.defaultMuted=true;element.muted=true;element.volume=0;}const promise=element?.play();promise?.catch(()=>{setPreviewError("Preview unavailable. Tap to watch.");setPreviewing(false);});},450);};
- return <button type="button" className="fanm-clip-thumb" aria-label={`Watch ${highlight.playerName||"player"} ${highlight.normalizedType||"highlight"}. Hold for muted preview.`} onPointerDown={down} onPointerMove={e=>{if(point.current&&Math.hypot(e.clientX-point.current.x,e.clientY-point.current.y)>12){held.current=true;stop();}}} onPointerUp={stop} onPointerCancel={()=>{held.current=true;stop();}} onPointerLeave={stop} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(held.current){e.preventDefault();held.current=false;return;}playback?.select(highlight,()=>onWatched?.(highlight),onFinish,e.currentTarget);}}>
-  <video ref={preview} className="fanm-clip-preview" src={near?highlight.mediaUrl:undefined} onLoadedMetadata={e=>{if(!highlight.thumbnailUrl&&!highlight.posterUrl&&!highlight.previewImageUrl&&Number.isFinite(e.currentTarget.duration)&&e.currentTarget.duration>.1)e.currentTarget.currentTime=.1;}} poster={highlight.thumbnailUrl||highlight.posterUrl||highlight.previewImageUrl||undefined} muted onVolumeChange={e=>{const element=e.currentTarget;if(!element.muted)element.muted=true;if(element.volume!==0)element.volume=0;}} playsInline preload="metadata" loop tabIndex={-1}/><span className="fanm-clip-overlay"><strong>{highlight.playerName||"Player"}</strong><span>{previewError||(previewing?"Muted preview":playback?.selectedUrl===highlight.mediaUrl?"Now selected":"▶ Hold to preview")}</span></span>
+ const down=e=>{if(e.button!==0||playback?.selectedUrl===highlight.mediaUrl)return;held.current=false;point.current={x:e.clientX,y:e.clientY};timer.current=setTimeout(()=>{held.current=true;setPreviewError("");setPreviewing(true);const element=preview.current;if(element){element.defaultMuted=true;element.muted=true;element.volume=0;}const promise=element?.play();promise?.catch(()=>{setPreviewError("Preview unavailable. Tap to watch.");setPreviewing(false);});},260);};
+ return <button type="button" className="fanm-clip-thumb" aria-label={`Watch ${highlight.playerName||"player"} ${highlight.normalizedType||"highlight"}. Hold for muted preview.`} onPointerDown={e=>{setNear(true);down(e);}} onPointerMove={e=>{if(point.current&&Math.hypot(e.clientX-point.current.x,e.clientY-point.current.y)>12){held.current=true;stop();}}} onPointerUp={stop} onPointerCancel={()=>{held.current=true;stop();}} onPointerLeave={stop} onContextMenu={e=>e.preventDefault()} onClick={e=>{if(held.current){e.preventDefault();held.current=false;return;}playback?.select(highlight,()=>onWatched?.(highlight),onFinish,e.currentTarget);}}>
+  <video ref={preview} className="fanm-clip-preview" src={near?highlight.mediaUrl:undefined} onLoadedMetadata={e=>{if(!highlight.thumbnailUrl&&!highlight.posterUrl&&!highlight.previewImageUrl&&Number.isFinite(e.currentTarget.duration)&&e.currentTarget.duration>.1)e.currentTarget.currentTime=.1;}} poster={poster||undefined} muted onVolumeChange={e=>{const element=e.currentTarget;if(!element.muted)element.muted=true;if(element.volume!==0)element.volume=0;}} playsInline preload={near && !poster ? "auto" : "metadata"} loop tabIndex={-1}/><span className="fanm-clip-overlay"><strong>{highlight.playerName||"Player"}</strong><span>{previewError||(previewing?"Muted preview":playback?.selectedUrl===highlight.mediaUrl?"Now selected":"▶ Hold to preview")}</span></span>
  </button>;
 }
