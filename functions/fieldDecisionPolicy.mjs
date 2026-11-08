@@ -15,6 +15,8 @@ export function normalizeFieldDecision({action, reason, parameters = {}}) {
   let expected;
   if (action === "reschedule_day") {
     expected = ["matchDayId", "dateLocal", "startTime"];
+  } else if (action === "parallel_kickoff") {
+    expected = ["matchDayId", "startTime", "fixtureIds"];
   } else if (action === "delay_remaining") {
     expected = ["matchDayId", "startTime"];
   } else if (action === "cancel_season") {
@@ -33,6 +35,11 @@ export function normalizeFieldDecision({action, reason, parameters = {}}) {
   }
   if (expected.includes("startTime") && !validTime(parameters.startTime)) {
     throw new Error("Choose a valid kickoff time.");
+  }
+  if (expected.includes("fixtureIds") && (!Array.isArray(parameters.fixtureIds) ||
+      parameters.fixtureIds.length < 2 || parameters.fixtureIds.length > 8 ||
+      !parameters.fixtureIds.every(validId) || new Set(parameters.fixtureIds).size !== parameters.fixtureIds.length)) {
+    throw new Error("Choose two to eight distinct fixtures.");
   }
   if (expected.includes("dateLocal")) {
     const value = parameters.dateLocal;

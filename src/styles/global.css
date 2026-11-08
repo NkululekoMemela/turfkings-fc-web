@@ -21396,3 +21396,29 @@ footer.club-marketing-footer > section {
 @media (min-width: 660px) {
   .venue-player-cards-page .player-card-team-filter-options { grid-auto-columns: minmax(130px, 1fr); }
 }
+
+/* Club Landing: extend only the mobile ribbon across the viewport. */
+@media (max-width: 760px) {
+  .app-root.app-root--landing > .page.landing-page > .landing-header-sticky {
+    box-sizing: border-box;
+    width: 100vw !important;
+    max-width: none !important;
+    margin-inline: calc(50% - 50vw) !important;
+  }
+}
+
+/* Club squads: matching actions and a preview that clears the sticky ribbon. */
+.club-teamsheet-buttons { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.club-teamsheet-buttons > .secondary-btn { background:#11192c; color:#eef2ff; }
+@media (max-width: 768px) {
+  .squads-page .squad-preview-backdrop {
+    --squad-preview-top: calc(130px + env(safe-area-inset-top, 0px));
+    padding: var(--squad-preview-top) 8px 12px;
+    align-items: flex-start;
+    box-sizing: border-box;
+  }
+  .squads-page .squad-preview-backdrop > .squad-preview-modal {
+    max-height: calc(100dvh - var(--squad-preview-top) - 12px);
+    margin: 0;
+  }
+}

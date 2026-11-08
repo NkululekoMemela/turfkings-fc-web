@@ -4,41 +4,41 @@ import "./PracticeGuide.css";
 
 const preferenceKey = id => `fanm:practice-guide:enabled:${id.split(":").slice(0,-1).join(":")}`;
 const storageKey = id => `fanm:practice-guide:v1:${id}`;
-function readGuide(id) {
+function readGuide(id, scope) {
   try { return {...(JSON.parse(localStorage.getItem(storageKey(id))) || {}),
-    enabled: localStorage.getItem(preferenceKey(id)) !== "off"}; }
+    enabled: localStorage.getItem(scope || preferenceKey(id)) !== "off"}; }
   catch { return {}; }
 }
 const visible = node => node.getClientRects().length > 0 &&
   getComputedStyle(node).visibility !== "hidden";
 
-export default function PracticeGuide({sessionKey, steps, page, onNavigate, ready = true}) {
+export default function PracticeGuide({sessionKey, preferenceScope, controlledIndex, steps, page, onNavigate, ready = true}) {
   return sessionKey && <Guide key={sessionKey} sessionKey={sessionKey}
-    steps={steps} page={page} onNavigate={onNavigate} ready={ready}/>;
+    preferenceScope={preferenceScope} controlledIndex={controlledIndex} steps={steps} page={page} onNavigate={onNavigate} ready={ready}/>;
 }
 
-function Guide({sessionKey, steps, page, onNavigate, ready}) {
-  const [saved, setSaved] = useState(() => readGuide(sessionKey));
+function Guide({sessionKey, preferenceScope, controlledIndex, steps, page, onNavigate, ready}) {
+  const [saved, setSaved] = useState(() => readGuide(sessionKey, preferenceScope));
   const [position, setPosition] = useState(null);
   const [variant, setVariant] = useState(null);
   const [seek, setSeek] = useState(0);
   const [blocked, setBlocked] = useState(false);
-  const index = Math.min(steps.length, Math.max(0, Number(saved.index) || 0));
+  const index = Math.min(steps.length, Math.max(0, Number(controlledIndex ?? saved.index) || 0));
   const step = steps[index];
   const enabled = saved.enabled !== false;
   const update = patch => setSaved(old => ({...old, ...patch}));
 
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey(sessionKey), JSON.stringify({index:saved.index}));
-      localStorage.setItem(preferenceKey(sessionKey), enabled ? "on" : "off");
+      if (controlledIndex == null) localStorage.setItem(storageKey(sessionKey), JSON.stringify({index:saved.index}));
+      localStorage.setItem(preferenceScope || preferenceKey(sessionKey), enabled ? "on" : "off");
     } catch {}
-  }, [saved, sessionKey, enabled]);
+  }, [saved, sessionKey, enabled, preferenceScope, controlledIndex]);
   useEffect(() => {
-    if (ready && enabled && step?.completed) {
+    if (ready && enabled && controlledIndex == null && step?.completed) {
       setSaved(old => ({...old, index: index + 1}));
     }
-  }, [ready, enabled, index, step?.completed]);
+  }, [ready, enabled, index, step?.completed, controlledIndex]);
 
   const variants = step?.variants;
   const targetKey = page === step?.page ? step?.target : step?.entry;

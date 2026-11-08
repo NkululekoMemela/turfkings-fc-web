@@ -1,5 +1,6 @@
 import {fieldMatchStatEvents} from "../core/fieldDefensiveStats.mjs";
 import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
+import {canStartBesideLiveFixtures} from "../../functions/fieldParallelKickoffs.mjs";
 import { selectDatedFieldPairing } from "../core/fieldDatedPairing.js";
 import { rescheduleRemainingKickoffs } from "../core/fieldRemainingKickoffs.js";
 import { assertFieldMatchDayProgression } from "../../functions/fieldMatchDayProgression.mjs";
@@ -751,10 +752,27 @@ export async function startVenueFixture({
     if (!fixture || season.liveMatches?.[fixtureId]) {
       throw new Error("This fixture is unavailable or already started.");
     }
-    if (Object.values(season.liveMatches || {})
-      .some((match) => match.status === "live")) {
-      throw new Error("Finish the current live match first.");
+    const matches = Object.values(season.liveMatches || {});
+    const clubs = new Set([fixture.clubAId, fixture.clubBId]);
+    if (matches.some(match => match.status === "live" &&
+        (clubs.has(match.clubAId) || clubs.has(match.clubBId)))) {
+      throw new Error("A club in this fixture is already playing.");
     }
+    if (!canStartBesideLiveFixtures(season, fixture)) {
+      throw new Error("Finish the live match before starting this fixture.");
+    }
+    const approvedMatches = approval.liveMatchesAtApproval;
+    if (!approvedMatches || Object.keys(approvedMatches).length !== matches.length ||
+        Object.entries(season.liveMatches || {}).some(([id, match]) => {
+          const approved = approvedMatches[id];
+          return !approved || approved.status !== match.status ||
+            approved.startedAt?.toMillis?.() !== match.startedAt?.toMillis?.();
+        })) {
+      throw new Error("The live fixture list changed. Tap Start Match again.");
+    }
+    const matchNo = Math.max(Number(season.currentMatchNo) || currentMatchNo,
+      ...matches.filter(match => match.status === "live")
+        .map(match => (Number(match.matchNo) || Number(season.currentMatchNo) || currentMatchNo) + 1));
 
     if (season.scheduleVersion === 1) {
       const day = (season.matchDays || []).find(item =>
@@ -812,6 +830,9 @@ export async function startVenueFixture({
 
     const match = {
       fixtureId,
+      liveDocumentId: fixtureId,
+      matchNo,
+      ...(fixture.pitchNumber ? {pitchNumber:fixture.pitchNumber, scheduledLocal:fixture.scheduledLocal} : {}),
       standbyId: selected.standbyId,
       clubAId: fixture.clubAId,
       clubBId: fixture.clubBId,
@@ -850,11 +871,11 @@ export async function startVenueFixture({
       match,
       teams,
       matchSeconds: Number(season.matchSeconds) || matchSeconds,
-      currentMatchNo: Number(season.currentMatchNo) || currentMatchNo,
+      currentMatchNo: matchNo,
       startedByUid: user.uid,
       controller,
     });
-    transaction.set(getVenueLiveMatchDoc(db, scope, "current"), {
+    transaction.set(getVenueLiveMatchDoc(db, scope, fixtureId), {
       ...data,
       startApprovalId: approvalResponse.approvalId,
       paidSquads: paidSquadsForStart,

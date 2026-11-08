@@ -59,7 +59,7 @@ const INFO = {
   },
 };
 
-export default function VenueMarketingFooter() {
+export default function VenueMarketingFooter({helpTools} = {}) {
   const [infoModal, setInfoModal] =
     useState(null);
 
@@ -356,6 +356,7 @@ export default function VenueMarketingFooter() {
                 <p key={index}>{item}</p>
               ))}
             </div>
+            {infoModal === INFO.help && helpTools}
             {infoModal === INFO.terms &&
               <LegalSignature scope="field" />}
           </section>

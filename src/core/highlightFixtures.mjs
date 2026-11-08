@@ -31,3 +31,82 @@ export function filterHighlightClips(clips=[],{type='all',player='all',viewed='a
  const norm=value=>String(value||'').trim().toLowerCase();
  return clips.filter(clip=>(type==='all'||clip.normalizedType===type)&&(player==='all'||norm(clip.playerName||clip.scorer)===norm(player))&&(viewed==='all'||watchedIds.has(String(clip.clipId||clip.id||'').trim())===(viewed==='watched')));
 }
+
+function clubResultDay(value) {
+  const embedded = typeof value === "string" && value.match(/(?:^|__)(\d{4}-\d{2}-\d{2})(?:T|$)/);
+  if (embedded) return embedded[1];
+  const formatted = highlightFixtureDate(value);
+  if (!formatted) return "";
+  const [day, month, year] = formatted.split(" ");
+  const index = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
+    .indexOf(month?.slice(0, 3).toLowerCase());
+  return index < 0 ? "" : `${year}-${String(index + 1).padStart(2, "0")}-${day}`;
+}
+
+export function clubHighlightResults(seasons = []) {
+  const entries = [];
+  for (const season of seasons) {
+    for (const [day, friendly] of [[season, false],
+      ...(season.matchDayHistory || []).map(day => [day, false]),
+      ...(season.friendlyMatchDayHistory || []).map(day => [day, true])]) {
+      for (const result of day.results || []) {
+        const {teamAId, teamBId, goalsA, goalsB} = result;
+        if (!teamAId || !teamBId || ![goalsA, goalsB].every(
+          score => score != null && score !== "" && Number.isInteger(Number(score)) && Number(score) >= 0
+        )) continue;
+        const date = clubResultDay(result.videoHighlightsMatchDate || result.completedAtISO ||
+          (day !== season && (day.createdAt || day.id)));
+        const format = String(result.gameFormat || day.gameFormat || season.gameFormat || "5_V_5")
+          .toLowerCase().replace(/_/g, "");
+        const isFriendly = friendly || String(result.matchType || day.matchType || "").toUpperCase() === "FRIENDLY";
+        const clean = id => String(id).trim().replace(/[^a-zA-Z0-9_-]/g, "");
+        const id = result.videoHighlightsMatchId || (isFriendly
+          ? (date && `friendly__${format}__${date}`)
+          : (season.seasonId && result.matchNo &&
+            `league__${season.seasonId}__match_${result.matchNo}__${clean(teamAId)}_vs_${clean(teamBId)}`));
+        if (!id) continue;
+        const nameA = result.teamALabel || result.teamASnapshot?.label;
+        const nameB = result.teamBLabel || result.teamBSnapshot?.label;
+        entries.push({id, date, teamAId, teamBId, goalsA: Number(goalsA), goalsB: Number(goalsB),
+          label: nameA && nameB ? `${nameA} vs ${nameB}` : "",
+          teamALogoUrl: result.teamASnapshot?.logoUrl || result.teamASnapshot?.branding?.logoUrl,
+          teamBLogoUrl: result.teamBSnapshot?.logoUrl || result.teamBSnapshot?.branding?.logoUrl});
+      }
+    }
+  }
+  return entries;
+}
+
+export function clubHighlightFixtureOptions(clips, fixtures, labelOf, fallback, results = []) {
+  const options = highlightFixtureOptions(clips, fixtures, labelOf, fallback);
+  const byId = new Map();
+  const matches = new Map();
+  for (const result of results) {
+    if (!byId.has(result.id)) byId.set(result.id, []);
+    byId.get(result.id).push(result);
+  }
+  for (const clip of clips) {
+    const id = highlightFixtureId(clip, fallback);
+    const candidates = byId.get(highlightFixtureId(clip)) || [];
+    const date = clubResultDay(clip.matchDayId || clip.matchContext?.matchDayId) ||
+      clubResultDay(clip.matchDate || clip.createdAtISO || clip.createdAt);
+    const a = clip.teamAId || clip.matchContext?.teamAId;
+    const b = clip.teamBId || clip.matchContext?.teamBId;
+    const eligible = candidates.filter(r => (!a || a === r.teamAId) && (!b || b === r.teamBId) &&
+      (!date || !r.date || date === r.date || id.startsWith("friendly__")));
+    const exact = date ? eligible.filter(r => r.date === date) : [];
+    const possible = exact.length ? exact : eligible;
+    if (!matches.has(id)) matches.set(id, new Set());
+    matches.get(id).add(possible.length === 1 ? possible[0] : null);
+  }
+  return options.map(option => {
+    const group = matches.get(option.matchId);
+    const result = group?.size === 1 && [...group][0];
+    const {goalsA, goalsB, ...unscored} = option;
+    if (!result) return unscored;
+    return {...unscored, label: result.label || option.label,
+      teamALogoUrl: result.teamALogoUrl || option.teamALogoUrl,
+      teamBLogoUrl: result.teamBLogoUrl || option.teamBLogoUrl,
+      goalsA: result.goalsA, goalsB: result.goalsB};
+  });
+}

@@ -270,11 +270,27 @@ test("Future dates require this fixture's explicit Official confirmation", async
   assert.notEqual((await db.doc(venuePath).get()).data().league.activeSeason.allowEarlyStarts, true);
 });
 
-test("A live fixture blocks another approval", async () => {
+test("A club cannot start a second fixture while it is playing", async () => {
   await db.doc(venuePath).update({
-    "league.activeSeason.liveMatches.other": {status: "live"},
+    "league.activeSeason.liveMatches.other": {status: "live", clubAId: clubs[0], clubBId: "another-club"},
   });
   assert.equal((await request()).status, 400);
+});
+
+test("Only fixtures with an approved shared kickoff can start beside another fixture", async () => {
+  const other = {fixtureId: "other", status: "live", clubAId: "other-a", clubBId: "other-b"};
+  await db.doc(venuePath).update({"league.activeSeason.liveMatches.other": other});
+  assert.equal((await request()).status, 400);
+  const season = (await db.doc(venuePath).get()).data().league.activeSeason;
+  const kickoff = season.fixtures[0].scheduledLocal;
+  await db.doc(venuePath).update({"league.activeSeason.fixtures": [
+    {...season.fixtures[0], parallelKickoff:kickoff,pitchNumber:1},
+    {id:"other", matchDayId:"day-one", scheduledLocal:kickoff,parallelKickoff:kickoff,pitchNumber:2},
+  ]});
+  const result = await request();
+  assert.equal(result.status, 200, result.body?.error);
+  const approval = (await db.doc(`${venuePath}/seasons/season-one/startApprovals/${result.body.approvalId}`).get()).data();
+  assert.deepEqual(approval.liveMatchesAtApproval, {other});
 });
 
 for (const role of ["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"]) {

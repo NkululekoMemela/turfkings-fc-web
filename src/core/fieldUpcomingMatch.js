@@ -1,10 +1,16 @@
+import {canStartBesideLiveFixtures} from "../../functions/fieldParallelKickoffs.mjs";
 import {buildCurrentMatchFromFixture} from "../core/scheduledFixtures.js";
 
 export function resolveFieldUpcomingMatch({season, teams = []}) {
   const venueSeason = season;
-    const liveMatch = Object.values(
+    const liveMatches = Object.values(
       venueSeason?.liveMatches || {}
-    ).find((match) => match?.status === "live") || null;
+    ).filter((match) => match?.status === "live");
+    const liveMatch = liveMatches[0] || null;
+    const busyClubs = new Set(liveMatches.flatMap(m => [m.clubAId, m.clubBId]));
+    const archivedDays = new Set((venueSeason?.matchDayHistory || []).map(
+      day => day.scheduledMatchDayId || day.id));
+    const openDay = (venueSeason?.matchDays || []).find(day => !archivedDays.has(day.id));
 
     const scheduledFixtures = (
       venueSeason?.fixtures || []
@@ -12,14 +18,14 @@ export function resolveFieldUpcomingMatch({season, teams = []}) {
       fixture?.status === "scheduled"
     );
 
-    const nextFixture =
-      scheduledFixtures.find((fixture) =>
-        fixture.id === venueSeason?.selectedFixtureId &&
-        !venueSeason?.liveMatches?.[fixture.id]
-      ) ||
-      scheduledFixtures.find((fixture) =>
-        !venueSeason?.liveMatches?.[fixture.id]
-      ) || null;
+    const startableFixtures = scheduledFixtures.filter(fixture =>
+      !venueSeason?.liveMatches?.[fixture.id] &&
+      (!openDay || fixture.matchDayId === openDay.id) &&
+      !busyClubs.has(fixture.clubAId) && !busyClubs.has(fixture.clubBId) &&
+      canStartBesideLiveFixtures(venueSeason, fixture));
+    const nextFixture = startableFixtures.find(
+      fixture => fixture.id === venueSeason?.selectedFixtureId
+    ) || startableFixtures[0] || null;
 
     const confirmedTeams = teams.filter((team) =>
       (venueSeason?.clubIds || []).includes(team.id)
@@ -41,5 +47,5 @@ export function resolveFieldUpcomingMatch({season, teams = []}) {
           standbyId: teams[2]?.id || null,
         };
 
-  return {liveMatch, scheduledFixtures, nextFixture, confirmedTeams, currentMatch};
+  return {liveMatch, liveMatches, scheduledFixtures, startableFixtures, nextFixture, confirmedTeams, currentMatch};
 }

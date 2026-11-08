@@ -33,14 +33,41 @@ function slug(value) {
 const FIELD_HUB_CACHE_KEY =
   `fanm-field-hub-v1:${db.app.options.projectId}`;
 let fieldHubCache = null;
+const deletedFieldsKey = `${FIELD_HUB_CACHE_KEY}:confirmed-deletions`;
+const deletedFieldIds = new Set();
+const fieldListListeners = new Set();
+try {
+  const ids = JSON.parse(sessionStorage.getItem(deletedFieldsKey));
+  if (Array.isArray(ids)) ids.forEach(id => deletedFieldIds.add(id));
+} catch {
+  // The in-memory set still works when session storage is unavailable.
+}
+
+function visibleField(venue) {
+  return venue.visibility?.listed === true && !venue.deleted &&
+    venue.status !== "deleted" && !deletedFieldIds.has(venue.id);
+}
+
+export function forgetPermanentlyDeletedField(id) {
+  if (!id) return;
+  deletedFieldIds.add(id);
+  try {
+    sessionStorage.setItem(deletedFieldsKey, JSON.stringify([...deletedFieldIds]));
+  } catch {
+    // The in-memory set still covers this session.
+  }
+  const cached = readLeagueVenueCache();
+  if (fieldHubCache) rememberLeagueVenues(cached.filter(visibleField));
+  for (const publish of fieldListListeners) publish();
+}
 
 export function readLeagueVenueCache() {
-  if (fieldHubCache) return fieldHubCache;
+  if (fieldHubCache) return fieldHubCache.filter(visibleField);
   try {
     const cached = JSON.parse(sessionStorage.getItem(FIELD_HUB_CACHE_KEY));
     if (cached && Array.isArray(cached.venues) &&
         Date.now() - cached.savedAt < 300000) {
-      fieldHubCache = cached.venues;
+      fieldHubCache = cached.venues.filter(visibleField);
       return fieldHubCache;
     }
   } catch {
@@ -61,19 +88,27 @@ function rememberLeagueVenues(venues) {
 }
 
 export function watchLeagueVenues(onVenues, onError) {
-  return onSnapshot(
+  let latest = null;
+  const publish = () => {
+    const venues = (latest ?? readLeagueVenueCache()).filter(visibleField);
+    if (latest !== null) rememberLeagueVenues(venues);
+    onVenues(venues);
+  };
+  const unsubscribe = onSnapshot(
     collection(db, "leagueVenues"),
     (snapshot) => {
-      const venues = snapshot.docs
-        .map((item) => ({ ...item.data(), id: item.id }))
-        .filter((venue) => venue.visibility?.listed === true)
+      latest = snapshot.docs
+        .map(item => ({...item.data(), id: item.id}))
         .sort((a, b) => a.name.localeCompare(b.name));
-
-      rememberLeagueVenues(venues);
-      onVenues(venues);
+      publish();
     },
     onError
   );
+  fieldListListeners.add(publish);
+  return () => {
+    fieldListListeners.delete(publish);
+    unsubscribe();
+  };
 }
 
 export function watchVenueStaffRequests(

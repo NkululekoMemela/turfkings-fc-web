@@ -1,3 +1,4 @@
+import useClubRibbonEdges from "../components/useClubRibbonEdges.js";
 import RibbonArtwork from '../components/RibbonArtwork.jsx';
 import "../components/LandingDesktopLayout.css";
 import {matchTeamCaption} from "../core/matchTeamCaption.mjs";
@@ -310,6 +311,7 @@ export function LandingPage({
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
 
+  const clubRibbonRef = useClubRibbonEdges();
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [pendingMatch, setPendingMatch] = useState(null);
   const [pairingCode, setPairingCode] = useState("");
@@ -395,7 +397,7 @@ export function LandingPage({
 
   useEffect(() => {
     const handleScroll = (event) => {
-      const offset = event?.target?.classList?.contains("landing-page")
+      const offset = event?.target?.classList?.contains("landing-page-scroll")
         ? event.target.scrollTop : window.scrollY;
       setHeaderScrolled(offset > 6);
     };
@@ -1318,6 +1320,40 @@ export function LandingPage({
   return (
     <div className="page landing-page">
       <style>{`
+        /* The Club landing ribbon sits outside the mobile scrollport. */
+        .landing-page-scroll {
+          display: contents;
+        }
+
+        @media (max-width: 760px) {
+          .app-root.app-root--landing > .page.landing-page {
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            grid-template-columns: minmax(0, 1fr);
+            overflow: visible;
+            padding-bottom: 0 !important;
+          }
+
+          .app-root.app-root--landing > .landing-page > .landing-header-sticky {
+            align-self: start;
+            /* Reserve the solid bar only. The transparent wave hangs over
+               the scroll area so content can scroll beneath it. */
+            height: 85px;
+            margin-bottom: 0;
+          }
+
+          .app-root.app-root--landing > .landing-page > .landing-page-scroll {
+            display: block;
+            min-width: 0;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding-top: 36px;
+            padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+          }
+        }
+
         /*
           Pure SVG ribbon: no dim rectangular shell.
           The bright SVG wave is the only visible top-ribbon shape and is pulled
@@ -1506,6 +1542,7 @@ export function LandingPage({
         }
       `}</style>
       <div
+        ref={clubRibbonRef}
         className={`landing-header-sticky ${
           headerScrolled ? "is-scrolled" : ""
         }`}
@@ -1539,6 +1576,7 @@ export function LandingPage({
         </header>
       </div>
 
+      <div className="landing-page-scroll">
       <header className="header" style={{ marginTop: "1.15rem" }}>
         <p className="subtitle">{clubHeaderInfoLine || resolvedClubSubtitle}</p>
 
@@ -3034,6 +3072,7 @@ export function LandingPage({
           </section>
         </div>
       )}
+      </div>
     </div>
   );
 }

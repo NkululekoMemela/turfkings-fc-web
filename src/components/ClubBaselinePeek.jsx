@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useState} from "react";
-import {createPortal} from "react-dom";
+import React from "react";
+import ClubNavPeek from "./ClubNavPeek.jsx";
 import {collection, onSnapshot} from "firebase/firestore";
 import {db} from "../firebaseConfig.js";
 import {getPublicMembersCollection,getPeerRatingBaselinesCollection} from "../core/clubFirestorePaths.js";
@@ -64,40 +65,7 @@ export function useClubBaselineDue({clubId, enabled, matchDayHistory, friendlyMa
 }
 
 export default function ClubBaselinePeek({buttonRef, count, enabled}) {
-  const [position, setPosition] = useState(null);
-  useEffect(() => {
-    const button = buttonRef.current;
-    const scroller = button?.closest(".tk-bottom-nav-scroll");
-    if (!enabled || !count || !button || !scroller) { setPosition(null); return undefined; }
-    let shown = false, timer;
-    const measure = () => {
-      const b = button.getBoundingClientRect(), s = scroller.getBoundingClientRect();
-      if (document.hidden || b.width === 0 || b.left < s.left - 1 || b.right > s.right + 1 || b.bottom > innerHeight + 1) {
-        shown = false;
-        clearTimeout(timer);
-        setPosition(null);
-        return;
-      }
-      if (shown) return;
-      shown = true;
-      setPosition({left: Math.max(65, Math.min(innerWidth - 65, b.left + b.width / 2)), top: b.top - 4});
-      timer = setTimeout(() => setPosition(null), 3800);
-    };
-    measure();
-    scroller.addEventListener("scroll", measure, {passive: true});
-    window.addEventListener("resize", measure);
-    document.addEventListener("visibilitychange", measure);
-    return () => {
-      clearTimeout(timer);
-      scroller.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
-      document.removeEventListener("visibilitychange", measure);
-    };
-  }, [buttonRef, count, enabled]);
-
-  return enabled && count > 0 && position ? createPortal(
-    <span role="status" className="club-baseline-peek" style={position}>
-      Rate {count} {count === 1 ? "player" : "players"}
-    </span>, document.body
-  ) : null;
+  return <ClubNavPeek buttonRef={buttonRef} kind="rate" enabled={enabled && count > 0}>
+    Rate {count} {count === 1 ? "player" : "players"}
+  </ClubNavPeek>;
 }

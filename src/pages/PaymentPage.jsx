@@ -134,6 +134,7 @@ export default function PaymentPage({
   activeClubId: explicitActiveClubId = "",
   isPracticeMode = false,
   practiceSessionId = null,
+  practiceCompanyFunding = false,
   dataScope = null,
   isAdmin = false,
   isCaptain = false,
@@ -539,6 +540,10 @@ export default function PaymentPage({
     // card transaction or real financial settlement may occur.
     // --------------------------------------------------------
     if (isPracticeMode) {
+      if (dataScope?.environment !== "practice") {
+        setError("The Practice booking session is unavailable. Return to Club and start a new session.");
+        return;
+      }
       setCreatingCheckout(true);
       setError("");
       setSlowPaymentMessage("");
@@ -595,7 +600,7 @@ export default function PaymentPage({
 
             // Explicitly distinguish this disposable football simulation
             // from a real payment-provider transaction.
-            paymentMethod: "Practice simulation",
+            paymentMethod: practiceCompanyFunding ? "Practice company authorisation" : "Practice simulation",
             paymentReference: `practice-${signupDocId}`,
             paymentIntentAmount: amountToPayNow,
             paymentStatus: simulatedFullyPaid ? "paid" : "part_paid",
@@ -853,6 +858,22 @@ export default function PaymentPage({
       setVerifyingPayment(false);
     }
   }
+
+  if (isPracticeMode && practiceCompanyFunding) return (
+    <main className="page"><section className="card">
+      <h2>Practice company authorisation</h2>
+      <p>Confirm the selected match dates against simulated company funding. No player is charged and no invoice is created.</p>
+      <p>{[...new Set([...effectivePrimaryWeeks, ...effectiveSecondWeeks])].join(" · ")}</p>
+      {error && <p role="alert">{error}</p>}
+      {isFullyPaid
+        ? <button type="button" className="primary-btn" data-practice-guide="club-pay" onClick={onDone}>Continue with authorised booking</button>
+        : <button type="button" className="primary-btn" data-practice-guide="club-pay"
+            disabled={loading || creatingCheckout || amountToPayNow <= 0} onClick={handlePayNow}>
+            {creatingCheckout ? "Confirming…" : "Authorise practice booking"}
+          </button>}
+      <button type="button" className="secondary-btn" onClick={onBack}>Back</button>
+    </section></main>
+  );
 
   return (
     <div className="page payment-page">

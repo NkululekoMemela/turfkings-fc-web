@@ -47,24 +47,14 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
         return res.json({ok:true,venue});
       }
       if (req.body?.action === "delete") {
-        const venueId = input(req.body.venueId, 150);
-        if (!venueId || !/^[a-zA-Z0-9_-]+$/.test(venueId)) fail("Choose a valid Field.");
-        const venueRef = db.doc(`leagueVenues/${venueId}`);
-        await db.runTransaction(async tx => {
-          const snap = await tx.get(venueRef);
-          if (!snap.exists) fail("This Field no longer exists.", 404);
-          const venue = snap.data();
-          const superAdmin = user.email_verified === true && String(user.email || "").toLowerCase() === "nkululekolerato@gmail.com";
-          if (venue.ownerUid !== user.uid && venue.createdByUid !== user.uid && !superAdmin) fail("Only the Field owner or super admin can delete this Field.", 403);
-          if (venue.deleted === true) return;
-          tx.update(venueRef, {
-            status: "deleted", deleted: true,
-            visibility: {...(venue.visibility || {}), listed: false},
-            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-            deletedByUid: user.uid, deletedByEmail: user.email || "",
-          });
+        fail("Update FANM and use Archive Field to remove this listing.", 409);
+      }
+      if (["organizationArchive", "organizationRestore", "organizationArchived", "organizationDelete"].includes(req.body?.action)) {
+        const {manageOrganizationArchive} = require("./organizationArchive.cjs");
+        const result = await manageOrganizationArchive({
+          body: req.body, user, db, fail, stamp: admin.firestore.FieldValue.serverTimestamp,
         });
-        return res.json({ok: true, venueId});
+        return res.json({ok: true, ...result});
       }
       const catalog = await import("./fieldLogoDesigns.mjs");
       if (req.body?.action === "list") {
@@ -146,8 +136,14 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
         createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(), setupCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
       const result = await db.runTransaction(async tx => {
-        const existing = await tx.get(venueRef);
+        const [existing, deletedId] = await Promise.all([
+          tx.get(venueRef), tx.get(db.doc(`deletedFieldIds/${venueId}`)),
+        ]);
+        if (deletedId.exists) fail("This Field registration was permanently deleted. Start a new registration.", 409);
         if (existing.exists && existing.data().ownerUid !== user.uid) fail("This Field belongs to another account.", 403);
+        if (existing.exists && (existing.data().deleted || existing.data().status === "deleted")) {
+          fail("This Field was archived. Ask the platform administrator to restore it.", 409);
+        }
         if (existing.exists && existing.data().status === "active") return {id: venueId, ...existing.data()};
         let pool;
         if (stockRef) {

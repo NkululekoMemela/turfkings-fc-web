@@ -1,3 +1,6 @@
+import { clubHighlightResults } from "./core/highlightFixtures.mjs";
+import PracticeHighlights from "./components/PracticeHighlights.jsx";
+import ClubPracticeLeague from "./components/ClubPracticeLeague.jsx";
 import PracticeGuide from "./components/PracticeGuide.jsx";
 import {clubGuideSteps} from "./components/practiceGuideSteps.js";
 import {ClubRibbonProvider} from "./components/ClubPageRibbon.jsx";
@@ -1660,10 +1663,14 @@ function normalizeReturnedHighlight(raw, fallbackMatchNo = null, fallbackGameFor
     skillPlayer: normalizedTag === "skill" ? toTitleCaseLoose(scorerLike || "Unknown") : "",
     teamId: raw.teamId || null,
     teamName: teamName ? toTitleCaseLoose(teamName) : "",
-    matchId: raw.matchId || null,
+    matchId: raw.matchId || raw.matchContext?.matchId || null,
+    organisingClubId: raw.organisingClubId || raw.clubId || raw.matchContext?.organisingClubId || null,
+    captureRequestId: raw.captureRequestId || raw.requestId || raw.event?.captureRequestId || null,
+    capturedAtISO: raw.capturedAtISO || raw.capturedAt || null,
+    capturedAtMs: raw.capturedAtMs || raw.capturedAtMillis || raw.requestedAtMillis || null,
     matchNo:
-      Number.isFinite(Number(raw.matchNo)) && Number(raw.matchNo) > 0
-        ? Number(raw.matchNo)
+      Number(raw.matchNo || raw.matchContext?.matchNo) > 0
+        ? Number(raw.matchNo || raw.matchContext?.matchNo)
         : fallbackMatchNo,
     seasonId: raw.seasonId || null,
     gameFormat: raw.gameFormat || fallbackGameFormat,
@@ -3458,6 +3465,8 @@ function MainApp() {
   const [statsReturnPage, setStatsReturnPage] = useState(PAGE_LANDING);
   const [paymentContext, setPaymentContext] = useState(null);
   const [guidePaidSession, setGuidePaidSession] = useState(null);
+  const [guideSquadSession, setGuideSquadSession] = useState(null);
+  const [guideEligibility, setGuideEligibility] = useState(null);
   const [smartOffset, setSmartOffset] = useState(() => {
     if (typeof window === "undefined") return 5;
     try {
@@ -3802,51 +3811,17 @@ function MainApp() {
     const safeItems = Array.isArray(items) ? items : [];
     if (!safeItems.length) return;
 
-    const matchId = buildVideoHighlightsMatchId({
-      activeSeasonId,
-      gameFormat,
-      currentMatchNo: activeMatchNo,
-      matchType,
-      currentMatch: effectiveLiveMatch,
-    });
+    await Promise.all(safeItems.map(async item => {
+      const matchId = String(item.matchId || "");
+      if (!activeClubId || !/^(friendly|league)__[\w.-]+$/.test(matchId) ||
+          item.organisingClubId !== activeClubId || !item.clipId || !/^https:\/\//i.test(item.videoUrl || "")) return;
+      await VideoHighlightsRepository.saveRawHighlightDoc({
+        matchId,
+        clubId: activeClubId,
+        highlight: {...item, createdAt: serverTimestamp(), updatedAt: serverTimestamp()},
+      });
+    }));
 
-    await Promise.all(
-      safeItems.map(async (item) => {
-        const normalized = normalizeReturnedHighlight(
-          item,
-          activeMatchNo || 1,
-          gameFormat || GAME_FORMAT.FIVE_V_FIVE
-        );
-
-        if (!normalized?.clipId) return;
-
-        await VideoHighlightsRepository.importExternalHighlight({
-          matchId,
-          provider: normalized.source || "camera_return",
-          externalClip: {
-            ...normalized,
-            matchId,
-            seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || null,
-            matchType,
-            gameFormat,
-            matchNo: activeMatchNo,
-            status: "pending",
-            createdBy:
-              identity?.memberId ||
-              identity?.playerId ||
-              identity?.email ||
-              identity?.shortName ||
-              "",
-            createdByName:
-              identity?.shortName ||
-              identity?.fullName ||
-              identity?.displayName ||
-              identity?.email ||
-              "Unknown",
-          },
-        });
-      })
-    );
   };
 
 
@@ -4656,6 +4631,9 @@ function MainApp() {
    * referee session and may be ahead of effectiveLiveMatch.
    */
   const liveVideoHighlightsMatchId = useMemo(() => {
+    if (liveMatchDraft?.status === "running" && liveMatchDraft.videoHighlightsMatchId) {
+      return liveMatchDraft.videoHighlightsMatchId;
+    }
     const liveMatch =
       pendingMatchStartContext?.currentMatch ||
       effectiveLiveMatch;
@@ -4686,6 +4664,7 @@ function MainApp() {
     matchType,
     effectiveLiveMatch,
     pendingMatchStartContext,
+    liveMatchDraft,
   ]);
 
   useEffect(() => {
@@ -4856,15 +4835,20 @@ function MainApp() {
     if (typeof window === "undefined") return undefined;
 
     const applyReturnedHighlights = async (items) => {
+      if (isPracticeMode || !activeClubId) return;
       const normalized = (Array.isArray(items) ? items : [])
         .map((item) =>
-          normalizeReturnedHighlight(item, activeMatchNo || 1, gameFormat || "5_V_5")
+          normalizeReturnedHighlight(item)
         )
         .filter(Boolean);
 
       if (!normalized.length) return;
 
-      await persistReturnedHighlightsToFirebase(normalized);
+      try {
+        await persistReturnedHighlightsToFirebase(normalized);
+      } catch (error) {
+        console.warn("Could not save the returned match highlights.", error);
+      }
 
       setCurrentMatchDayHighlights((prev) => {
         const existing = Array.isArray(prev) ? prev : [];
@@ -4874,6 +4858,7 @@ function MainApp() {
         const next = [...existing];
 
         normalized.forEach((item) => {
+          if (item.organisingClubId !== activeClubId || item.matchId !== currentVideoHighlightsMatchId) return;
           const key = String(item.clipId || item.id || "").trim();
           if (!key || seen.has(key)) return;
           seen.add(key);
@@ -4899,6 +4884,7 @@ function MainApp() {
     window.addEventListener("hashchange", onHashChange);
 
     const onMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
       const data = event?.data;
       if (!data) return;
 
@@ -4921,7 +4907,7 @@ function MainApp() {
       window.removeEventListener("hashchange", onHashChange);
       window.removeEventListener("message", onMessage);
     };
-  }, [activeMatchNo, gameFormat, matchType]);
+  }, [activeClubId, currentVideoHighlightsMatchId, isPracticeMode]);
 
 
   useEffect(() => {
@@ -5141,15 +5127,6 @@ function MainApp() {
   const handleBackToLanding = () => setPage(PAGE_LANDING);
   const handleBackToLive = () => setPage(PAGE_LIVE);
   const handleGoToViewHighlights = () => {
-    if (isPracticeMode) {
-      showPracticeRestriction(
-        "Videos unavailable in Practice",
-        "Videos and permanent highlights are disabled during Practice sessions. Switch to your Official profile to use this feature.",
-        "🎥"
-      );
-      return;
-    }
-
     setPage(PAGE_VIEW_HIGHLIGHTS);
   };
 
@@ -5869,6 +5846,9 @@ function MainApp() {
       matchMode,
       scheduledTarget,
       startedAtISO: startContext.createdAt,
+      videoHighlightsMatchId: buildVideoHighlightsMatchId({
+        activeSeasonId, gameFormat, currentMatchNo: activeMatchNo, matchType, currentMatch: safeStartMatch,
+      }),
       expectedEndAtISO,
       scheduledFinishAtISO,
       scheduledFinishSource: usesScheduledFinish
@@ -6290,6 +6270,8 @@ function MainApp() {
 
         const newResult = {
           ...matchMeta,
+          videoHighlightsMatchId: liveVideoHighlightsMatchId || null,
+          videoHighlightsMatchDate: prevSeason.liveMatchDraft?.startedAtISO || new Date().toISOString(),
           matchNo,
           teamAId,
           teamBId,
@@ -6337,6 +6319,7 @@ function MainApp() {
           },
           isFinished: true,
           completedAtISO,
+          startedAtISO: prevSeason.liveMatchDraft?.startedAtISO || null,
           matchType: matchMeta.matchType,
           videoHighlightsMatchId:
             String(liveVideoHighlightsMatchId || "").trim(),
@@ -6427,7 +6410,8 @@ function MainApp() {
             ? {
                 ...prevSeason.liveMatchDraft,
                 status: "completed",
-                completedAtISO: new Date().toISOString(),
+                completedAtISO,
+                spectatorSnapshot: matchDaySpectatorSnapshot,
               }
             : null,
           allEvents: [...(prevSeason.allEvents || []), ...allCommittedEvents],
@@ -8064,11 +8048,7 @@ function MainApp() {
     if (cameraLaunchPending) return;
 
     if (isPracticeMode) {
-      showPracticeRestriction(
-        "Highlights Camera unavailable in Practice",
-        "Camera recording and permanent video capture are disabled during Practice sessions. Switch to your Official profile to use this feature.",
-        "📹"
-      );
+      setPage(PAGE_VIEW_HIGHLIGHTS);
       return;
     }
 
@@ -8190,6 +8170,7 @@ function MainApp() {
      * the same authoritative fixture being refereed right now.
      */
     const recordingMatchId =
+      (hasLiveMatch && liveMatchDraft?.videoHighlightsMatchId) ||
       buildVideoHighlightsMatchId({
         activeSeasonId,
         gameFormat: cameraGameFormat,
@@ -8628,6 +8609,22 @@ function MainApp() {
 
     setPage(targetPage);
 
+  };
+
+  const clubGuideScope = `club:${activeClubId}:${authUser?.uid}`;
+  const clubGuidePreference = `fanm:practice-guide:enabled:${clubGuideScope}`;
+  const clubGuideSession = `${clubGuideScope}:${practiceRuntime?.practiceSessionId}`;
+  const clubMatchGuideKey = `${clubGuideSession}:match:${matchType}`;
+  const clubGuideCompletion = {
+    "club-bookings": page === PAGE_MATCH_SIGNUP || page === PAGE_PAYMENT,
+    "club-booking-select": page === PAGE_PAYMENT,
+    "club-pay": guidePaidSession === clubMatchGuideKey,
+    "club-squads-save": guideSquadSession === clubMatchGuideKey,
+    "club-match-start": page === PAGE_LIVE || Boolean(results?.length),
+    "match-verify": Boolean(currentConfirmedLineupSnapshot || results?.length),
+    "match-goal": (currentEvents || []).some(event => event.type === "goal") || Boolean(results?.length),
+    "match-close": page !== PAGE_LIVE && Boolean(results?.length),
+    "club-day-end": Boolean(matchType === MATCH_TYPE.FRIENDLY ? friendlyMatchDayHistory?.length : matchDayHistory?.length),
   };
 
   return (
@@ -9085,27 +9082,29 @@ function MainApp() {
       )}
 
       {isPracticeMode && practiceRuntime?.expiresAt && <FieldPracticeTimer expiresAt={practiceRuntime.expiresAt} clubMode />}
-      {isPracticeMode && practiceRuntime?.practiceSessionId && canManageSquads && !showSessionSelector && (
-        <PracticeGuide sessionKey={`club:${activeClubId}:${authUser?.uid}:${practiceRuntime.practiceSessionId}`}
-          ready={page !== PAGE_VENUE_ENTRY}
-          page={page}
-          steps={clubGuideSteps.map((step, index) => ({...step, completed: [
-            page === PAGE_MATCH_SIGNUP || page === PAGE_PAYMENT,
-            page === PAGE_PAYMENT,
-            guidePaidSession === practiceRuntime.practiceSessionId,
-            false, false,
-            page === PAGE_LIVE || Boolean(results?.length),
-            Boolean(currentConfirmedLineupSnapshot) || Boolean(results?.length),
-            (currentEvents || []).some(event => event.type === "goal") || Boolean(results?.length),
-            page !== PAGE_LIVE && Boolean(results?.length),
-            Boolean(matchDayHistory?.length || friendlyMatchDayHistory?.length),
-          ][index]}))}
-          onNavigate={target => {
-            if (target === PAGE_MATCH_SIGNUP) handleGoToMatchSignup();
-            else if (target === PAGE_FORMATIONS) handleGoToFormations();
-            else if (target !== PAGE_PAYMENT || paymentContext) setPage(target);
-          }}/>
-      )}
+      {isPracticeMode && practiceRuntime?.practiceSessionId && <>
+        <PracticeHighlights key={practiceRuntime.practiceSessionId} active={page === PAGE_VIEW_HIGHLIGHTS}
+          expiresAt={practiceRuntime.expiresAt} onBack={handleBackToLanding}/>
+        {canManageSquads && <ClubPracticeLeague key={practiceRuntime.practiceSessionId}
+          active={page === PAGE_CLUB_LEAGUE_SEASON} company={isCompanyClub}
+          preferenceScope={clubGuidePreference} sessionKey={`${clubGuideSession}:field-league`}
+          onBack={handleBackToLanding}/>}
+        {canManageSquads && !showSessionSelector && page !== PAGE_CLUB_LEAGUE_SEASON && (
+          <PracticeGuide sessionKey={clubMatchGuideKey} preferenceScope={clubGuidePreference}
+            ready={page !== PAGE_VENUE_ENTRY && page !== PAGE_VIEW_HIGHLIGHTS}
+            page={page}
+            steps={clubGuideSteps({miniLeague:matchType === MATCH_TYPE.LEAGUE, company:isCompanyClub}).map(step => ({
+              ...step, completed:clubGuideCompletion[step.target],
+              nextDisabled:step.target === "club-paid-players" && !(guideEligibility?.date && guideEligibility?.count),
+            }))}
+            onNavigate={target => {
+              if (target === PAGE_MATCH_SIGNUP || (target === PAGE_PAYMENT && !paymentContext)) handleGoToMatchSignup();
+              else if (target === PAGE_FORMATIONS) handleGoToFormations();
+              else if (target === PAGE_SQUADS) handleGoToSquads();
+              else setPage(target);
+            }}/>
+        )}
+      </>}
 
       {officialStartWarning && (
         <div className="tk-referee-lock-backdrop" onClick={() => setOfficialStartWarning(null)}>
@@ -9793,7 +9792,13 @@ function MainApp() {
         />
       )}
 
-      {page === PAGE_VENUE_ENTRY && (
+      {page === PAGE_VENUE_ENTRY && (selectedLeagueVenue?.deleted || selectedLeagueVenue?.status === "deleted") && (
+        <main className="page"><section className="card">
+          <h2>This Field has been archived</h2>
+          <button type="button" className="secondary-btn" onClick={() => setPage(PAGE_LEAGUE_VENUES)}>Back to Fields</button>
+        </section></main>
+      )}
+      {page === PAGE_VENUE_ENTRY && !selectedLeagueVenue?.deleted && selectedLeagueVenue?.status !== "deleted" && (
         <>
           <FieldPageFrame
             refereeMode={fieldNav.canAccessSettings===true}
@@ -10044,7 +10049,19 @@ function MainApp() {
               clubId={activeClubId}
               onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}
             />
-          ) : null}
+          ) : canManageSquads && (
+            <section className="card" aria-label="Practice paths">
+              <h3>Choose a Practice path</h3>
+              <p>{isCompanyClub ? "Company-funded Club · no personal payments" : "Community Club"}</p>
+              <div className="actions-row">
+                <button type="button" className="secondary-btn" aria-pressed={matchType === MATCH_TYPE.FRIENDLY}
+                  onClick={() => handleSetMatchType(MATCH_TYPE.FRIENDLY)}>Friendly</button>
+                <button type="button" className="secondary-btn" aria-pressed={matchType === MATCH_TYPE.LEAGUE}
+                  onClick={() => handleSetMatchType(MATCH_TYPE.LEAGUE)}>Mini-League</button>
+                <button type="button" className="secondary-btn" onClick={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}>Enter a Field League</button>
+              </div>
+            </section>
+          )}
           activeClub={activeClubIdentity}
           activeClubId={activeClubId}
           activeClubName={activeClubName}
@@ -10126,7 +10143,7 @@ function MainApp() {
         />
       )}
 
-      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && !isCompanyClub && (
+      {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (!isCompanyClub || isPracticeMode) && (
         <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
           clubModeLabel={matchType===MATCH_TYPE.LEAGUE?"Mini-league":"Friendly"}
@@ -10143,6 +10160,7 @@ function MainApp() {
           playerPhotosByName={effectivePlayerPhotosByName}
           onBack={() => setPage(PAGE_LANDING)}
           onProceedToPayment={handleProceedToPayment}
+          practiceCompanyFunding={isPracticeMode && isCompanyClub}
           initialTicketOpen={nativeTicketOpenRequest}
         />
         </BookingPageBoundary>
@@ -10159,12 +10177,13 @@ function MainApp() {
         />
       )}
 
-      {page === PAGE_PAYMENT && !isCompanyClub && (
+      {page === PAGE_PAYMENT && (!isCompanyClub || isPracticeMode) && (
         <PaymentPage
           identity={pageIdentity}
           activeRole={activeRole}
           activeSeasonId={activeSeasonId}
           paymentContext={paymentContext}
+          practiceCompanyFunding={isPracticeMode && isCompanyClub}
           activeClubId={activeClubId}
           isPracticeMode={isPracticeMode}
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
@@ -10173,7 +10192,7 @@ function MainApp() {
           isCaptain={isCaptain}
           onBack={handleBackFromPayment}
           onDone={() => {
-            if (isPracticeMode) setGuidePaidSession(practiceRuntime?.practiceSessionId);
+            if (isPracticeMode) setGuidePaidSession(clubMatchGuideKey);
             setPage(PAGE_MATCH_SIGNUP);
           }}
         />
@@ -10277,7 +10296,7 @@ function MainApp() {
           matchType={matchType}
           activeClubId={activeClubId}
           dataScope={footballDataScope}
-          currentVideoHighlightsMatchId={currentVideoHighlightsMatchId}
+          activeSeasonId={activeSeasonId}
           matchDaySpectatorSnapshot={
             liveMatchDraft?.status === "completed"
               ? liveMatchDraft?.spectatorSnapshot || null
@@ -10362,7 +10381,7 @@ function MainApp() {
         />
       )}
 
-      {isCompanyClub&&[PAGE_MATCH_SIGNUP,PAGE_PAYMENT,PAGE_SHOP].includes(page)&&<main className="page"><section className="card"><h2>Company-funded football</h2><p>Your company covers approved games and merchandise. Players and captains do not pay personally.</p><p>Company booking fulfilment, merchandise orders and invoices will open in the next rollout. You can accept your Field season invitation and confirm availability now.</p><button className="secondary-btn" onClick={handleBackToLanding}>Back to Club</button></section></main>}
+      {isCompanyClub&&(page === PAGE_SHOP || (!isPracticeMode && [PAGE_MATCH_SIGNUP,PAGE_PAYMENT].includes(page)))&&<main className="page"><section className="card"><h2>Company-funded football</h2><p>Your company covers approved games and merchandise. Players and captains do not pay personally.</p><p>Company booking fulfilment, merchandise orders and invoices will open in the next rollout. You can accept your Field season invitation and confirm availability now.</p><button className="secondary-btn" onClick={handleBackToLanding}>Back to Club</button></section></main>}
       {page === PAGE_SHOP && !isCompanyClub && <KitShopPage clubId={activeClubId} key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
       {page === PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures && <main className="page"><section className="card"><h1>Player Profile</h1><p>Enter your club as a verified player to open your profile. Spectator mode does not use player details.</p><button type="button" className="primary-btn" onClick={()=>setPage(PAGE_ENTRY)}>Go to club sign-in</button><button type="button" className="secondary-btn" onClick={handleBackToLanding}>Back to Home</button></section></main>}
       {page === PAGE_PLAYER_PROFILE && canAccessPlayerFeatures && (
@@ -10385,9 +10404,9 @@ function MainApp() {
         />
       )}
 
-      {page === PAGE_VIEW_HIGHLIGHTS && (
+      {page === PAGE_VIEW_HIGHLIGHTS && !isPracticeMode && (
         <VideoHighlightsPage
-          fixtureResults={fullResults}
+          fixtureResults={clubHighlightResults(safeV2ForStats?.seasons || [])}
           matchId={currentVideoHighlightsMatchId}
           activeClubId={activeClubId}
           identity={pageIdentity}
@@ -10589,6 +10608,8 @@ function MainApp() {
           seasonNo={USE_V2 ? activeSeasonNo : null}
           matchDayHistory={matchDayHistory || []}
           onSquadPreviewEditingChange={setSquadsAdminPreviewOpen}
+          onPracticeEligibility={setGuideEligibility}
+          onPracticeSquadsSaved={() => setGuideSquadSession(clubMatchGuideKey)}
         />
       )}
 
@@ -11770,7 +11791,7 @@ function MainApp() {
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
           canAccessProfile={canAccessPlayerFeatures}
-          canAccessPayments={canAccessMatchSignup&&!isCompanyClub}
+          canAccessPayments={canAccessMatchSignup&&(!isCompanyClub||isPracticeMode)}
           canAccessPeerReview={activeRole !== "spectator"}
           locked={isRefereeStatsView}
           lockedMessage="You Are A Referee, have you forgotten? Return to the Game Controls"

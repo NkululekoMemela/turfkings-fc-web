@@ -4,6 +4,7 @@ const {randomUUID} = require("node:crypto");
 
 const labels = {
   reschedule_day: "Change a match-day date and kickoff times",
+  parallel_kickoff: "Schedule fixtures on separate pitches",
   delay_remaining: "Delay remaining games",
   cancel_season: "Cancel the season",
   delete_day_results: "Delete match-day results",

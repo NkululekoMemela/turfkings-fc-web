@@ -2,7 +2,7 @@ import {auth, activeFirebaseProjectId, getActiveFirebaseFunctionsBaseUrl} from '
 import {getVenueRefereeDeviceId} from '../core/venueRefereeController.js';
 import {applyPendingBooth, sameBooth, recoverFieldClock} from '../core/fieldBoothRecovery.mjs';
 const locks = new Map(), flights = new Map(), listeners = new Map();
-const key = scope => `fanm-field-booth:${activeFirebaseProjectId}:${auth.currentUser?.uid}:${scope.venueId}:${scope.seasonId}`;
+const key = scope => `fanm-field-booth:${activeFirebaseProjectId}:${auth.currentUser?.uid}:${scope.venueId}:${scope.seasonId}${scope.liveDocumentId && scope.liveDocumentId !== "current" ? `:${scope.liveDocumentId}` : ""}`;
 const lastKey = () => `fanm-field-booth-last:${activeFirebaseProjectId}:${auth.currentUser?.uid}`;
 export function readBooth(scope) {
   try { return JSON.parse(localStorage.getItem(key(scope)) || 'null'); } catch { return null; }
@@ -31,7 +31,7 @@ export async function boothRequest(scope, op, fields = {}) {
       method: 'POST', signal: controller.signal,
       headers: {'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}`},
       body: JSON.stringify({...scope, op, deviceId: getVenueRefereeDeviceId(),
-        epoch: saved?.state?.boothEpoch, fixtureId: op==='context' ? undefined : saved?.state?.fixtureId, ...fields}),
+        epoch: saved?.state?.boothEpoch, fixtureId: scope.fixtureId || (op==='context' ? undefined : saved?.state?.fixtureId), ...fields}),
     });
     const result = await response.json();
     if (!response.ok) { const error = Error(result.error || 'Could not connect to the Field.'); error.status = response.status; throw error; }

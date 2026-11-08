@@ -5,10 +5,31 @@ function score(live){
  if(live.status==='completed'&&live.finalSummary)return [Number(live.finalSummary.goalsA)||0,Number(live.finalSummary.goalsB)||0];
  return [live.teamAId,live.teamBId].map(id=>events.filter(e=>e.type==='goal'&&e.teamId===id).length);
 }
+function phase(live){
+ if(live?.status==='completed'||live?.isFinished||live?.timeUp||live?.clockPhase==='full_time')return 'full_time';
+ if(live?.awaitingKitVerification)return 'pre_match';
+ return ['first_half','halftime','second_half'].includes(live?.clockPhase)?live.clockPhase:'live';
+}
 function changed(before,after){return after&&['live','completed'].includes(after.status)&&
- (!before||before.fixtureId!==after.fixtureId||before.status!==after.status||String(score(before))!==String(score(after)));}
+ (!before||before.fixtureId!==after.fixtureId||before.status!==after.status||phase(before)!==phase(after)||String(score(before))!==String(score(after)));}
+function newGoal(before, after) {
+ if(!before?.fixtureId || before.fixtureId!==after?.fixtureId || before.status!=='live' || phase(after)==='full_time')return null;
+ const goals=match=>(Array.isArray(match.currentEvents)?match.currentEvents:[]).filter(event=>event?.type==='goal');
+ const oldIds=new Set(goals(before).map(event=>event.id));
+ const oldScore=score(before),newScore=score(after);
+ const sides=[after.teamAId,after.teamBId];
+ for(const event of goals(after).reverse()){
+  const side=sides.indexOf(event.teamId);
+  const scorer=String(event.scorer||event.playerName||event.player||'').trim().replace(/\s+/g,' ').slice(0,100);
+  if(side<0 || newScore[side]<=oldScore[side] || !event.id || oldIds.has(event.id) || !scorer)continue;
+  const seconds=event.timeSeconds==null||event.timeSeconds===''?NaN:Number(event.timeSeconds);
+  const minute=Number.isFinite(seconds)&&seconds>=0?String(Math.floor(seconds/60)+1):'';
+  return {scorer,minute,side:side===0?'home':'away'};
+ }
+ return null;
+}
 function buildHandler({db,messaging,auth,region='us-central1'}){
- return onDocumentWritten({document:'leagueVenues/{venueId}/seasons/{seasonId}/matches/current',region,retry:true},async event=>{
+ return onDocumentWritten({document:'leagueVenues/{venueId}/seasons/{seasonId}/matches/{matchId}',region,retry:true},async event=>{
   const before=event.data?.before?.exists?event.data.before.data():null;
   const after=event.data?.after?.exists?event.data.after.data():null;if(!changed(before,after))return;
   const {venueId,seasonId}=event.params;
@@ -33,12 +54,14 @@ function buildHandler({db,messaging,auth,region='us-central1'}){
   const version=String(stamp.seconds).padStart(12,'0')+String(stamp.nanoseconds).padStart(9,'0');
   const data={type:'field_live_score',route:'field',venueId,seasonId,fixtureId:after.fixtureId,
    homeName:String(home.name||home.clubName||after.teamALabel||'Home').slice(0,100),awayName:String(away.name||away.clubName||after.teamBLabel||'Away').slice(0,100),
-   homeLogo,awayLogo,goalsA:String(goalsA),goalsB:String(goalsB),status:after.status,version,
+   homeLogo,awayLogo,goalsA:String(goalsA),goalsB:String(goalsB),status:after.status,phase:phase(after),version,
    projectId:process.env.GCLOUD_PROJECT||process.env.GOOGLE_CLOUD_PROJECT||'',fanmRenderer:'2'};
+  const goal=newGoal(before,after);
+  if(goal)Object.assign(data,{goalScorer:goal.scorer,goalMinute:goal.minute,goalSide:goal.side});
   const failures=[];
   for(let i=0;i<records.length;i+=500){
    const batch=records.slice(i,i+500),result=await messaging.sendEach(batch.map(record=>({token:record.token,data:{...data,recipientUid:record.uid},
-    android:{priority:'high',ttl:120000,collapseKey:'field-score-'+createHash('sha256').update(venueId).digest('hex').slice(0,20)}})));
+    android:{priority:'high',ttl:120000,collapseKey:'field-score-'+createHash('sha256').update(`${venueId}:${seasonId}:${after.fixtureId}`).digest('hex').slice(0,20)}})));
    for(let j=0;j<result.responses.length;j++)if(!result.responses[j].success){
     const error=result.responses[j].error;
     if(['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes(error?.code))await batch[j].ref.set({enabled:false},{merge:true});
@@ -48,4 +71,4 @@ function buildHandler({db,messaging,auth,region='us-central1'}){
   if(failures.length)throw Error('Some live scores need another delivery attempt.');
  });
 }
-module.exports={buildHandler,score,changed};
+module.exports={buildHandler,score,phase,changed,newGoal};

@@ -791,6 +791,8 @@ function restoreNormalFriendlyTeamsFromSlots(teams = []) {
 
 export function SquadsPage({
   onSquadPreviewEditingChange,
+  onPracticeEligibility,
+  onPracticeSquadsSaved,
   teams = [],
   fiveVFiveTeams = [],
   onUpdateTeams,
@@ -888,15 +890,8 @@ export function SquadsPage({
   const [saveError, setSaveError] = useState("");
 
   const [captainEditLocked, setCaptainEditLocked] = useState(true);
-  const [showCaptainLockHelp, setShowCaptainLockHelp] = useState(false);
-
-  const [lastSquadEditor, setLastSquadEditor] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("tk_last_squad_editor") || "null");
-    } catch {
-      return null;
-    }
-  });
+  const [savingSquads, setSavingSquads] = useState(false);
+  const savingSquadsRef = useRef(false);
 
   const canEdit = isAdmin || (isCaptain && !captainEditLocked);
   const [showUnseededPlayers, setShowUnseededPlayers] = useState(false);
@@ -1024,44 +1019,6 @@ export function SquadsPage({
 
     return () => unsub();
   }, [activeClubId, isPracticeMode]);
-
-  const handleToggleCaptainEditLock = async () => {
-    if (!isAdmin || !activeClubId) return;
-
-    const nextLocked = !captainEditLocked;
-
-    setCaptainEditLocked(nextLocked);
-
-    // Practice may exercise the control in-memory, but must never mutate
-    // the real club's settings/squadControls document.
-    if (isPracticeMode) {
-      return;
-    }
-
-    try {
-      await setDoc(
-        doc(db, "clubs", activeClubId, "settings", "squadControls"),
-        {
-          captainEditLocked: nextLocked,
-          updatedAt: serverTimestamp(),
-          updatedAtMs: Date.now(),
-          updatedByName:
-            identity?.fullName ||
-            identity?.shortName ||
-            identity?.displayName ||
-            identity?.email ||
-            "Admin",
-          updatedByRole: "admin",
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      console.error("[Squads] Failed to update captain lock:", err);
-      setCaptainEditLocked(!nextLocked);
-      showPremiumAlert({ title: "Could not update control", message: "Captain editing control could not be updated right now.", icon: "⚠️" });
-    }
-  };
-
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1419,6 +1376,12 @@ export function SquadsPage({
     );
   }, [isPracticeMode, signupRecords, nextTeamsheetWeekId, playersById, allPlayers]);
 
+
+  useEffect(() => {
+    if (!isPracticeMode || !onPracticeEligibility) return undefined;
+    onPracticeEligibility({date:nextTeamsheetWeekId, count:paidTeamSheetPlayers.length});
+    return () => onPracticeEligibility(null);
+  }, [isPracticeMode, onPracticeEligibility, nextTeamsheetWeekId, paidTeamSheetPlayers.length]);
 
   const activePlayers = useMemo(
     () => allPlayers.filter((p) => (p.status || "active") === "active"),
@@ -2732,163 +2695,139 @@ export function SquadsPage({
   };
 
 
+  const persistSquads = async (candidateTeams) => {
+    if (!canEdit || savingSquadsRef.current) return false;
+    savingSquadsRef.current = true;
+    setSavingSquads(true);
+    try {
+      validateKitTeams(buildKitRoster(candidateTeams.filter(team=>(team.players || []).length>0),allPlayers));
+      const validAdmin = isAdmin;
+      const validCaptain = canEdit && !isAdmin;
+      if (captainEditLocked && validCaptain && !validAdmin) {
+        throw new Error("Captain changes are locked by admin.");
+      }
+
+      const cleanOne = (list) =>
+        list.map((t) => {
+          const label = String(t.label || "").trim();
+          const identityAbbrev = normalizeAbbrev(t.teamIdentity?.abbr || "");
+          const smartAbbrev = identityAbbrev || makeUniqueTeamAbbrev(t.id, label || t.label, list);
+          const abbrev = normalizeAbbrev(smartAbbrev || t.abbrev || "");
+          const teamColorName = toTitleCase(t.teamColorName || "");
+          const typedHex = normalizeHexColor(t.teamColorHex || "");
+          const derivedTheme = getThemeFromColorName(teamColorName);
+          const teamColorHex = derivedTheme?.accent || (isValidHexColor(typedHex) ? typedHex : "");
+          return { ...t, label, abbrev, teamColorHex, teamColorName };
+        });
+
+      // Save from the exact teams currently shown in Squad Shape Preview.
+      // This prevents stale hidden/local state from overwriting preview edits.
+      const cleanedLeagueTeams = cleanOne(
+        isFiveVFive ? localLeagueTeams : candidateTeams
+      );
+
+      const cleanedFiveVFiveTeams = cleanOne(
+        isFiveVFive ? candidateTeams : localFiveVFiveTeams
+      );
+
+      const validationError =
+        validateTeams(cleanedLeagueTeams) || validateTeams(cleanedFiveVFiveTeams);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
+      const newCaptainIds = new Set(
+        [...cleanedLeagueTeams, ...cleanedFiveVFiveTeams]
+          .map((t) => t.captainId)
+          .filter(Boolean)
+      );
+
+      const currentCaptainIds = new Set(
+        allPlayers.filter((p) => p.roles?.captain === true).map((p) => p.id)
+      );
+
+      const toMakeCaptain = [...newCaptainIds].filter((id) => !currentCaptainIds.has(id));
+      const toRemoveCaptain = [...currentCaptainIds].filter((id) => !newCaptainIds.has(id));
+
+      // Captain-role persistence changes Official player records.
+      // Practice may still change the disposable squad configuration below,
+      // but it must never promote/demote real club players.
+      if (!isPracticeMode) {
+        try {
+          const batch = writeBatch(db);
+          for (const pid of toMakeCaptain) {
+          batch.set(
+            getPlayerDoc(db, pid, activeClubId),
+            {
+              "roles.captain": true,
+              "roles.player": true,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+
+        for (const pid of toRemoveCaptain) {
+          batch.set(
+            getPlayerDoc(db, pid, activeClubId),
+            {
+              "roles.captain": false,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+
+          await batch.commit();
+        } catch (err) {
+          console.error("[Squads] Error updating captain roles:", err);
+          throw new Error("Could not update captain roles in the database.");
+        }
+      }
+
+      const outgoingFiveVFiveTeams = cleanedFiveVFiveTeams.map((t) => ({
+        ...t,
+        captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
+      }));
+
+      const outgoingLeagueTeams = cleanedLeagueTeams.map((t) => ({
+        ...t,
+        captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
+      }));
+
+      if (isFiveVFive) {
+        await onUpdateFiveVFiveTeams?.(outgoingFiveVFiveTeams);
+      } else {
+        await onUpdateTeams?.(outgoingLeagueTeams);
+      }
+      setLocalLeagueTeams(outgoingLeagueTeams);
+      setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
+      if (isPracticeMode) onPracticeSquadsSaved?.();
+      return true;
+    } finally {
+      savingSquadsRef.current = false;
+      setSavingSquads(false);
+    }
+  };
+
   const handleConfirmSave = async () => {
-    if (!canEdit) return;
-    try {validateKitTeams(buildKitRoster(sourceTeams.filter(team=>(team.players || []).length>0),allPlayers));}
-    catch(error){setSaveError(error.message);return;}
-
-    const trimmedCode = String(saveCode || "").trim();
-
-    const validAdmin = isAdmin;
-    const validCaptain = canEdit && !isAdmin;
-
-    if (trimmedCode.toUpperCase() !== "CONFIRM") {
+    if (String(saveCode || "").trim().toUpperCase() !== "CONFIRM") {
       setSaveError("Type CONFIRM to save squad changes.");
       return;
     }
-
-    if (captainEditLocked && validCaptain && !validAdmin) {
-      setSaveError("Captain changes are locked by admin.");
-      return;
-    }
-
-    const editorName =
-      identity?.fullName ||
-      identity?.shortName ||
-      identity?.displayName ||
-      identity?.email ||
-      (validAdmin ? "Admin" : "Captain");
-
-    const editorPayload = {
-      name: editorName,
-      role: validAdmin ? "Admin" : "Captain",
-      time: new Date().toISOString(),
-    };
-
-    setLastSquadEditor(editorPayload);
-
     try {
-      localStorage.setItem(
-        "tk_last_squad_editor",
-        JSON.stringify(editorPayload)
-      );
-    } catch {}
-
-    const cleanOne = (list) =>
-      list.map((t) => {
-        const label = String(t.label || "").trim();
-        const identityAbbrev = normalizeAbbrev(t.teamIdentity?.abbr || "");
-        const smartAbbrev = identityAbbrev || makeUniqueTeamAbbrev(t.id, label || t.label, list);
-        const abbrev = normalizeAbbrev(smartAbbrev || t.abbrev || "");
-        const teamColorName = toTitleCase(t.teamColorName || "");
-        const typedHex = normalizeHexColor(t.teamColorHex || "");
-        const derivedTheme = getThemeFromColorName(teamColorName);
-        const teamColorHex = derivedTheme?.accent || (isValidHexColor(typedHex) ? typedHex : "");
-        return { ...t, label, abbrev, teamColorHex, teamColorName };
-      });
-
-    // Save from the exact teams currently shown in Squad Shape Preview.
-    // This prevents stale hidden/local state from overwriting preview edits.
-    const cleanedLeagueTeams = cleanOne(
-      isFiveVFive ? localLeagueTeams : sourceTeams
-    );
-
-    const cleanedFiveVFiveTeams = cleanOne(
-      isFiveVFive ? sourceTeams : localFiveVFiveTeams
-    );
-
-    const validationError =
-      validateTeams(cleanedLeagueTeams) || validateTeams(cleanedFiveVFiveTeams);
-    if (validationError) {
-      setSaveError(validationError);
-      return;
+      if (await persistSquads(sourceTeams)) handleCancelSave();
+    } catch (error) {
+      setSaveError(error.message || "Could not save squads.");
     }
+  };
 
-    const newCaptainIds = new Set(
-      [...cleanedLeagueTeams, ...cleanedFiveVFiveTeams]
-        .map((t) => t.captainId)
-        .filter(Boolean)
-    );
-
-    const currentCaptainIds = new Set(
-      allPlayers.filter((p) => p.roles?.captain === true).map((p) => p.id)
-    );
-
-    const toMakeCaptain = [...newCaptainIds].filter((id) => !currentCaptainIds.has(id));
-    const toRemoveCaptain = [...currentCaptainIds].filter((id) => !newCaptainIds.has(id));
-
-    // Captain-role persistence changes Official player records.
-    // Practice may still change the disposable squad configuration below,
-    // but it must never promote/demote real club players.
-    if (!isPracticeMode) {
-      try {
-        const batch = writeBatch(db);
-        for (const pid of toMakeCaptain) {
-        batch.set(
-          getPlayerDoc(db, pid, activeClubId),
-          {
-            "roles.captain": true,
-            "roles.player": true,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      for (const pid of toRemoveCaptain) {
-        batch.set(
-          getPlayerDoc(db, pid, activeClubId),
-          {
-            "roles.captain": false,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-        await batch.commit();
-      } catch (err) {
-        console.error("[Squads] Error updating captain roles:", err);
-        setSaveError("Could not update captain roles in the database.");
-        return;
-      }
+  const handleToggleSquadNumbers = async (enabled) => {
+    try {
+      await persistSquads(sourceTeams.map(team => ({...team, usePlayerNumbers:enabled})));
+    } catch (error) {
+      showPremiumAlert({title:"Could not save squads", message:error.message || "Try again.", icon:"⚠️"});
     }
-
-    const outgoingFiveVFiveTeams = cleanedFiveVFiveTeams.map((t) => ({
-      ...t,
-      captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
-    }));
-
-    setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
-
-    console.log("[SQUADS SAVE DEBUG] mode", {
-      isPracticeMode,
-      isFiveVFive,
-      resolvedMatchType,
-      resolvedGameFormat,
-    });
-    console.log("[SQUADS SAVE DEBUG] cleanedLeagueTeams", cleanedLeagueTeams);
-    console.log("[SQUADS SAVE DEBUG] cleanedFiveVFiveTeams", cleanedFiveVFiveTeams);
-    console.log("[SQUADS SAVE DEBUG] outgoingFiveVFiveTeams", outgoingFiveVFiveTeams);
-    const outgoingLeagueTeams = cleanedLeagueTeams.map((t) => ({
-      ...t,
-      captain: t.captainId ? displayShortOf(t.captainId) : t.captain || "",
-    }));
-
-    setLocalLeagueTeams(outgoingLeagueTeams);
-    setLocalFiveVFiveTeams(outgoingFiveVFiveTeams);
-
-    const activeOutgoingTeams = isFiveVFive
-      ? outgoingFiveVFiveTeams
-      : outgoingLeagueTeams;
-
-    if (isFiveVFive) {
-      onUpdateFiveVFiveTeams?.(outgoingFiveVFiveTeams);
-    } else {
-      onUpdateTeams?.(outgoingLeagueTeams);
-    }
-
-    handleCancelSave();
   };
 
   const handleSaveCardAsImage = async (cardId, label) => {
@@ -3524,7 +3463,13 @@ export function SquadsPage({
 
     return (
       <SharedSquadTeamsheet
-        headerActions={canEdit&&<label className="squad-number-toggle"><input type="checkbox" checked={sourceTeams.some(team=>team.usePlayerNumbers!==false)} onChange={event=>{const enabled=event.target.checked,apply=list=>list.map(team=>({...team,usePlayerNumbers:enabled}));if(isFiveVFive)setLocalFiveVFiveTeams(apply);else setLocalLeagueTeams(apply);}}/>Use player numbers</label>}
+        headerActions={canEdit && <label className="squad-number-toggle" data-practice-guide="club-squads-save">
+          <input type="checkbox" checked={sourceTeams.some(team => team.usePlayerNumbers !== false)}
+            disabled={savingSquads} onChange={event => void handleToggleSquadNumbers(event.target.checked)} />
+          {savingSquads ? "Saving squads…" : "Use player numbers"}
+        </label>}
+        downloadSibling={canEdit && <button type="button" className="secondary-btn"
+          onClick={() => setShowSquadPreview(true)}>Set Squad</button>}
         matchTeams={matchTeams}
         isClubChallengeTeamsheet={isClubChallengeTeamsheet}
         teamsheetCardRef={teamsheetCardRef}
@@ -3615,119 +3560,10 @@ export function SquadsPage({
 
 
 
-      {canEdit && (
-        <div
-          className="squad-admin-compact-bar"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "0.55rem",
-            flexWrap: "wrap",
-            margin: "0.25rem 0 0.75rem",
-            position: "relative",
-          }}
-        >
-          <button
-            type="button"
-            className="secondary-btn set-squad-pulse-btn"
-            onClick={() => setShowSquadPreview(true)}
-          >
-            Set Squad ✏️
-          </button>
-
-          <button className="primary-btn" data-practice-guide="club-squads-save" onClick={handleSaveClick}>
-            Save Squads
-          </button>
-
-          {isAdmin && (
-            <span style={{ position: "relative", display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={handleToggleCaptainEditLock}
-              >
-                {captainEditLocked ? "Unlock Captains" : "Lock Captains"}
-              </button>
-
-              <button
-                type="button"
-                className="secondary-btn"
-                onClick={() => setShowCaptainLockHelp((current) => !current)}
-                title="What does this do?"
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  minWidth: "32px",
-                  padding: 0,
-                  borderRadius: "999px",
-                  fontWeight: 900,
-                }}
-              >
-                ✎
-              </button>
-
-              {showCaptainLockHelp && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 0.55rem)",
-                    right: "50%",
-                    transform: "translateX(50%)",
-                    zIndex: 99999,
-                    width: "min(280px, calc(100vw - 1.25rem))",
-                    maxWidth: "280px",
-                    padding: "0.75rem 0.85rem",
-                    borderRadius: "16px",
-                    background: "rgba(15,23,42,0.98)",
-                    border: "1px solid rgba(148,163,184,0.28)",
-                    boxShadow: "0 18px 44px rgba(2,6,23,0.42)",
-                    color: "#e5e7eb",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "-8px",
-                      right: "50%",
-                      marginRight: "-7px",
-                      width: "14px",
-                      height: "14px",
-                      background: "rgba(15,23,42,0.98)",
-                      borderLeft: "1px solid rgba(148,163,184,0.28)",
-                      borderTop: "1px solid rgba(148,163,184,0.28)",
-                      transform: "rotate(45deg)",
-                    }}
-                  />
-
-                  <div
-                    style={{
-                      position: "relative",
-                      zIndex: 2,
-                      color: "#e5e7eb",
-                    fontSize: "0.78rem",
-                    lineHeight: 1.45,
-                  }}
-                >
-                  <strong style={{ color: "#ffffff" }}>Captain edit control</strong>
-                  <div style={{ marginTop: "0.25rem" }}>
-                    This is your admin control. Keep captains locked when you do not want them changing squads.
-                    Unlock captains when you want them to help set teams, edit squads, and save using a typed confirmation.
-                  </div>
-                  </div>
-                </div>
-              )}
-            </span>
-          )}
-
-          {lastSquadEditor && (
-            <span className="muted small" style={{ width: "100%", textAlign: "center" }}>
-              Last changed by <strong>{lastSquadEditor.name}</strong> · {lastSquadEditor.role}
-            </span>
-          )}
-
-        </div>
-      )}
+      {canEdit && isPracticeMode && <p data-practice-guide="club-paid-players" role="status">
+        {nextTeamsheetWeekId ? `${nextTeamsheetWeekId} · ${paidTeamSheetPlayers.length} eligible players`
+          : "No booked match date yet. Complete a practice booking first."}
+      </p>}
 
       <section className="card">
         {isFiveVFive && activeChallengeFixture && (

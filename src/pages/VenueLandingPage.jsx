@@ -110,6 +110,21 @@ function getLandingTeamBadge(team = {}) {
   );
 }
 
+function FieldTileCrests({ids, teams}) {
+  return <span className="field-tile-crests" aria-hidden="true">
+    {ids.map((id, index) => {
+      const team = teams.find(item => item.id === id);
+      const badge = getLandingTeamBadge(team);
+      return <React.Fragment key={index}>
+        {index > 0 && <small>vs</small>}
+        <span className="field-tile-crest">
+          {badge ? <img src={badge} alt="" /> : getLandingTeamAbbreviation(team)}
+        </span>
+      </React.Fragment>;
+    })}
+  </span>;
+}
+
 const activePrimaryStyle = {
   background:
     "radial-gradient(circle at 0% 0%, rgba(56,189,248,0.25), transparent 55%), radial-gradient(circle at 100% 100%, rgba(59,130,246,0.35), transparent 55%), linear-gradient(90deg, #22d3ee, #38bdf8, #6366f1)",
@@ -298,6 +313,12 @@ export default function VenueLandingPage({
   onUpdatePairing,
   pairingRequiresCode = true,
   onStartMatch,
+  onTakeoverMatch,
+  nextFixtureLabel = "",
+  takeoverFixtureLabel = "",
+  startTeamIds = [],
+  takeoverTeamIds = [],
+  takeoverCount = 0,
   onSetMatchType,
   onForceSetMatchType,
   onSetGameFormat,
@@ -1617,7 +1638,7 @@ export default function VenueLandingPage({
 
         <header className="match-preview-heading">
           <div className="match-preview-heading__title">
-            <h2>Upcoming match:</h2>
+            <h2>{hasLiveMatch && !nextFixtureLabel ? "Live match:" : "Upcoming match:"}</h2>
           </div>
           <div className="match-preview-heading__details">
             <span className="match-preview-heading__mode">
@@ -1720,10 +1741,12 @@ export default function VenueLandingPage({
             </button>
 )}
 
-<button
+<div className="field-start-tile">
+            <button
               className="primary-btn"
               style={tileButtonStyle(isMobile, activePrimaryStyle)}
               data-practice-guide="field-match-start"
+              aria-label={nextFixtureLabel ? `Start Match: ${nextFixtureLabel}` : undefined}
               onClick={handleStartMatchClick}
               type="button"
             >
@@ -1734,6 +1757,27 @@ export default function VenueLandingPage({
                 mobileLines: ["Start", "Match"],
               })}
             </button>
+            {startTeamIds.length === 2 ? (
+              <span className="field-start-fixture" aria-hidden="true">
+                <FieldTileCrests ids={startTeamIds} teams={teams} />
+              </span>
+            ) : hasLiveMatch && (
+              <span className="field-start-fixture field-start-fixture--waiting">
+                No parallel fixture ready
+              </span>
+            )}
+            {hasLiveMatch && onTakeoverMatch && (
+              <button type="button" className="field-takeover-badge"
+                onClick={onTakeoverMatch}
+                aria-label={`Takeover: ${takeoverFixtureLabel}`}
+                title={`Takeover: ${takeoverFixtureLabel}`}>
+                <span className="field-takeover-label" aria-hidden="true">Takeover<br />match</span>
+                <span className="field-takeover-arrow" aria-hidden="true">→</span>
+                <FieldTileCrests ids={takeoverTeamIds} teams={teams} />
+                {takeoverCount > 1 && <small aria-hidden="true">+{takeoverCount - 1}</small>}
+              </button>
+            )}
+            </div>
 
 <button
               className="secondary-btn"

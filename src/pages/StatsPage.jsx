@@ -3282,6 +3282,7 @@ export function StatsPage({
                 className={
                   activeTab === "teams" ? "secondary-btn active" : "secondary-btn"
                 }
+                data-practice-guide="club-standings"
                 onClick={() => setActiveTab("teams")}
               >
                 Team Standings

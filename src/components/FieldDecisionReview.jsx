@@ -5,6 +5,7 @@ import {
 
 const actionLabel = action => ({
   reschedule_day: "Change match-day date and kickoffs",
+  parallel_kickoff: "Schedule fixtures on separate pitches",
   delay_remaining: "Move remaining kickoff times",
   cancel_season: "Cancel season",
   delete_day_results: "Delete match-day results",
@@ -121,7 +122,7 @@ export default function FieldDecisionReview({scope = null, venueId, seasonId, is
                 <p key={item.id}>
                   {timeLabel(item.scheduledLocal)}
                   {" → "}
-                  <strong>{timeLabel(after?.scheduledLocal)}</strong>
+                  <strong>{timeLabel(after?.scheduledLocal)}{after?.pitchNumber ? ` · Pitch ${after.pitchNumber}` : ""}</strong>
                 </p>
               );
             })}

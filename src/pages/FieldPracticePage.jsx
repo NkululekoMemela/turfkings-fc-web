@@ -1,3 +1,5 @@
+import PracticeHighlights from "../components/PracticeHighlights.jsx";
+import PracticeFieldNews from "../components/PracticeFieldNews.jsx";
 import PracticeGuide from "../components/PracticeGuide.jsx";
 import FieldPracticeBookings from "../components/FieldPracticeBookings.jsx";
 import {fieldGuideSteps} from "../components/practiceGuideSteps.js";
@@ -138,6 +140,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   useEffect(()=>{if(expired)onExit?.();},[expired,onExit]);
   const [busy, setBusy] = useState(false);
   const [practiceBookingsReady, setPracticeBookingsReady] = useState(false);
+  const [entryReceiptCheck, setEntryReceiptCheck] = useState(null);
   const [practiceMatchProgress, setPracticeMatchProgress] = useState(null);
   const season = data?.league?.activeSeason || null;
   const scope = useMemo(() => createPracticeVenueLeagueScope({
@@ -307,10 +310,10 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       onGoToStats={() => navigate("stats")}
       onGoToSquads={() => navigate("squads")}
       onGoToFormations={() => navigate("formations")}
-      onGoToNews={unavailable}
+      onGoToNews={() => navigate("news")}
       onGoToLostFound={()=>navigate("lostFound")}
-      onGoToHighlights={unavailable}
-      onOpenHighlightsCamera={unavailable}
+      onGoToHighlights={() => navigate("videos")}
+      onOpenHighlightsCamera={() => navigate("videos")}
       onGoToLiveAsSpectator={() => navigate("live")}
       onStartMatch={startMatch}
       onOpenBackupModal={() => {
@@ -345,8 +348,11 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       onBack={() => navigate("landing")}
       onGoToStats={() => navigate("stats")}
     />;
+  } else if (page === "news" || page === "videos") {
+    content = null;
   } else if (page === "signup") {
-    content = <FieldPracticeBookings scope={scope} season={season} nextFixture={nextFixture} onReady={setPracticeBookingsReady}/>;
+    content = <FieldPracticeBookings scope={scope} season={season} nextFixture={nextFixture} onReady={setPracticeBookingsReady}
+      receiptCheck={entryReceiptCheck} onReceiptCheck={setEntryReceiptCheck}/>;
   } else if (page === "hireStock") {
     content = <FieldBibHire venueId={venue.id} manage isPracticeMode/>;
   } else if (page === "lostFound") {
@@ -387,22 +393,27 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
 
   const announced = Boolean(season?.announcedAtMs);
   const hasResult = Boolean(season?.results?.length || season?.matchDayHistory?.length);
-  const guideCompletion = [
-    showStart || announced,
-    announced && !showStart,
-    false, false, false,
-    page === "live" || hasResult,
-    Boolean(practiceMatchProgress?.verified) || hasResult,
-    Boolean(practiceMatchProgress?.hasGoal) || hasResult,
-    hasResult && page !== "live",
-    false,
-    Boolean(season?.matchDayHistory?.length),
-    !announced && Boolean(season?.previousSeasonId),
-  ];
+  const guideCompletion = {
+    "field-season-start": showStart || announced,
+    "field-season-form": announced && !showStart,
+    "field-match-start": page === "live" || hasResult,
+    "match-verify": Boolean(practiceMatchProgress?.verified) || hasResult,
+    "match-goal": Boolean(practiceMatchProgress?.hasGoal) || hasResult,
+    "match-edit-lineups": Boolean(practiceMatchProgress?.hasSubstitution) || hasResult,
+    "match-discipline": Boolean(practiceMatchProgress?.hasCard) || hasResult,
+    "match-injury": Boolean(practiceMatchProgress?.hasInjury) || hasResult,
+    "match-half-time": Boolean(practiceMatchProgress?.secondHalf) || hasResult,
+    "match-close": hasResult && page !== "live",
+    "field-day-end": Boolean(season?.matchDayHistory?.length),
+    "field-season-end": !announced && Boolean(season?.previousSeasonId),
+  };
   return <div style={{paddingBottom: 90}}>
     <PracticeGuide sessionKey={`field:${venue.id}:${auth.currentUser?.uid}:${session.sessionId}`}
-      steps={fieldGuideSteps.map((step, index) => ({...step, completed: guideCompletion[index], nextDisabled:index === 2 && !practiceBookingsReady}))}
-      page={page} onNavigate={navigate} ready={Boolean(practiceVenue)}/>
+      steps={fieldGuideSteps.map(step => ({...step, completed:guideCompletion[step.target],
+        nextDisabled:step.target === "field-bookings-review" && !practiceBookingsReady}))}
+      page={page} onNavigate={navigate} ready={Boolean(practiceVenue) && !["videos","news"].includes(page)}/>
+    <PracticeHighlights key={session.sessionId} active={page==="videos"} expiresAt={session.expiresAt} onBack={()=>navigate("landing")}/>
+    <PracticeFieldNews key={session.sessionId} active={page==="news"} season={season} onBack={()=>navigate("landing")}/>
     <FieldPracticeTimer expiresAt={session.expiresAt} onExit={onExit} showSessionControl={page==="landing"}/>
     {error && <p role="alert">{error}</p>}
     {busy && <p role="status">Preparing…</p>}
@@ -411,10 +422,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       scope={scope} venueId={venue.id} seasonId={season.id} isCreator
     />}
 
-    {page !== "live" && <FieldBottomNav currentPage={page} onNavigate={next => {
-      if (["news", "videos"].includes(next)) unavailable();
-      else navigate(next);
-    }}/>}
+    {page !== "live" && <FieldBottomNav currentPage={page} onNavigate={navigate}/>}
     {showEndDay && season && <FieldPracticeEndMatchDay
       venue={practiceVenue} season={season} scope={scope}
       onClose={() => setShowEndDay(false)}

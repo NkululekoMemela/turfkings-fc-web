@@ -1,7 +1,7 @@
 import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import HighlightFilters from '../components/HighlightFilters.jsx';
 import HighlightMatchFolders from '../components/HighlightMatchFolders.jsx';
-import {highlightFixtureId,groupHighlightFixtures,highlightFixtureOptions,highlightMatchesMode,filterHighlightClips} from "../core/highlightFixtures.mjs";
+import {highlightFixtureId,groupHighlightFixtures,clubHighlightFixtureOptions,highlightMatchesMode,filterHighlightClips} from "../core/highlightFixtures.mjs";
 import PremiumSelect from "../components/PremiumSelect.jsx";
 // src/pages/VideoHighlightsPage.jsx
 
@@ -2755,7 +2755,7 @@ export function VideoHighlightsPage({
     return scopedApprovedHighlights;
   }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
 
-  const fixtureChoices=useMemo(()=>highlightFixtureOptions(filterHighlightClips([...tabHighlights,...(selectedTab==='approved'?archivedHighlights.filter(clip=>["approved","archived"].includes(clip.status)||clip.archivedClubFeed):[])].filter(clip=>highlightMatchesMode(clip,matchType)&&(mainTab==='throwback'?(clip.highlightEra==='throwback'||clip.isThrowback===true):!(clip.highlightEra==='throwback'||clip.isThrowback===true))),{type:selectedFilter,player:selectedPlayerFilter,viewed:watchedFilter,watchedIds:watchedClipIds}),fixtureOptions,clip=>getMatchupLabel(clip,teams,matchType),resolvedMatchId,fixtureResults),[tabHighlights,archivedHighlights,fixtureOptions,fixtureResults,teams,matchType,resolvedMatchId,mainTab,selectedTab,selectedFilter,selectedPlayerFilter,watchedFilter,watchedClipIds]);
+  const fixtureChoices=useMemo(()=>clubHighlightFixtureOptions(filterHighlightClips([...tabHighlights,...(selectedTab==='approved'?archivedHighlights.filter(clip=>["approved","archived"].includes(clip.status)||clip.archivedClubFeed):[])].filter(clip=>highlightMatchesMode(clip,matchType)&&(mainTab==='throwback'?(clip.highlightEra==='throwback'||clip.isThrowback===true):!(clip.highlightEra==='throwback'||clip.isThrowback===true))),{type:selectedFilter,player:selectedPlayerFilter,viewed:watchedFilter,watchedIds:watchedClipIds}),fixtureOptions,clip=>getMatchupLabel(clip,teams,matchType),resolvedMatchId,fixtureResults),[tabHighlights,archivedHighlights,fixtureOptions,fixtureResults,teams,matchType,resolvedMatchId,mainTab,selectedTab,selectedFilter,selectedPlayerFilter,watchedFilter,watchedClipIds]);
   const fixtureLabel=clip=>{const entry=fixtureChoices.find(f=>f.matchId===highlightFixtureId(clip,resolvedMatchId));return [entry?.label||'Match highlights',entry?.date].filter(Boolean).join(' · ');};
   const visibleHighlights = useMemo(() => {
     const isThrowbackClip = (item) =>

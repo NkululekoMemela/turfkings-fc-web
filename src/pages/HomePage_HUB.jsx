@@ -1,3 +1,4 @@
+import OrganizationArchiveControls, {canManageOrganizationArchive, confirmOrganizationArchive} from "../components/OrganizationArchiveControls.jsx";
 import { clubFounderName } from "../core/clubFounderCredit.mjs";
 import HubMarketingAdvert from "../components/HubMarketingAdvert.jsx";
 import CompanyClubWorkspace from "../components/CompanyClubWorkspace.jsx";
@@ -19,7 +20,6 @@ import {
   getDoc,
   getDocs,
   serverTimestamp,
-  updateDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
@@ -692,6 +692,7 @@ export default function HomePage_HUB({
     clubs,
   ]);
 
+  const [archiveRefresh, setArchiveRefresh] = useState(0);
   useEffect(() => {
     let cancelled = false;
 
@@ -771,7 +772,7 @@ export default function HomePage_HUB({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [archiveRefresh]);
 
   /*
    * Launch-screen progress is deliberately capped below 100% until
@@ -1020,33 +1021,10 @@ export default function HomePage_HUB({
   async function handleDeleteClub(club) {
     const clubId = String(club?.id || club?.clubId || "").trim();
 
-    if (!isSuperAdmin(currentUser)) {
-      window.alert("Only the super admin can delete clubs.");
-      return;
-    }
-
-    if (!clubId) {
-      window.alert("Could not identify this club.");
-      return;
-    }
-
-    const clubName = club?.name || clubId;
-    const typed = window.prompt(
-      `Type DELETE to remove ${clubName} from the public hub. This will hide the club but keep a record for audit purposes.`
-    );
-
-    if (typed !== "DELETE") return;
-
+    if (!canManageOrganizationArchive(currentUser) || !clubId || deletingClubId) return;
     try {
       setDeletingClubId(clubId);
-
-      await updateDoc(doc(db, "clubs", clubId), {
-        status: "deleted",
-        deleted: true,
-        deletedAt: serverTimestamp(),
-        deletedByEmail: currentUser?.email || "",
-        deletedByUid: currentUser?.uid || "",
-      });
+      if (!await confirmOrganizationArchive({kind: "club", id: clubId, name: club.name})) return;
 
       setClubs((current) => {
         const next = current.filter((item) => String(item?.id || item?.clubId || "") !== clubId);
@@ -1064,7 +1042,7 @@ export default function HomePage_HUB({
       setActiveMapClub(null);
     } catch (error) {
       console.error("[HomePage_HUB] Could not delete club:", error);
-      window.alert("Could not delete this club. Please try again.");
+      window.alert(error.message || "Could not archive this club. Please try again.");
     } finally {
       setDeletingClubId("");
     }
@@ -1496,7 +1474,7 @@ export default function HomePage_HUB({
                 onDeleteClub={handleDeleteClub}
                 canJoin={!isUsersOwnClub(club)}
                 canChallenge={clubCategoryView==="community" && canCurrentUserSendChallenge() && !isUsersOwnClub(club)}
-                canDelete={isSuperAdmin(currentUser)}
+                canDelete={canManageOrganizationArchive(currentUser)}
               />
             );
           })}
@@ -1638,6 +1616,10 @@ export default function HomePage_HUB({
                 <p key={index}>{item}</p>
               ))}
             </div>
+            {hubInfoModal.isHelp && (
+              <OrganizationArchiveControls kind="club" user={currentUser} compact
+                onRestored={() => setArchiveRefresh(count => count + 1)} />
+            )}
             {hubInfoModal === HUB_INFO_CONTENT.terms &&
               <LegalSignature scope="club" />}
           </section>
@@ -1811,14 +1793,14 @@ export default function HomePage_HUB({
                 Challenge
               </button>
 
-              {isSuperAdmin(currentUser) ? (
+              {canManageOrganizationArchive(currentUser) ? (
                 <button
                   type="button"
                   className="hub-danger-button"
                   disabled={deletingClubId === String(activeClub?.id || activeClub?.clubId || "")}
                   onClick={() => handleDeleteClub(activeClub)}
                 >
-                  {deletingClubId === String(activeClub?.id || activeClub?.clubId || "") ? "Deleting..." : "Delete Club"}
+                  {deletingClubId === String(activeClub?.id || activeClub?.clubId || "") ? "Archiving…" : "Archive Club"}
                 </button>
               ) : null}
 

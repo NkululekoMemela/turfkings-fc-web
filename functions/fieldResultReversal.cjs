@@ -39,7 +39,7 @@ exports.reverseFieldRecordedMatch=onRequest({region:'us-central1',invoker:'publi
   const db=getFirestore(),venueRef=db.doc(`leagueVenues/${venueId}`),id=randomUUID();
   await db.runTransaction(async tx=>{
    const v=await tx.get(venueRef);if(!v.exists)throw Error('Field no longer exists.');const venue=v.data();if(venue.ownerUid!==user.uid)throw Error('Only the Field Manager can reverse an official result.');const season=venue.league?.activeSeason;if(season?.id!==seasonId)throw Error('The season changed. Reopen the result.');
-   const currentRef=venueRef.collection('seasons').doc(seasonId).collection('matches').doc('current'),current=await tx.get(currentRef);
+   const currentRef=venueRef.collection('seasons').doc(seasonId).collection('matches').doc(require('./fieldMatchDocuments.cjs').fieldMatchDocumentId(season,fixtureId)),current=await tx.get(currentRef);
    const reversed=reverseResult(season,fixtureId);
    tx.create(venueRef.collection('matchReversals').doc(id),{seasonId,fixtureId,reason,actorUid:user.uid,at:FieldValue.serverTimestamp(),result:reversed.result,fixture:reversed.fixture,events:(season.allEvents||[]).filter(e=>e.fixtureId===fixtureId||Number(e.matchNo)===Number(reversed.result.matchNo)),previousMatchDays:season.matchDays||[],previousHistory:(season.matchDayHistory||[]).filter(d=>(d.results||[]).some(r=>String(r.fixtureId||r.id||'')===fixtureId))});
    tx.update(venueRef,{'league.activeSeason':reversed.season,updatedAt:FieldValue.serverTimestamp()});

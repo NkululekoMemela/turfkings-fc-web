@@ -89,3 +89,31 @@ test('recorded event corrections are scoped to active administrators and the fin
  db.docs.get(`${venuePath}/staff/referee`).status='inactive';
  await assert.rejects(call(db,'correctResultEvent',edit),/Only a Field administrator/);
 });
+
+test('separate fixtures keep controllers, clocks and results independent', async () => {
+ const db=database(), venuePath=`leagueVenues/${venueId}`;
+ const season=db.docs.get(venuePath).league.activeSeason;
+ const otherId='fixture-two', otherPath=livePath.replace(/current$/,otherId);
+ const other={id:otherId,fixtureId:otherId,liveDocumentId:otherId,
+  clubAId:'d',clubBId:'e',clubAName:'Delta',clubBName:'Echo',status:'live',standbyId:'c',matchNo:2};
+ season.clubIds.push('d','e');
+ season.fixtures.push({...other,status:'scheduled'});
+ season.liveMatches[otherId]=other;
+ db.docs.set(otherPath,{...db.docs.get(livePath),fixtureId:otherId,boothEpoch:'epoch-two',
+  liveMatchController:{uid:'other',deviceId:'phone-two'},teamAId:'d',teamBId:'e',currentMatchNo:2});
+ const second=(op, fields={})=>call(db,op,{fixtureId:otherId,epoch:'epoch-two',...fields},'other','phone-two');
+ assert.equal((await second('context')).live.fixtureId,otherId);
+ await second('sync',{seq:1,patch:{secondsLeft:211}});
+ assert.equal(db.docs.get(otherPath).secondsLeft,211);
+ assert.equal(db.docs.get(livePath).secondsLeft,300);
+ await call(db,'requestTakeover',{},'other','phone-two');
+ assert.equal(db.docs.get(livePath).liveMatchTakeoverRequest.status,'pending');
+ assert.equal(db.docs.get(otherPath).liveMatchTakeoverRequest,undefined);
+ await second('finish',{summary:{teamAId:'d',teamBId:'e',goalsA:2,goalsB:0}});
+ assert.equal(db.docs.get(otherPath).status,'completed');
+ assert.equal(db.docs.get(livePath).status,'live');
+ await call(db,'finish',{summary:{teamAId:'a',teamBId:'b',goalsA:1,goalsB:0}});
+ const next=db.docs.get(venuePath).league.activeSeason;
+ assert.deepEqual(next.results.map(r=>[r.fixtureId,r.matchNo]),[[otherId,2],[fixtureId,1]]);
+ assert.equal(next.currentMatchNo,3);
+});

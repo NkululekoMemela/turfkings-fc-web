@@ -1,3 +1,4 @@
+import OrganizationArchiveControls from "../components/OrganizationArchiveControls.jsx";
 import "../styles/FieldIdentityHub.css";
 import React, {
   useEffect,
@@ -12,6 +13,7 @@ import VenueCarouselCard from "../components/VenueCarouselCard.jsx";
 import {
   watchLeagueVenues,
   readLeagueVenueCache,
+  forgetPermanentlyDeletedField,
 } from "../storage/leagueVenueRepository.js";
 import "../styles/HomePage_HUB.css";
 import "./WelcomePage.css";
@@ -280,7 +282,10 @@ export default function LeagueVenuesHub({
           </div>
         </section>
 
-        <VenueMarketingFooter />
+        <VenueMarketingFooter helpTools={
+          <OrganizationArchiveControls kind="field" user={authUser} compact
+            onDeleted={forgetPermanentlyDeletedField} />
+        } />
 
         {registrationOpen &&
         !authUser ? (

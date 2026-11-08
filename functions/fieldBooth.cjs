@@ -3,6 +3,7 @@ const {getAuth} = require('firebase-admin/auth');
 const {getApps, getApp, initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const {randomBytes, createHash} = require('node:crypto');
+const {fieldMatchDocumentId} = require('./fieldMatchDocuments.cjs');
 const {isOperator, holdsBooth, validGrant, checkedPatch, transfer} = require('./fieldBoothPolicy.cjs');
 const valid = s => typeof s === 'string' && /^[A-Za-z0-9_-]{1,150}$/.test(s);
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -28,10 +29,15 @@ async function operate({db, user, body, now = Date.now()}) {
   }
   if (![venueId, seasonId].every(valid)) throw denied('Choose a valid Field match.');
   const venueRef = db.doc(`leagueVenues/${venueId}`);
-  const liveRef = venueRef.collection('seasons').doc(seasonId).collection('matches').doc('current');
+  if (body.fixtureId != null && !valid(body.fixtureId)) throw denied('Choose a valid fixture.');
   return db.runTransaction(async tx => {
-    const [v, l, s] = await Promise.all([tx.get(venueRef), tx.get(liveRef),
+    const [v, s] = await Promise.all([tx.get(venueRef),
       tx.get(venueRef.collection('staff').doc(user.uid))]);
+    if (v.data()?.deleted || v.data()?.status === "deleted") throw denied("This Field is archived.");
+    const season = v.data()?.league?.activeSeason;
+    const matchId = fieldMatchDocumentId(season, body.fixtureId);
+    const liveRef = venueRef.collection('seasons').doc(seasonId).collection('matches').doc(matchId);
+    const l = await tx.get(liveRef);
     if (op === 'correctResultEvent') {
       const venue = v.data(), staff = s.data();
       const season = venue?.league?.activeSeason;
@@ -58,7 +64,6 @@ async function operate({db, user, body, now = Date.now()}) {
     }
     if (!v.exists || !l.exists) throw denied('No saved live match was found.');
     const venue = v.data(), live = l.data(), staff = s.exists ? s.data() : null;
-    const season = venue.league?.activeSeason;
     if (season?.id !== seasonId) throw denied('This Field season has ended.');
     if (body.fixtureId && body.fixtureId !== live.fixtureId) throw denied('The active match changed. Reopen the correct match.');
     if (op === 'finish' && live.status === 'completed' && live.completedByUid === user.uid &&
@@ -112,7 +117,7 @@ async function operate({db, user, body, now = Date.now()}) {
         requestedAtISO: new Date(now).toISOString(), expiresAtISO: new Date(now + 15000).toISOString()};
       write({liveMatchTakeoverRequest: next});
       log('referee_recovery_requested', `${profile.name} requested control of ${live.teamALabel || 'the home club'} vs ${live.teamBLabel || 'the away club'}.`);
-      return {requested: true};
+      return {requested: true, takeoverRequest: next};
     }
     if (op === 'rejectTakeover') {
       if (!controls) throw denied('Only the controlling referee can decline this request.');
@@ -195,6 +200,7 @@ async function operate({db, user, body, now = Date.now()}) {
       if (![summary.goalsA, summary.goalsB].every(n => Number.isInteger(n) && n >= 0 && n <= 999)) throw denied('Check the final score.');
       const completed = completeBoothSeason({season, fixtureId: live.fixtureId, summary,
         currentEvents: live.currentEvents || [], confirmedLineupSnapshot: live.confirmedLineupSnapshot || null,
+        startedMatchNo: live.currentMatchNo,
         lineupTimeline: live.lineupTimeline || [], uid: user.uid,
         playedSeconds: Math.max(0, Number(live.matchSeconds) - Number(live.secondsLeft))});
       tx.update(venueRef, {'league.activeSeason': completed.season, updatedAt: FieldValue.serverTimestamp()});

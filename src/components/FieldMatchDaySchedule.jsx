@@ -47,6 +47,46 @@ function RemainingKickoffEditor({scope, venueId, season, day, fixtures}) {
   );
 }
 
+function ParallelKickoffEditor({scope, venueId, season, day, fixtures}) {
+  const available = fixtures.filter(f => f.status === "scheduled" && !season.liveMatches?.[f.id] && !f.pitchNumber);
+  const [selected, setSelected] = useState([]);
+  const [time, setTime] = useState(available[0]?.scheduledLocal?.slice(11,16) || "18:00");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  if (available.length < 2) return null;
+  return <details>
+    <summary>Schedule on separate pitches</summary>
+    <form style={{display:"grid",gap:8}} onSubmit={async event => {
+      event.preventDefault();
+      if (busy || selected.length < 2) return;
+      setBusy(true);
+      try {
+        await submitFieldDecision({scope,venueId,seasonId:season.id,action:"parallel_kickoff",
+          reason,parameters:{matchDayId:day.id,startTime:time,fixtureIds:selected}});
+        setMessage("Request sent. The Field creator must approve the shared kickoff.");
+        setSelected([]);setReason("");
+      } catch (error) { setMessage(error.message || "Could not request a shared kickoff."); }
+      finally { setBusy(false); }
+    }}>
+      <small>Choose fixtures in pitch order. The first selection is Pitch 1.</small>
+      {available.map(f => <label key={f.id}>
+        <input type="checkbox" disabled={busy || (!selected.includes(f.id) && selected.length >= 8)}
+          checked={selected.includes(f.id)}
+          onChange={event => setSelected(previous => event.target.checked ? [...previous,f.id] : previous.filter(id => id !== f.id))}/>
+        {f.clubAName || f.clubAId} vs {f.clubBName || f.clubBId}
+        {selected.includes(f.id) && ` · Pitch ${selected.indexOf(f.id)+1}`}
+      </label>)}
+      <label>Shared kickoff · SAST <input type="time" className="text-input" required value={time}
+        onChange={event => setTime(event.target.value)} disabled={busy}/></label>
+      <label>Reason <textarea className="text-input" required minLength={10} maxLength={500}
+        value={reason} onChange={event => setReason(event.target.value)} disabled={busy}/></label>
+      <button type="submit" className="secondary-btn" disabled={busy || selected.length < 2}>Request parallel kickoff</button>
+      {message && <p role="status">{message}</p>}
+    </form>
+  </details>;
+}
+
 function MatchDayEditor({ scope, venueId, season, day, teams }) {
   const fixtures = (season.fixtures || [])
     .filter(item => item.matchDayId === day.id)
@@ -76,6 +116,8 @@ function MatchDayEditor({ scope, venueId, season, day, teams }) {
           <small className="muted">Bye: {day.byeClubIds.map(id =>
             season.invitations?.[id]?.clubName || id).join(", ")}</small>
         )}
+        {day.status === "scheduled" && <ParallelKickoffEditor scope={scope} venueId={venueId}
+          season={season} day={day} fixtures={fixtures} />}
         {locked ? (
           <>
             <small className="muted">Played and live fixture times are preserved.</small>

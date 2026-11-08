@@ -34,7 +34,7 @@ async function submitDecision({db, actorUid, body, now = Date.now()}) {
     await import("./fieldDecisionPolicy.mjs");
   const {applyFieldScheduleDecision} = await import("./fieldDecisionSchedule.mjs");
   const decision = normalizeFieldDecision(body);
-  if (!["reschedule_day", "delay_remaining"].includes(decision.action)) {
+  if (!["reschedule_day", "delay_remaining", "parallel_kickoff"].includes(decision.action)) {
     throw new Error("This decision type is not connected yet.");
   }
   const requestId = body.requestId || randomUUID();
@@ -68,7 +68,7 @@ async function submitDecision({db, actorUid, body, now = Date.now()}) {
       before: (season.fixtures || []).filter(item => item.matchDayId === dayId)
         .map(item => ({id: item.id, scheduledLocal: item.scheduledLocal || ""})),
       after: proposed.fixtures.filter(item => item.matchDayId === dayId)
-        .map(item => ({id: item.id, scheduledLocal: item.scheduledLocal || ""})),
+        .map(item => ({id: item.id, scheduledLocal: item.scheduledLocal || "", pitchNumber: item.pitchNumber || null})),
     };
     transaction.set(requestRef, {
       venueId, seasonId, requestedByUid: actorUid, managerUid: venue.ownerUid,

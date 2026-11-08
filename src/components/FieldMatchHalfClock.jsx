@@ -85,7 +85,7 @@ export default function FieldMatchHalfClock({state, canControl, onStartSecondHal
       <div><strong>Half-time · <span role="timer">{clock(breakLeft)}</span></strong>
         <small role="status">{breakLeft > 0 ? "Playing time paused" : "Break over. Start the second half."}</small>
       </div>
-      <button type="button" className="primary-btn" disabled={busy}
+      <button type="button" className="primary-btn" data-practice-guide="match-half-time" disabled={busy}
         onClick={async () => {
           setBusy(true); setError("");
           try { await onStartSecondHalf(); }

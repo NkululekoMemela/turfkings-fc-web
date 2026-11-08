@@ -2120,7 +2120,7 @@ export function FormationsPage({
 
   const renderTopHeader = (isEmpty = false) => (
     <>
-      <ClubPageRibbon title={<>Lineups &amp; Formations</>} onHome={onBack}/>
+      <ClubPageRibbon title={<>Lineups &amp; Formations</>} onHome={onBack} showLogo/>
 
       <header className="header" style={{ marginBottom: isEmpty ? undefined : "0.35rem" }}>
         <div className="header-top-row">

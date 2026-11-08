@@ -1,23 +1,21 @@
-import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
+import {fieldAlert} from './FieldDialog.jsx';
 import React, {useEffect, useState} from "react";
 import {onAuthStateChanged} from "firebase/auth";
 import {auth} from "../firebaseConfig.js";
 import HomePage_HUB_ClubCard from "./HomePage_HUB/HomePage_HUB_ClubCard.jsx";
 import "./VenueCarouselCard.css";
-import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
+import {canManageOrganizationArchive, confirmOrganizationArchive} from "./OrganizationArchiveControls.jsx";
 
 export default function VenueCarouselCard({venue, onEnter}) {
   const [user, setUser] = useState(auth.currentUser);
   const [deleting, setDeleting] = useState(false);
   useEffect(() => onAuthStateChanged(auth, setUser), []);
-  const canDelete = Boolean(user && (venue.ownerUid === user.uid || venue.createdByUid === user.uid ||
-    user.emailVerified && String(user.email || "").toLowerCase() === "nkululekolerato@gmail.com"));
+  const canDelete = canManageOrganizationArchive(user);
   async function deleteField() {
     if (!canDelete || deleting) return;
-    if ((await fieldPrompt(`Type DELETE to remove ${venue.name} from the public hub. A record will be kept for audit purposes.`)) !== "DELETE") return;
     setDeleting(true);
-    try {await fieldLogoStudioRequest({action: "delete", venueId: venue.id});}
-    catch (error) {(await fieldAlert(error.message || "Could not delete this Field. Please try again."));}
+    try { await confirmOrganizationArchive({kind: "field", id: venue.id, name: venue.name}); }
+    catch (error) {(await fieldAlert(error.message || "Could not archive this Field. Please try again."));}
     finally {setDeleting(false);}
   }
   const location = [venue.location?.suburb, venue.location?.city].filter(Boolean).join(", ");

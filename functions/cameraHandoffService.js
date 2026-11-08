@@ -473,7 +473,7 @@ async function createCameraHandoff({
     if (!authorized) {
       const liveSnap = await venueSnap.ref
         .collection("seasons").doc(fieldSeason.id)
-        .collection("matches").doc("current").get();
+        .collection("matches").doc(require("./fieldMatchDocuments.cjs").fieldMatchDocumentId(fieldSeason, fieldFixture.id)).get();
       const live = liveSnap.exists ? liveSnap.data() || {} : {};
       const approvalSnap = await venueSnap.ref
         .collection("seasons").doc(fieldSeason.id)
@@ -520,6 +520,7 @@ async function createCameraHandoff({
     safeFixtureContext.organisingVenueId = safeVenueId;
     safeFixtureContext.competitionType = "venue_league";
     safeFixtureContext.seasonId = fieldSeason.id;
+    safeFixtureContext.liveDocumentId = require("./fieldMatchDocuments.cjs").fieldMatchDocumentId(fieldSeason, fieldFixture.id);
     safeFixtureContext.teamA.clubId = fieldFixture.clubAId;
     safeFixtureContext.teamA.teamId = fieldFixture.clubAId;
     safeFixtureContext.teamB.clubId = fieldFixture.clubBId;

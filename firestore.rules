@@ -72,6 +72,8 @@ service cloud.firestore {
 
       allow create: if isSignedIn()
         && !isCameraSession()
+        && !request.resource.data.keys().hasAny(["organizationArchive", "deleted", "deletedAt", "deletedByUid", "deletedByEmail"])
+        && request.resource.data.get("status", "") != "deleted"
         && request.resource.data.get("clubType", "community") == "community"
         && !request.resource.data.keys().hasAny(["companyId", "billingModel", "companyStatus", "ownerType", "ownerCompanyId"])
         && request.resource.data.ownerUid == request.auth.uid
@@ -80,6 +82,10 @@ service cloud.firestore {
 
       allow update: if isSignedIn()
         && !isCameraSession()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["deleted", "deletedAt", "deletedByUid", "deletedByEmail", "organizationArchive"])
+        && request.resource.data.get("status", "") != "deleted"
+        && resource.data.get("status", "") != "deleted"
+        && resource.data.get("deleted", false) != true
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["clubType", "companyId", "billingModel", "companyStatus", "ownerType", "ownerCompanyId"])
         && request.resource.data.get("ownerUid", "") ==
           resource.data.get("ownerUid", "")
@@ -87,22 +93,6 @@ service cloud.firestore {
           resource.data.get("createdByUid", "")
         && (
           clubAdministrator(clubId)
-          || (
-            request.auth.token.get("email_verified", false) == true
-            && request.auth.token.get("email", "") ==
-              "nkululekolerato@gmail.com"
-            && request.resource.data.get("status", "") == "deleted"
-            && request.resource.data.get("deleted", false) == true
-            && request.resource.data.get("deletedByUid", "") ==
-              request.auth.uid
-            && request.resource.data.get("deletedByEmail", "") ==
-              request.auth.token.email
-            && request.resource.data.diff(resource.data)
-              .affectedKeys().hasOnly([
-                "status", "deleted", "deletedAt",
-                "deletedByUid", "deletedByEmail"
-              ])
-          )
           || !request.resource.data.diff(resource.data)
             .affectedKeys().hasAny([
               "id", "clubId", "name", "ownerUid", "ownerEmail",
@@ -353,6 +343,8 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isSignedIn() && !isCameraSession()
         && request.auth.token.get("email_verified", false) == true
+        && get(/databases/$(database)/documents/clubs/$(clubId)).data.get("deleted", false) != true
+        && get(/databases/$(database)/documents/clubs/$(clubId)).data.get("status", "") != "deleted"
         && clubStateOperator(clubId);
     }
     match /clubStateOperators/{document=**} { allow read, write: if false; }
@@ -644,9 +636,16 @@ service cloud.firestore {
         let old = resource.data.get("league", {}).get("activeSeason", {});
         let next = request.resource.data.get("league", {}).get("activeSeason", {});
         let path = /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(old.get("id", "none"))/matches/current;
-        return old.get("results", []) == next.get("results", [])
-          || !exists(path) || get(path).data.get("boothVersion", 0) != 1
-          || get(path).data.status != "live";
+        let priorResults = old.get("results", []);
+        let nextResults = next.get("results", []);
+        return priorResults == nextResults || (
+          (!exists(path) || get(path).data.get("boothVersion", 0) != 1
+            || get(path).data.status != "live")
+          && (nextResults.size() <= priorResults.size()
+            || old.get("liveMatches", {}).get(
+              nextResults[priorResults.size()].get("fixtureId", ""), {}
+            ).get("liveDocumentId", "current") == "current")
+        );
       }
 
       function fieldClosurePowersRespected() {
@@ -804,6 +803,7 @@ service cloud.firestore {
           && result.matchNo == old.get("currentMatchNo", prior.size() + 1)
           && next.currentMatchNo == result.matchNo + 1
           && old.liveMatches[fixtureId].status == "live"
+          && old.liveMatches[fixtureId].get("liveDocumentId", "current") == "current"
           && result.teamAId == old.liveMatches[fixtureId].clubAId
           && result.teamBId == old.liveMatches[fixtureId].clubBId
           && result.standbyId == old.liveMatches[fixtureId].standbyId
@@ -843,7 +843,10 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && !isCameraSession()
                     && request.resource.data.id == venueId
-                    && request.resource.data.get("clubType", "community") == "community"
+                    && !exists(/databases/$(database)/documents/deletedFieldIds/$(venueId))
+                    && !request.resource.data.keys().hasAny(["organizationArchive", "deleted", "deletedAt", "deletedByUid", "deletedByEmail"])
+        && request.resource.data.get("status", "") != "deleted"
+        && request.resource.data.get("clubType", "community") == "community"
         && !request.resource.data.keys().hasAny(["companyId", "billingModel", "companyStatus", "ownerType", "ownerCompanyId"])
         && request.resource.data.ownerUid == request.auth.uid
                     && request.auth.uid in request.resource.data.adminUids;
@@ -853,6 +856,10 @@ service cloud.firestore {
                        == resource.data.ownerUid
                     && request.resource.data.id == venueId
                     && isSignedIn()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["deleted", "deletedAt", "deletedByUid", "deletedByEmail", "organizationArchive"])
+        && request.resource.data.get("status", "") != "deleted"
+        && resource.data.get("status", "") != "deleted"
+        && resource.data.get("deleted", false) != true
                     && guardedBoothResults()
                     && fieldClosurePowersRespected()
                     && fieldTestingSettingProtected()
@@ -940,6 +947,8 @@ service cloud.firestore {
           && approval.gameFormat == season.gameFormat
           && approval.matchDayHistory == season.get("matchDayHistory", [])
           && approval.matchDays == season.get("matchDays", [])
+          && approval.get("liveMatchesAtApproval", season.get("liveMatches", {}))
+            == season.get("liveMatches", {})
           && approval.expiresAt > request.time
           && approval.used == false
           && getAfter(approvalPath).data.used == true
@@ -979,12 +988,40 @@ service cloud.firestore {
           && request.resource.data.used == true
           && request.resource.data.diff(resource.data)
             .affectedKeys().hasOnly(["used"])
-          && getAfter(
-            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
-          ).data.startApprovalId == approvalId
-          && getAfter(
-            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
-          ).data.fixtureId == resource.data.fixtureId;
+          && startApprovalHasMatch(seasonId, resource.data.fixtureId, approvalId);
+      }
+
+      function startApprovalHasMatch(seasonId, fixtureId, approvalId) {
+        let venuePath = /databases/$(database)/documents/leagueVenues/$(venueId);
+        let matchId = getAfter(venuePath).data.league.activeSeason.liveMatches[fixtureId]
+          .get("liveDocumentId", "current");
+        let matchPath = /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/$(matchId);
+        return (matchId == "current" || matchId == fixtureId)
+          && getAfter(matchPath).data.fixtureId == fixtureId
+          && getAfter(matchPath).data.startApprovalId == approvalId;
+      }
+
+      function newFieldFixtureDocument(seasonId, matchId) {
+        let venuePath = /databases/$(database)/documents/leagueVenues/$(venueId);
+        let before = get(venuePath).data.league.activeSeason.get("liveMatches", {});
+        let after = getAfter(venuePath).data.league.activeSeason.liveMatches;
+        let data = request.resource.data;
+        return matchId == data.fixtureId
+          && !(matchId in before)
+          && after.diff(before).affectedKeys().hasOnly([matchId])
+          && after[matchId].liveDocumentId == matchId
+          && after[matchId].fixtureId == matchId
+          && after[matchId].status == "live"
+          && after[matchId].clubAId == data.teamAId
+          && after[matchId].clubBId == data.teamBId
+          && after[matchId].matchNo == data.currentMatchNo
+          && after[matchId].startedByUid == request.auth.uid
+          && data.startedByUid == request.auth.uid
+          && data.liveMatchController.uid == request.auth.uid
+          && data.teamAId == get(venuePath).data.league.activeSeason.fixtures[data.fixtureIndex].clubAId
+          && data.teamBId == get(venuePath).data.league.activeSeason.fixtures[data.fixtureIndex].clubBId
+          && get(/databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/startApprovals/$(data.startApprovalId))
+            .data.get("liveMatchesAtApproval", null) == before;
       }
 
       function datedFieldMatchCanStart(seasonId) {
@@ -1182,13 +1219,13 @@ service cloud.firestore {
       match /seasons/{seasonId}/matches/{matchId} {
         allow read: if true;
 
-        allow create: if matchId == "current"
-          && activeFieldOperatorForSeason(seasonId)
+        allow create: if activeFieldOperatorForSeason(seasonId)
           && request.resource.data.venueId == venueId
           && request.resource.data.seasonId == seasonId
           && request.resource.data.status == "live"
           && datedFieldMatchCanStart(seasonId)
-          && paidFieldStartApproved(seasonId);
+          && paidFieldStartApproved(seasonId)
+          && (matchId == "current" || newFieldFixtureDocument(seasonId, matchId));
 
         allow update: if matchId == "current"
           && activeFieldOperatorForSeason(seasonId)
@@ -1226,8 +1263,11 @@ service cloud.firestore {
 
       match /seasons/{seasonId}/cameraRequests/{requestId} {
         function currentLiveMatch() {
+          let fixtureId = request.method == "create" ? request.resource.data.fixtureId : resource.data.fixtureId;
+          let season = get(/databases/$(database)/documents/leagueVenues/$(venueId)).data.league.activeSeason;
+          let matchId = season.get("liveMatches", {}).get(fixtureId, {}).get("liveDocumentId", "current");
           return get(
-            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
+            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/$(matchId)
           ).data;
         }
 
@@ -1252,9 +1292,6 @@ service cloud.firestore {
           && request.resource.data.requesterName is string
           && request.resource.data.requesterName.size() <= 80
           && request.resource.data.status == "pending"
-          && exists(
-            /databases/$(database)/documents/leagueVenues/$(venueId)/seasons/$(seasonId)/matches/current
-          )
           && currentLiveMatch().status == "live"
           && currentLiveMatch().fixtureId ==
             request.resource.data.fixtureId;
@@ -1744,6 +1781,8 @@ service cloud.firestore {
         allow read: if isSignedIn();
 
         allow create: if isSignedIn()
+                      && getAfter(/databases/$(database)/documents/leagueVenues/$(venueId)).data.get("deleted", false) != true
+                      && getAfter(/databases/$(database)/documents/leagueVenues/$(venueId)).data.get("status", "") != "deleted"
                       && !isCameraSession()
                       && validStaffRole()
                       && (
@@ -2086,6 +2125,8 @@ service cloud.firestore {
                          && topLevel != "companyFundingAudit"
                          && topLevel != "clubStateOperators"
                          && topLevel != "clubDataAccess"
+                         && topLevel != "organizationArchiveAudit"
+                         && topLevel != "deletedFieldIds"
                          && topLevel != "clubFieldMemberships"
                           && topLevel != "leagueClubBookings"
                           && topLevel != "leagueSeasonSquads"
