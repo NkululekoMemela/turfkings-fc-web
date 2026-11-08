@@ -22,11 +22,16 @@ async function save({db,user,body,now=Date.now()}) {
     if (revision !== body.expectedRevision) throw new Error("The referee's number sheet changed on another device. Reload it before saving.");
     let live;
     if (scope.venueId) {
-      const [venueSnap,staffSnap,matchSnap] = await tx.getAll(db.doc(`leagueVenues/${scope.venueId}`),db.doc(`leagueVenues/${scope.venueId}/staff/${user.uid}`),db.doc(`leagueVenues/${scope.venueId}/seasons/${scope.seasonId}/matches/current`));
+      const venueRef = db.doc(`leagueVenues/${scope.venueId}`);
+      const [venueSnap,staffSnap] = await tx.getAll(venueRef, venueRef.collection("staff").doc(user.uid));
       const venue = venueSnap.data(), staff = staffSnap.data();
       if (!venue || venue.deleted || (venue.ownerUid !== user.uid && !(staff?.status === "active" && ["field_manager","assistant_manager","field_assistant","other_staff","referee"].includes(staff.role)))) throw new Error("Only active Field staff can verify this match's kit.");
       if (venue.league?.activeSeason?.id !== scope.seasonId) throw new Error("This Field season is no longer active.");
-      live = matchSnap.data();
+      const matchId = require("./fieldMatchDocuments.cjs").fieldMatchDocumentId(venue.league.activeSeason, body.matchKey);
+      live = (await tx.get(venueRef.collection("seasons").doc(scope.seasonId).collection("matches").doc(matchId))).data();
+      if (live?.fixtureId !== body.matchKey || live?.status !== "live") {
+        throw new Error("Open the correct live fixture before verifying kit.");
+      }
     } else {
       const [clubSnap,stateSnap,members] = await Promise.all([
         tx.get(db.doc(`clubs/${scope.clubId}`)),tx.get(db.doc(`clubs/${scope.clubId}/state/main`)),tx.get(db.collection(`clubs/${scope.clubId}/members`).where("uid","==",user.uid)),

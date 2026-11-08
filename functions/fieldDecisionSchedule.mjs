@@ -1,3 +1,4 @@
+import {scheduleParallelKickoff, withoutParallelKickoff} from "./fieldParallelKickoffs.mjs";
 import {normalizeFieldDecision} from "./fieldDecisionPolicy.mjs";
 import {rescheduleRemainingKickoffs} from "./fieldRemainingKickoffs.mjs";
 
@@ -9,6 +10,10 @@ export function applyFieldScheduleDecision({
     throw new Error("An active dated season and manager approval are required.");
   }
   const {matchDayId, dateLocal, startTime} = approved.parameters;
+  if (approved.action === "parallel_kickoff") {
+    return scheduleParallelKickoff({season, matchDayId, startTime,
+      fixtureIds:approved.parameters.fixtureIds, actorUid, now});
+  }
   if (approved.action === "delay_remaining") {
     return rescheduleRemainingKickoffs({
       season, matchDayId, startTime, actorUid, liveMatch, now,
@@ -62,7 +67,7 @@ export function applyFieldScheduleDecision({
     const time = String(Math.floor(kickoff / 60)).padStart(2, "0") + ":" +
       String(kickoff % 60).padStart(2, "0");
     replacements.set(fixture.id, {
-      ...fixture, scheduledLocal: `${dateLocal}T${time}`,
+      ...withoutParallelKickoff(fixture), scheduledLocal: `${dateLocal}T${time}`,
       rescheduledByUid: actorUid, rescheduledAtMs: now,
     });
   });

@@ -1,7 +1,15 @@
 // Keep discovery complete; isolate frequently used HTTP targets on cold start.
 const targets={facebookReview:"./facebookReviewHttp.cjs",kitShop:"./kitShopHttp.cjs",companyClubs:"./companyClubsHttp.cjs",announceFieldPracticeSeason:"./fieldPracticeAnnouncementHttp.cjs"};
 const target=process.env.FUNCTION_TARGET;
-const loaded=target==="fieldRefereeBooth"
+function fieldLiveScore(){
+  const {getApps,initializeApp}=require("firebase-admin/app");
+  if(!getApps().length)initializeApp();
+  return {onFieldLiveScore:require("./fieldLiveScore.cjs").buildHandler({
+    db:require("firebase-admin/firestore").getFirestore(),
+    messaging:require("firebase-admin/messaging").getMessaging(),
+  })};
+}
+const loaded=target==="onFieldLiveScore" ? fieldLiveScore() : target==="fieldRefereeBooth"
   ? {fieldRefereeBooth:require("./fieldBooth.cjs").fieldRefereeBooth}
   : require(targets[target]||"./index.js");
 // Opt-in deploy discovery only. Normal runtime and full deployments remain unchanged.

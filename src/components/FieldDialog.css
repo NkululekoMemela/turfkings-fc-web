@@ -2,3 +2,12 @@
 body:has(.app-root--field) :is(.modal,.tkh-modal)[role=dialog]{background:linear-gradient(145deg,#173f50,#0d2232 75%);color:#edf8fb;border:1px solid #68bdd15c;border-radius:24px;box-shadow:0 24px 90px #0007}
 body:has(.app-root--field) :is(.modal,.tkh-modal)[role=dialog] :is(h2,h3){letter-spacing:-.025em;color:#edf8fb}
 body:has(.app-root--field) :is(.modal,.tkh-modal)[role=dialog] button{border-radius:11px;min-height:42px}
+
+.pool-dialog-backdrop:has(> .field-premium-dialog){background:#050a18cc!important}
+.pool-dialog.field-premium-dialog{background:linear-gradient(145deg,#182846,#0e172b 78%)!important;border-color:#5c7caf!important}
+.field-premium-dialog :is(p,label){color:#d6e4fa}
+.field-premium-dialog input{background:#0b1427;color:#f3f7ff;border-color:#6986b3}
+.field-premium-dialog :focus-visible{outline-color:#9ecbff}
+.field-premium-dialog button{border-color:#526a92;color:#eff5ff}
+.field-premium-dialog button[type=submit]{background:#a7ccff;border-color:#b7d6ff;color:#111f39}
+.field-premium-dialog button[type=submit].is-danger{background:#692e45;color:#fff0f3;border-color:#ca7492}

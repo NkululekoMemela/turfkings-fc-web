@@ -34,3 +34,25 @@ test('live score notifications react to goals and the final whistle, never ordin
  const goal={...before,currentEvents:[{type:'goal',teamId:'a'}]};assert.equal(liveScore.changed(before,goal),true);assert.deepEqual(liveScore.score(goal),[1,0]);
  const final={...goal,status:'completed',finalSummary:{goalsA:1,goalsB:0}};assert.equal(liveScore.changed(goal,final),true);assert.equal(liveScore.changed(final,{...final}),false);
 });
+test('lineups, the two halves and half-time update the same score notification without a goal',()=>{
+ const state={fixtureId:'f',status:'live',awaitingKitVerification:true,clockPhase:'first_half',currentEvents:[]};
+ const first={...state,awaitingKitVerification:false};
+ const half={...first,clockPhase:'halftime',running:false};
+ const second={...half,clockPhase:'second_half',running:true};
+ const full={...second,timeUp:true};
+ assert.deepEqual([state,first,half,second,full].map(liveScore.phase),['pre_match','first_half','halftime','second_half','full_time']);
+ for(const [a,b] of [[state,first],[first,half],[half,second],[second,full]])assert.equal(liveScore.changed(a,b),true);
+ assert.equal(liveScore.changed(half,{...half,secondsLeft:20}),false);
+});
+test('goal alerts identify the scorer, scoring crest side and match minute',()=>{
+ const home={id:'goal1',type:'goal',teamId:'a',scorer:'Home Player',timeSeconds:31};
+ const away={id:'goal2',type:'goal',teamId:'b',scorer:'Away Player',timeSeconds:3305};
+ const before={fixtureId:'f',status:'live',teamAId:'a',teamBId:'b',currentEvents:[]};
+ const first={...before,currentEvents:[home]},second={...before,currentEvents:[home,away]};
+ assert.deepEqual(liveScore.newGoal(before,first),{scorer:'Home Player',minute:'1',side:'home'});
+ assert.deepEqual(liveScore.newGoal(first,second),{scorer:'Away Player',minute:'56',side:'away'});
+ assert.equal(liveScore.newGoal(second,first),null);
+ assert.equal(liveScore.newGoal(second,{...second,status:'completed'}),null);
+ assert.equal(liveScore.newGoal(first,{...second,fixtureId:'new'}),null);
+ assert.equal(liveScore.newGoal(first,{...first,currentEvents:[{...home,scorer:'Corrected Player'}]}),null);
+});

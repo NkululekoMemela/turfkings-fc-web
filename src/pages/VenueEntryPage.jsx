@@ -1,6 +1,5 @@
 import VenuePlayerCardsPage from './VenuePlayerCardsPage.jsx';
 import {FIELD_BOOTH_RETURN_MS} from "../core/fieldBoothRecovery.mjs";
-import FieldActivityNotice from "../components/FieldActivityNotice.jsx";
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import {fieldNavigationReady,fieldEmptyRouteMessage,safeFieldSeason} from "../core/fieldRouteSafety.mjs";
 import {buildPlatformPlayerSnapshot,evaluatePlatformPlayerState} from "../core/platformPlayer/platformPlayerService.js";
@@ -10,6 +9,7 @@ import FieldPageWarmup from "../components/FieldPageWarmup.jsx";
 import VenueLeagueSpectatorPage from "./VenueLeagueSpectatorPage.jsx";
 import "../styles/FieldIdentityHub.css";
 import {fieldFixtureStartTiming} from "../../functions/fieldStartTiming.mjs";
+import {fieldMatchLabel, pickFieldMatch} from "../components/FieldMatchPicker.jsx";
 import {chooseFieldOfficialStart} from "../components/FieldOfficialStartPrompt.jsx";
 import {enterFieldFromNotification} from "../storage/fieldNotificationEntryGateway.js";
 import {fieldEntryMemoryKey,fieldEntryHint} from "../core/fieldNotificationEntry.mjs";
@@ -780,6 +780,8 @@ export default function VenueEntryPage({
   const [portalRetry, setPortalRetry] = useState(0);
 
   const [venuePage, setVenuePageState] = useState("landing");
+  const [officialFixture,setOfficialFixture] = useState(null);
+  const [watchFixture,setWatchFixture] = useState(null);
   const [boothControl,setBoothControl]=useState(false);
   const boothControlRef=useRef(false);
   const handleBoothControl=React.useCallback(value=>{boothControlRef.current=value;setBoothControl(value);},[]);
@@ -5426,7 +5428,7 @@ export default function VenueEntryPage({
     }
 
     const {
-      liveMatch, scheduledFixtures, nextFixture,
+      liveMatch, liveMatches, scheduledFixtures, startableFixtures, nextFixture,
       confirmedTeams, currentMatch,
     } = resolveFieldUpcomingMatch({season: venueSeason, teams});
 
@@ -5715,13 +5717,20 @@ export default function VenueEntryPage({
       );
     }
 
-    if (venuePage === "liveSpectator") return <VenueLeagueSpectatorPage requestedFixtureId={fieldNavTarget?.entryRequest?.fixtureId||""} venue={venue} season={venueSeason||{}} teams={teams} onBack={()=>setVenuePage("landing")}/>;
+    if (venuePage === "liveSpectator") return <VenueLeagueSpectatorPage requestedFixtureId={watchFixture ?? fieldNavTarget?.entryRequest?.fixtureId ?? ""} venue={venue} season={venueSeason||{}} teams={teams} onBack={()=>{setWatchFixture(null);setVenuePage("landing");}}/>;
 
     if (venuePage === "live" && !canOperateFieldMatch) return <VenueLeagueSpectatorPage venue={venue} season={venueSeason||{}} teams={teams} onBack={()=>setVenuePage("landing")}/>;
 
     if (venuePage === "live") {
+      const selected = officialFixture?.venueId === venue.id &&
+        officialFixture?.seasonId === venueSeason?.id ? officialFixture : null;
+      const fixture = selected || liveMatch;
+      const liveDocumentId = fixture?.liveDocumentId || "current";
       return (
         <VenueLiveMatchRuntime
+          key={`${venue.id}:${venueSeason?.id}:${liveDocumentId}`}
+          dataScope={{kind:"venueLeague", environment:"official", venueId:venue.id,
+            seasonId:venueSeason?.id, fixtureId:fixture?.fixtureId, liveDocumentId}}
           venue={venue}
           season={venueSeason}
           teams={teams}
@@ -5731,7 +5740,7 @@ export default function VenueEntryPage({
           canOperateMatch={canOperateFieldMatch}
           onControlState={handleBoothControl}
           viewerOnly={!canOperateFieldMatch}
-          onBack={() => setVenuePage("landing")}
+          onBack={() => {setOfficialFixture(null); setVenuePage("landing");}}
           onGoToStats={() => setVenuePage("stats")}
         />
       );
@@ -5773,7 +5782,6 @@ export default function VenueEntryPage({
         />
       )}
       <FieldPageWarmup venue={venue} season={venueSeason} clubId={(isClubRepresentative || effectiveRole==="club_member")?enteredIdentity?.clubId||"":""} canManageBanking={!isReadOnlyFieldRole&&(isVenueOwner||hasActiveFieldRole)}/>
-      {canOperateFieldMatch&&<FieldActivityNotice venueId={venue.id} onOpen={()=>setVenuePage("actionLog")}/>}
       <VenueLandingPage
         fieldSettingsOnly={venuePage === "settings" && canAccessFieldSettings}
         onSettingsBack={() => setVenuePage("landing")}
@@ -5834,8 +5842,13 @@ export default function VenueEntryPage({
         activeClubId={venue?.id}
         activeClubName={venue?.name}
         teams={teams}
-        currentMatchNo={currentDayMatchNo}
-        currentMatch={currentMatch}
+        currentMatchNo={liveMatch && nextFixture
+          ? (venueSeason.matchDays?.find(day => day.id === nextFixture.matchDayId)
+              ?.fixtureIds?.indexOf(nextFixture.id) ?? -1) + 1 || currentDayMatchNo
+          : currentDayMatchNo}
+        currentMatch={liveMatch && nextFixture ? buildCurrentMatchFromFixture({
+          teamAId: nextFixture.clubAId, teamBId: nextFixture.clubBId,
+        }, confirmedTeams) : currentMatch}
         results={venueSeason?.results || []}
         streaks={venueSeason?.streaks || {}}
         hasLiveMatch={Boolean(liveMatch)}
@@ -5873,27 +5886,48 @@ export default function VenueEntryPage({
         startMatchDeniedMessage={
           "Only an authorized Field official or referee can start this match."
         }
+        nextFixtureLabel={fieldMatchLabel(nextFixture)}
+        startTeamIds={nextFixture?.clubAId && nextFixture?.clubBId
+          ? [nextFixture.clubAId, nextFixture.clubBId] : []}
+        takeoverTeamIds={liveMatch ? [
+          liveMatch.clubAId || venueSeason?.fixtures?.find(f => f.id === liveMatch.fixtureId)?.clubAId,
+          liveMatch.clubBId || venueSeason?.fixtures?.find(f => f.id === liveMatch.fixtureId)?.clubBId,
+        ] : []}
+        takeoverCount={liveMatches.length}
+        takeoverFixtureLabel={liveMatches.length === 1
+          ? fieldMatchLabel(venueSeason?.fixtures?.find(f => f.id === liveMatch.fixtureId) || liveMatch)
+          : "Choose live fixture"}
+        onTakeoverMatch={canOperateFieldMatch && liveMatches.length ? async () => {
+          const match = await pickFieldMatch("Choose a live match to take over", liveMatches.map(m => ({
+            ...venueSeason?.fixtures?.find(f => f.id === m.fixtureId), ...m,
+          })));
+          if (!match) return;
+          setOfficialFixture({...match, venueId:venue.id, seasonId:venueSeason.id});
+          setVenuePage("live");
+        } : undefined}
         onStartMatch={async () => {
           if (fieldSeasonNeedsAnnouncement(venueSeason)) {
             await fieldAlert("Start the league first, then start its first match.");
-            return;
-          }
-          if (liveMatch) {
-            setVenuePage("live");
             return;
           }
           if (fieldStartPendingRef.current) return;
           fieldStartPendingRef.current = true;
           let startStep = "Prepare Field season";
           try {
-            const fixtureId = nextFixture?.id;
-            if (!venueSeason?.schedulePublishedAtMs || !fixtureId) {
+            if (liveMatch && !startableFixtures.length) {
+              await fieldAlert("No approved parallel fixture is ready. Finish the live match first, or use Takeover to join it.");
+              return;
+            }
+            if (!venueSeason?.schedulePublishedAtMs || !nextFixture?.id) {
               await fieldAlert("Publish fixtures first. Clubs will receive their schedule before match day.");
               setVenuePage(isVenueOwner ? "settings" : "fixtures");
               return;
             }
 
-            const timing = fieldFixtureStartTiming({season:venueSeason,fixture:nextFixture});
+            const fixture = nextFixture;
+            if (!fixture) return;
+            const fixtureId = fixture.id;
+            const timing = fieldFixtureStartTiming({season:venueSeason,fixture});
             let earlyStartConfirmed = false;
             let earlyStartReason = "";
             if (timing.needsConfirmation) {
@@ -5904,7 +5938,7 @@ export default function VenueEntryPage({
               if(earlyStartConfirmed){earlyStartReason=String(await fieldPrompt("Why are you starting Official play outside its scheduled time?")||'').trim();if(earlyStartReason.length<5)return;}
             }
             startStep = "Start Field fixture";
-            await startVenueFixture({
+            const started = await startVenueFixture({
               seasonId: venueSeason.id,
               venueId: venue?.id,
               fixtureId, earlyStartConfirmed, earlyStartReason,
@@ -5919,6 +5953,7 @@ export default function VenueEntryPage({
               currentMatchNo: Number(venueSeason?.currentMatchNo) || 1,
             });
 
+            setOfficialFixture({...started, venueId:venue.id, seasonId:venueSeason.id});
             setVenuePage("live");
           } catch (error) {
             console.error("[Field Start Match]", startStep, error);
@@ -5933,7 +5968,10 @@ export default function VenueEntryPage({
             (await fieldAlert("No Field match is live yet."));
             return;
           }
-          setVenuePage("live");
+          const match = await pickFieldMatch("Choose a live match to watch", liveMatches);
+          if (!match && liveMatches.length) return;
+          setWatchFixture(match?.fixtureId || "");
+          setVenuePage("liveSpectator");
         }}
         onGoToStats={() => setVenuePage("stats")}
         onGoToFormations={() => setVenuePage("formations")}
@@ -5947,13 +5985,15 @@ export default function VenueEntryPage({
             return;
           }
 
-          const fixture = liveMatch
+          const cameraMatch = await pickFieldMatch("Choose a live match to film", liveMatches);
+          if (!cameraMatch && liveMatches.length) return;
+          const fixture = cameraMatch
             ? (venueSeason?.fixtures || []).find(
-                (item) => item.id === liveMatch.fixtureId
+                (item) => item.id === cameraMatch.fixtureId
               )
             : nextFixture;
           if (!fixture?.id || !venueSeason?.id) {
-            if (liveMatch) {
+            if (cameraMatch) {
               (await fieldAlert("The live match's fixture could not be loaded. Return to the live match and retry Camera."
               ));
               return;
@@ -5978,18 +6018,27 @@ export default function VenueEntryPage({
 
           const matchId =
             `venue__${venue.id}__${venueSeason.id}__${fixture.id}`;
-          const playerSnapshot = await loadVenuePaidMatchPlayers({
-            firestore: db,
-            scope: {
-              kind: "venueLeague", environment: "official",
-              venueId: venue.id, seasonId: venueSeason.id,
-            },
-            fixtureId: fixture.id,
-          });
-          const players = playerSnapshot.docs.map((snap) => ({
-            id: snap.id,
-            ...(snap.data() || {}),
-          }));
+          let players = [];
+          let lineupUnavailable = false;
+          if (auth.currentUser?.uid) {
+            try {
+              const snapshot = await loadVenuePaidMatchPlayers({
+                firestore: db,
+                scope: {
+                  kind: "venueLeague", environment: "official",
+                  venueId: venue.id, seasonId: venueSeason.id,
+                },
+                fixtureId: fixture.id,
+              });
+              players = snapshot.docs.map((snap) => ({
+                id: snap.id,
+                ...(snap.data() || {}),
+              }));
+            } catch (error) {
+              lineupUnavailable = true;
+              console.warn("[Field Camera] Lineup unavailable", error);
+            }
+          }
           const cameraTeam = (clubId, fallbackName) => {
             const club = mappedTeams.find((team) => team.id === clubId);
             return {
@@ -6014,7 +6063,7 @@ export default function VenueEntryPage({
 
           const teamA = cameraTeam(fixture.clubAId, fixture.clubAName);
           const teamB = cameraTeam(fixture.clubBId, fixture.clubBName);
-          const matchNo = Number(liveMatch?.matchNo ||
+          const matchNo = Number(cameraMatch?.matchNo ||
             venueSeason.currentMatchNo) || 1;
           const fixtureContext = {
             fixtureId: fixture.id,
@@ -6024,7 +6073,7 @@ export default function VenueEntryPage({
             gameFormat: venueSeason.gameFormat || "5_V_5",
             matchNo,
             seasonId: venueSeason.id,
-            refereeMatchStarted: Boolean(liveMatch),
+            refereeMatchStarted: Boolean(cameraMatch),
             teamA,
             teamB,
           };
@@ -6034,7 +6083,7 @@ export default function VenueEntryPage({
             const payload = {
               sourceApp: "5 Asides Near Me",
               canUseOutsideOfficialMatch: true,
-              matchIsLive: Boolean(liveMatch),
+              matchIsLive: Boolean(cameraMatch),
               matchId,
               seasonId: venueSeason.id,
               matchNo,
@@ -6069,9 +6118,14 @@ export default function VenueEntryPage({
               dataScope: "official",
               fixtureContext,
             });
-            window.location.href = buildAuthorizedCameraDeepLink({
+            const link = buildAuthorizedCameraDeepLink({
               handoffId: handoff.handoffId,
             });
+            if (await fieldConfirm(lineupUnavailable
+              ? "The camera is ready, but the lineup could not be loaded. Continue to open Camera without player names."
+              : "The camera is ready. Tap Continue to open Camera.")) {
+              window.location.href = link;
+            }
           } catch (error) {
             if (error?.code !== "camera/not-authorized") {
               console.error("[Field Camera] handoff failed", error);
@@ -6079,7 +6133,7 @@ export default function VenueEntryPage({
               return;
             }
 
-            if (!liveMatch) {
+            if (!cameraMatch) {
               openPhoneOnlyCamera(
                 "This fixture is not live. Your recording will stay on your device."
               );

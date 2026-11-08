@@ -3,7 +3,7 @@ import {collection, onSnapshot} from "firebase/firestore";
 import {db} from "../firebaseConfig.js";
 import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
 
-export default function FieldPracticeBookings({scope, season, nextFixture, onReady}) {
+export default function FieldPracticeBookings({scope, season, nextFixture, onReady, receiptCheck, onReceiptCheck}) {
   if (scope.environment !== "practice") throw Error("This view requires a Practice session.");
   const root = venueLeagueRootPath(scope);
   const dayId = nextFixture?.matchDayId;
@@ -19,8 +19,11 @@ export default function FieldPracticeBookings({scope, season, nextFixture, onRea
   const isBooked = manifest => manifest?.environment === "practice" && manifest?.simulated === true &&
     manifest?.practiceSessionId === scope.practiceSessionId && manifest?.seasonId === season?.id &&
     manifest?.matchDayId === dayId;
-  const ready = Boolean(manifests && nextFixture && [nextFixture.clubAId,nextFixture.clubBId]
+  const entryConfirmed = Boolean(nextFixture && receiptCheck?.seasonId === season?.id &&
+    receiptCheck?.fixtureId === nextFixture.id);
+  const bothBooked = Boolean(manifests && nextFixture && [nextFixture.clubAId,nextFixture.clubBId]
     .every(id => isBooked(manifests.get(id)) && manifests.get(id).confirmed));
+  const ready = bothBooked && entryConfirmed;
   useEffect(() => { onReady?.(ready); return () => onReady?.(false); }, [onReady, ready]);
   const invited = Object.values(season?.invitations || {});
   return (
@@ -31,6 +34,14 @@ export default function FieldPracticeBookings({scope, season, nextFixture, onRea
         : season?.announcedAtMs ? "There is no upcoming match day yet." : "Announce a season to invite sandbox Clubs."}</p>
       {key && !manifests && <p role="status">{loaded?.key === key && loaded.error
         ? "Could not load the sandbox squads." : "Checking the sandbox squads…"}</p>}
+      {nextFixture && <div>
+        <h3>Club-to-Field entry</h3>
+        <p>Check the two Clubs’ simulated entry records independently of their player bookings. A company-funded Club can use an authorised company entry.</p>
+        <button type="button" className="secondary-btn" disabled={!bothBooked || entryConfirmed}
+          onClick={() => onReceiptCheck({seasonId:season.id,fixtureId:nextFixture.id})}>
+          {entryConfirmed ? "Practice entry records confirmed" : "Confirm simulated entry records"}
+        </button>
+      </div>}
       <ul>{invited.map(item => {
         const manifest = manifests?.get(item.clubId);
         const booked = isBooked(manifest);

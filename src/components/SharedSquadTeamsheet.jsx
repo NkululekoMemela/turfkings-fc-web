@@ -16,6 +16,7 @@ export default function SharedSquadTeamsheet({
   displayNameOf,
   fieldTeamsheet = false,
   headerActions = null,
+  downloadSibling = null,
   exportBusy = false,
 }) {
     return (
@@ -23,11 +24,12 @@ export default function SharedSquadTeamsheet({
         <div className="teamsheet-export-actions">
           <div>
             <h3>Upcoming game teamsheet</h3>
-            {!fieldTeamsheet&&<p className="muted small">Share this with the group after saving squads.</p>}
           </div>
 
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8,minWidth:0}}>
           {headerActions}
+          <div className={downloadSibling ? "club-teamsheet-buttons" : undefined}>
+          {downloadSibling}
           <button
             type="button"
             className="secondary-btn"
@@ -36,6 +38,7 @@ export default function SharedSquadTeamsheet({
           >
             {exportBusy ? "Preparing…" : "Download teamsheet"}
           </button>
+          </div>
           </div>
         </div>
 

@@ -1,3 +1,4 @@
+import FieldTakeoverRequestButton from "../components/FieldTakeoverRequestButton.jsx";
 import RefereeEventList from "../components/RefereeEventList.jsx";
 import RefereeReplacementAlert from "../components/RefereeReplacementAlert.jsx";
 import RefereePlayerLabel from "../components/RefereePlayerLabel.jsx";
@@ -73,16 +74,8 @@ import {
   PLAYER_AVAILABILITY,
 } from "../core/playerRotation.js";
 
-const MATCH_DOC_ID = "current";
-
-function resolveLiveMatchDoc(
-  dataScope = null
-) {
-  return getVenueLiveMatchDoc(
-    db,
-    dataScope,
-    MATCH_DOC_ID
-  );
+function resolveLiveMatchDoc(dataScope = null) {
+  return getVenueLiveMatchDoc(db, dataScope);
 }
 const SOUND_URL = `${import.meta.env.BASE_URL}alarm.mp4`;
 import TeamIdentityEditor from "../components/TeamIdentityEditor";
@@ -2786,7 +2779,7 @@ function LineupBoard({
                     numberBelow
                     name={displayCompactPlayerName(p)}
                     isSelected={isSelected}
-                    onClick={() => handleBenchClick(p)}
+                    data-practice-guide="match-bench-player" onClick={() => handleBenchClick(p)}
                     photoData={photoData}
                     disabled={disabled}
                     suffix={isGuest ? " (Guest)" : ""}
@@ -2873,6 +2866,7 @@ export function VenueLeagueLiveMatchPage({
   canControlCurrentLiveMatch = false,
   onTakeOverLiveMatch,
   onRequestTakeOverLiveMatch,
+  takeoverRecoveryError,
   onAcceptTakeoverRequest,
   onRejectTakeoverRequest,
   pendingMatchStartContext = null,
@@ -6885,13 +6879,9 @@ export function VenueLeagueLiveMatchPage({
           </div>
 
           {!canControlCurrentLiveMatch ? (
-            <button
-              className="secondary-btn"
-              type="button"
-              onClick={onRequestTakeOverLiveMatch}
-            >
-              🥷 Request Takeover
-            </button>
+            <FieldTakeoverRequestButton request={liveMatchTakeoverRequest}
+              deviceId={refereeDeviceId} onRequest={onRequestTakeOverLiveMatch}
+              recoveryError={takeoverRecoveryError} />
           ) : (
             <span className="muted small">
               You control this live match
@@ -6971,6 +6961,7 @@ export function VenueLeagueLiveMatchPage({
                   setSelectedDisciplinePlayer(null);
                   setShowCardRecorder(true);
                 }}
+                data-practice-guide="match-discipline"
                 title="Open match discipline"
                 aria-label="Open match discipline"
               >
@@ -6983,6 +6974,7 @@ export function VenueLeagueLiveMatchPage({
                 type="button"
                 className="secondary-btn live-card-settings-btn"
                 onClick={() => setShowInjuryRecorder(true)}
+                data-practice-guide="match-injury"
                 title="Open injured players"
                 aria-label="Open injured players"
               >
@@ -7061,7 +7053,7 @@ export function VenueLeagueLiveMatchPage({
                 }}
                 disabled={!playersReady}
               >
-                🧑 Edit Lineups
+                <span data-practice-guide="match-edit-lineups">🧑 Edit Lineups</span>
               </button>
 
             </div>
@@ -7377,7 +7369,7 @@ export function VenueLeagueLiveMatchPage({
                                           <span aria-hidden="true">
                                             🟨
                                           </span>
-                                          {yellowEvent ? "Second yellow → red" : "Yellow card"}
+                                          <span data-practice-guide="match-card-record">{yellowEvent ? "Second yellow → red" : "Yellow card"}</span>
                                         </button>
                                       ) : null}
 
@@ -7780,7 +7772,7 @@ export function VenueLeagueLiveMatchPage({
                                           <span aria-hidden="true">
                                             🤕
                                           </span>
-                                          Sitting out
+                                          <span data-practice-guide="match-injury-record">Sitting out</span>
                                         </button>
                                       ) : null}
 

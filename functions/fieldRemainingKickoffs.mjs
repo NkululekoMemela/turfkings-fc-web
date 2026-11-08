@@ -1,3 +1,5 @@
+import {withoutParallelKickoff} from "./fieldParallelKickoffs.mjs";
+
 export function rescheduleRemainingKickoffs({
   season, matchDayId, startTime, actorUid, liveMatch = null,
   now = Date.now(),
@@ -57,7 +59,7 @@ export function rescheduleRemainingKickoffs({
       throw new Error("The remaining games will not fit before midnight.");
     }
     replacements.set(fixture.id, {
-      ...fixture,
+      ...withoutParallelKickoff(fixture),
       scheduledLocal: new Date(kickoff + 7200000).toISOString().slice(0, 16),
       rescheduledByUid: actorUid, rescheduledAtMs: now,
     });

@@ -115,7 +115,7 @@ export function FieldFixtureCard({
         }
       }}>
       <div className="field-fixture-meta">
-        <span>{fixture.scheduledLocal?.slice(11, 16) || "Time TBC"} · SAST</span>
+        <span>{fixture.scheduledLocal?.slice(11, 16) || "Time TBC"} · SAST{fixture.pitchNumber ? ` · Pitch ${fixture.pitchNumber}` : ""}</span>
         <span>{date}</span>
       </div>
       <div className="field-fixture-pair">

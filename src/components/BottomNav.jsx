@@ -158,20 +158,6 @@ export default function BottomNav({
       <ClubTicketPeek buttonRef={payButtonRef} clubId={ticketClubId} memberId={ticketMemberId} enabled={ticketEnabled&&canAccessPayments&&!locked} navHidden={isHidden||hidden}/>
 
       <style>{`
-        .club-baseline-peek {
-          position: fixed;
-          z-index: 11000;
-          transform: translate(-50%, -100%);
-          padding: 7px 10px;
-          border-radius: 10px;
-          background: #e9b94b;
-          color: #17212c;
-          box-shadow: 0 4px 14px #0006;
-          pointer-events: none;
-          white-space: nowrap;
-          font-size: .8rem;
-          font-weight: 800;
-        }
         .app-root {
           padding-bottom: 82px;
         }

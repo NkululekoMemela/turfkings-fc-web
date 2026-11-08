@@ -1,7 +1,7 @@
 import {fieldMatchStatEvents} from "./fieldDefensiveStats.mjs";
 import rotation from "../fieldResultRotation.cjs";
 const {computeNextFromResult}=rotation;
-export function completeBoothSeason({season, fixtureId, summary, currentEvents, confirmedLineupSnapshot, lineupTimeline, playedSeconds, uid}) {
+export function completeBoothSeason({season, fixtureId, summary, currentEvents, confirmedLineupSnapshot, lineupTimeline, playedSeconds, startedMatchNo, uid}) {
  const fixtureIndex=(season.fixtures||[]).findIndex(f=>f.id===fixtureId);
  const fixtures=season.fixtures||[], fixture=fixtures[fixtureIndex], liveMatch=season.liveMatches?.[fixtureId], user={uid};
  if(!fixture || liveMatch?.status!=="live")throw Error("This match is no longer live.");
@@ -45,12 +45,12 @@ export function completeBoothSeason({season, fixtureId, summary, currentEvents, 
       }
 
       const rotation = computeNextFromResult(
-        season.streaks || {},
+        Object.fromEntries([teamAId, teamBId, standbyId].map(id => [id, season.streaks?.[id] || 0])),
         { teamAId, teamBId, standbyId, goalsA, goalsB }
       );
 
       const matchNo =
-        Number(season.currentMatchNo) ||
+        Number(liveMatch.matchNo) || Number(startedMatchNo) || Number(season.currentMatchNo) ||
         (
           Array.isArray(season.results)
             ? season.results.length + 1
@@ -130,7 +130,7 @@ export function completeBoothSeason({season, fixtureId, summary, currentEvents, 
         );
 
       const nextFixture = nextFixtures.find(
-        (item) => item?.status === "scheduled"
+        (item) => item?.status === "scheduled" && season.liveMatches?.[item.id]?.status !== "live"
       );
       const nextCurrentMatch = nextFixture
         ? {teamAId: nextFixture.clubAId, teamBId: nextFixture.clubBId, standbyId: (season.clubIds || []).find(id => id !== nextFixture.clubAId && id !== nextFixture.clubBId)}
@@ -178,9 +178,9 @@ export function completeBoothSeason({season, fixtureId, summary, currentEvents, 
           ...(Array.isArray(season.allEvents) ? season.allEvents : []),
           ...allCommittedEvents,
         ],
-        currentMatchNo: matchNo + 1,
+        currentMatchNo: Math.max(Number(season.currentMatchNo) || 1, matchNo + 1),
         currentMatch: nextCurrentMatch,
-        streaks: rotation.updatedStreaks,
+        streaks: {...season.streaks, ...rotation.updatedStreaks},
         updatedAtMs: completedAtMs,
       };
 

@@ -61,7 +61,7 @@ function requireSafeId(value, label) {
 export function getVenueLiveMatchDoc(
   firestore,
   scope,
-  documentId = "current"
+  documentId = scope?.environment !== "practice" ? scope?.liveDocumentId || "current" : "current"
 ) {
   const normalized = normalizeVenueLeagueScope(
     scope,
@@ -321,7 +321,7 @@ export function subscribeVenueLiveMatch({scope,onData,onError}) {
   const official = scope.environment !== "practice";
   const saved = official ? readBooth(scope) : null;
   if (saved?.state) onData?.(recoverFieldClock(saved.state), {fromCache: true});
-  return onSnapshot(getVenueLiveMatchDoc(db, scope, "current"), {includeMetadataChanges:true}, snapshot => {
+  return onSnapshot(getVenueLiveMatchDoc(db, scope), {includeMetadataChanges:true}, snapshot => {
     const local = official ? readBooth(scope) : null;
     if (snapshot.metadata.fromCache && local?.state) {
       onData?.(recoverFieldClock(local.state), {fromCache:true}); return;

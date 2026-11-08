@@ -1,3 +1,4 @@
+import {clubFixtureHighlightMatchId,clipBelongsToLiveFixture} from "../core/liveFixtureClips.mjs";
 // src/pages/SpectatorPage.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -463,8 +464,6 @@ export function SpectatorPage(props) {
   const activeClubId =
     String(props.activeClubId || "turf-kings").trim();
   const dataScope = props.dataScope || null;
-  const liveHighlightsMatchId =
-    String(props.currentVideoHighlightsMatchId || "").trim();
   const matchDaySnapshot =
     props.matchDaySpectatorSnapshot &&
     typeof props.matchDaySpectatorSnapshot === "object"
@@ -478,7 +477,7 @@ export function SpectatorPage(props) {
   const hasUpcomingMatch =
     props.hasUpcomingMatch !== false;
   const highlightsClubId =
-    String(props.videoHighlightsClubId || "turf-kings").trim();
+    String(props.videoHighlightsClubId || activeClubId).trim();
 
   const [matchDoc, setMatchDoc] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -488,11 +487,14 @@ export function SpectatorPage(props) {
   const [matchReelIndex, setMatchReelIndex] = useState(0);
 
   const displayMatchDoc = matchDoc || matchDaySnapshot;
-  const highlightsMatchId = String(
-    matchDoc
-      ? liveHighlightsMatchId
-      : matchDaySnapshot?.videoHighlightsMatchId || ""
-  ).trim();
+  const highlightsMatchId = clubFixtureHighlightMatchId(
+    displayMatchDoc, dataScope?.seasonId || props.activeSeasonId,
+  );
+  const highlightsKey = highlightsMatchId && [
+    highlightsClubId, highlightsMatchId, displayMatchDoc?.matchNumber,
+    displayMatchDoc?.startedAtISO || displayMatchDoc?.createdAt?.toMillis?.(),
+    displayMatchDoc?.teamAId, displayMatchDoc?.teamBId,
+  ].join(":");
 
   // local countdown state for smoother timer
   const [localSecondsLeft, setLocalSecondsLeft] = useState(null);
@@ -548,24 +550,20 @@ export function SpectatorPage(props) {
   }, [expectedMatchType, activeClubId, dataScope]);
 
   useEffect(() => {
-    setMatchHighlights([]);
-
-    return subscribeToMatchHighlights({
+    if (!highlightsKey || dataScope?.environment === "practice") return;
+    let active = true;
+    const stop = subscribeToMatchHighlights({
       matchId: highlightsMatchId,
       clubId: highlightsClubId,
-      onChange: setMatchHighlights,
-      onError: (error) => {
-        console.error(
-          "Spectator match-highlight listener failed:",
-          error
-        );
-        setMatchHighlights([]);
-      },
+      onChange: items => { if (active) setMatchHighlights({key: highlightsKey, items}); },
+      onError: () => { if (active) setMatchHighlights({key: highlightsKey, items: []}); },
     });
-  }, [highlightsMatchId, highlightsClubId]);
+    return () => { active = false; stop(); };
+  }, [highlightsKey, highlightsMatchId, highlightsClubId, dataScope?.environment]);
 
   const orderedMatchHighlights = useMemo(() => {
-    return [...matchHighlights].sort((a, b) => {
+    const items = matchHighlights.key === highlightsKey ? matchHighlights.items : [];
+    return items.filter(clip => clipBelongsToLiveFixture(clip, {matchId: highlightsMatchId, match: displayMatchDoc})).sort((a, b) => {
       const aSeconds = getSpectatorHighlightSeconds(a);
       const bSeconds = getSpectatorHighlightSeconds(b);
 
@@ -578,7 +576,7 @@ export function SpectatorPage(props) {
         getSpectatorHighlightCreatedAt(b)
       );
     });
-  }, [matchHighlights]);
+  }, [matchHighlights, highlightsKey, highlightsMatchId, displayMatchDoc]);
 
   useEffect(() => {
     if (!orderedMatchHighlights.length) {

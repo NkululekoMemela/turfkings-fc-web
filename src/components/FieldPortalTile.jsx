@@ -143,7 +143,7 @@ export default function FieldPortalTile({
   );
 }
 
-export function FieldPortalDialog({ children, onClose, fullscreen = false }) {
+export function FieldPortalDialog({ children, onClose, fullscreen = false, label = "Club Field membership" }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -170,7 +170,7 @@ export function FieldPortalDialog({ children, onClose, fullscreen = false }) {
         }
       }
     }}>
-      <div ref={ref} className={fullscreen ? "field-discovery-screen__body" : undefined} role="dialog" aria-modal="true" aria-label="Club Field membership"
+      <div ref={ref} className={fullscreen ? "field-discovery-screen__body" : undefined} role="dialog" aria-modal="true" aria-label={label}
         style={{
           boxSizing: "border-box", width: "min(100%,460px)",
           minWidth: 0, maxHeight: "calc(100dvh - 24px)",

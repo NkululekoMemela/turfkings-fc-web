@@ -307,3 +307,49 @@
 .app-root--field .fanm-club-chat-card.is-modal-open .fanm-club-chat-messages::before {
   color: var(--field-chat-canvas-text) !important;
 }
+
+.field-start-tile { position: relative; min-width: 0; }
+.field-start-tile > .primary-btn { height: 100%; }
+.field-start-tile > .field-takeover-badge {
+  position: absolute; inset-block-start: -9px; inset-inline-end: 2px; z-index: 1;
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 29px; margin: 0; padding: 3px 6px; max-width: calc(100% - 10px);
+  border: 1px solid #94c9ff80; border-radius: 999px;
+  color: #e6f4ff; background: linear-gradient(145deg, #203a61, #0a152b 80%);
+  box-shadow: inset 0 1px 0 #ffffff48, 0 5px 9px #030d28b3, 0 1px 2px #030d28cc;
+  cursor: pointer;
+}
+.field-takeover-badge:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+.field-takeover-label { font-size: 9px; font-weight: 750; line-height: 1; }
+.field-tile-crests { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.field-tile-crests > small { font-size: 9px; font-weight: 750; line-height: 1; }
+.field-tile-crest {
+  display: grid; place-items: center; width: 18px; height: 18px;
+  font-size: 7px; font-weight: 800; line-height: 1;
+}
+.field-tile-crest img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.field-start-fixture {
+  position: absolute; inset-inline: 0; inset-block-end: 8px;
+  display: flex; justify-content: center; pointer-events: none;
+  color: #081b37;
+}
+.field-start-fixture .field-tile-crest { width: 21px; height: 21px; }
+.field-takeover-badge > small { font-size: 9px; font-weight: 800; }
+
+.field-takeover-arrow { color: #a9e1ff; font-size: 12px; line-height: 1; }
+.field-tile-crest {
+  border-radius: 50%; box-sizing: border-box; padding: 2px;
+  background: #f5f9ff; color: #101e36; border: 1px solid #b4c6df;
+}
+.field-start-fixture .field-tile-crest { width: 24px; height: 24px; }
+.field-start-fixture--waiting { font-size: 9px; font-weight: 700; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .field-start-tile > .field-takeover-badge {
+    animation: field-takeover-nudge 1.8s ease-in-out 500ms 2;
+  }
+}
+@keyframes field-takeover-nudge {
+  0%, 50%, 100% { translate: 0 0; }
+  20% { translate: 0 -3px; }
+}

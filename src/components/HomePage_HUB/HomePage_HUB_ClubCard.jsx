@@ -226,7 +226,7 @@ export default function HomePage_HUB_ClubCard({
                   onDeleteClub?.(club);
                 }}
               >
-                {busy ? "Deleting…" : `Delete ${entityLabel}`}
+                {busy ? "Archiving…" : `Archive ${entityLabel}`}
               </button>
             ) : null}
           </div>

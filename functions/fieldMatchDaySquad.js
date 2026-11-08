@@ -365,12 +365,14 @@ async function getFieldDay({db, user, body}) {
       });
     }
     if (!allowed) throw new Error("Sign in as Field staff or a participating Club member.");
-    const currentLive=(await tx.get(db.doc(`leagueVenues/${venueId}/seasons/${seasonId}/matches/current`))).data();
+    const {fieldMatchDocumentId} = require("./fieldMatchDocuments.cjs");
     const result = await Promise.all(clubs.map(async club => {
       const fixture = (season.fixtures || []).find(item => item.matchDayId === matchDayId &&
         [item.clubAId, item.clubBId].includes(club.clubId));
       if (!fixture) return {...club, status: "bye", players: []};
-      const liveRoster=require("./rollingFieldSquad.cjs").liveDayRoster({live:currentLive,season,matchDayId,clubId:club.clubId});
+      const liveId = fieldMatchDocumentId(season, fixture.id);
+      const live = (await tx.get(db.doc(`leagueVenues/${venueId}/seasons/${seasonId}/matches/${liveId}`))).data();
+      const liveRoster=require("./rollingFieldSquad.cjs").liveDayRoster({live,season,matchDayId,clubId:club.clubId});
       if(liveRoster)return {...club,...liveRoster};
       const completed=require("./rollingFieldSquad.cjs").completedDayRoster({season,fixture,clubId:club.clubId});
       if(completed)return {...club,...completed};

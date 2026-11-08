@@ -53,3 +53,51 @@
   }
   .app-root--landing .landing-page :is(button,a) { touch-action: manipulation; }
 }
+
+/* FANM ribbon recovery: Club only */
+/* Keep the crest square even when a long title needs to wrap. */
+.app-root .club-page-ribbon .field-ribbon-logo,
+.app-root--landing .landing-wave-header .tk-logo {
+  --crest-size: clamp(38px, 12vw, 52px);
+  box-sizing: border-box;
+  width: var(--crest-size) !important;
+  height: var(--crest-size) !important;
+  min-width: var(--crest-size) !important;
+  min-height: var(--crest-size) !important;
+  max-width: var(--crest-size) !important;
+  max-height: var(--crest-size) !important;
+  flex: 0 0 var(--crest-size) !important;
+  border-radius: 50% !important;
+  clip-path: circle(50%);
+  object-fit: contain !important;
+}
+.app-root:has(.club-page-ribbon), .app-root .page:has(> .club-page-ribbon) {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.app-root:not(.app-root--field) .club-page-ribbon {
+  position: sticky !important;
+  top: 0 !important;
+}
+.app-root.app-root--landing > .landing-page > .landing-header-sticky {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+
+/* Clip at the app edge, never at the narrower Club content column. */
+.app-root:not(.app-root--field):has(.club-page-ribbon) {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+.app-root:not(.app-root--field) .page:has(.club-page-ribbon) {
+  overflow: visible;
+}
+.app-root.app-root--landing > .landing-page > .landing-header-sticky {
+  box-sizing: border-box;
+  width: calc(100% + var(--club-ribbon-left, 0px) + var(--club-ribbon-right, 0px)) !important;
+  max-width: none !important;
+  margin-left: calc(-1 * var(--club-ribbon-left, 0px)) !important;
+  margin-right: calc(-1 * var(--club-ribbon-right, 0px)) !important;
+}

@@ -1,6 +1,7 @@
 const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const {getFirestore, Timestamp} = require("firebase-admin/firestore");
+const {clubsAlreadyPlaying} = require("./fieldMatchDocuments.cjs");
 const {randomUUID} = require("node:crypto");
 
 exports.approvalHandler = async (req, res, dependencies = {}) => {
@@ -34,6 +35,7 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
         );
         if (!venueSnap.exists) throw new Error("Field no longer exists.");
         const venue = venueSnap.data();
+        if (venue.deleted || venue.status === "deleted") throw new Error("This Field is archived.");
         const staff = staffSnap.data();
         if (venue.ownerUid !== user.uid &&
             !(staff?.status === "active" &&
@@ -51,10 +53,15 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
             fixture?.status !== "scheduled" ||
             day?.status !== "scheduled" ||
             !day.fixtureIds?.includes(fixtureId) ||
-            season.liveMatches?.[fixtureId] ||
-            Object.values(season.liveMatches || {})
-              .some(item => item.status === "live")) {
+            season.liveMatches?.[fixtureId]) {
           throw new Error("This fixture is unavailable.");
+        }
+        if (clubsAlreadyPlaying(season, fixture)) {
+          throw new Error("A club in this fixture is already playing.");
+        }
+        const {canStartBesideLiveFixtures} = await import("./fieldParallelKickoffs.mjs");
+        if (!canStartBesideLiveFixtures(season, fixture)) {
+          throw new Error("Finish the live match first, unless these fixtures share an approved parallel kickoff.");
         }
         const {assertFieldMatchDayProgression} =
           await import("./fieldMatchDayProgression.mjs");
@@ -94,6 +101,7 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
           startingLineups, sourceFormations,
           matchDayHistory: season.matchDayHistory || [],
           matchDays: season.matchDays || [],
+          liveMatchesAtApproval: season.liveMatches || {},
           expiresAt: Timestamp.fromMillis(Date.now() + 60000),
         });
       });

@@ -1,11 +1,16 @@
 const list=x=>Array.isArray(x)?x:[];
 const stamp=x=>typeof x?.toMillis==='function'?x.toMillis():typeof x==='number'?x:Date.parse(x||'');
 const scheduledAt=value=>stamp(value?(String(value).match(/[zZ]|[+-]\d\d:\d\d$/)?value:value+'+02:00'):'');
-export function fieldSpectatorView({season={},live=null,now=Date.now()}) {
- if(live?.status==='live'&&!live.isFinished)return {kind:'live',match:live};
+export function fieldSpectatorView({season={},live=null,now=Date.now(),requestedFixtureId=""}) {
  season=season||{};
  const fixtures=list(season.fixtures),results=[...list(season.matchDayHistory).flatMap(d=>list(d.results)),...list(season.results)];
  const unique=[...new Map(results.map((r,i)=>[r.fixtureId||r.id||`row-${i}`,r])).values()].filter(r=>r.status==='completed');
+ const matches = item => (item?.fixtureId || item?.id) === requestedFixtureId;
+ if(live?.status==='live'&&!live.isFinished&&(!requestedFixtureId||matches(live)))return {kind:'live',match:live};
+ if(requestedFixtureId){
+  const result=unique.find(matches)||(matches(live)&&(live.status==='completed'||live.isFinished)?live:null);
+  return result?{kind:'result',match:result}:{kind:'empty',match:null};
+ }
  const at=r=>stamp(r.completedAtMs||r.completedAt||r.endedAtMs)||scheduledAt(fixtures.find(f=>f.id===r.fixtureId)?.scheduledLocal)||0;
  const last=unique.sort((a,b)=>at(b)-at(a))[0]||(live?.status==='completed'?live:null);
  const next=fixtures.filter(f=>f.status==='scheduled').map(f=>({...f,atMs:stamp(f.scheduledLocal?(f.scheduledLocal.match(/[zZ]|[+-]\d\d:\d\d$/)?f.scheduledLocal:f.scheduledLocal+'+02:00'):'')})).filter(f=>f.atMs>=now).sort((a,b)=>a.atMs-b.atMs)[0];

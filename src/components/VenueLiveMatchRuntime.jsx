@@ -64,6 +64,7 @@ export default function VenueLiveMatchRuntime({
   }, [
     venue?.id, season?.id, dataScope?.environment,
     dataScope?.practiceSessionId, dataScope?.venueId, dataScope?.seasonId,
+    dataScope?.fixtureId, dataScope?.liveDocumentId,
   ]);
 
   useEffect(()=>{
@@ -108,11 +109,22 @@ export default function VenueLiveMatchRuntime({
   const practiceVerified = Boolean(liveState?.confirmedLineupSnapshot &&
     !liveState.awaitingKitVerification);
   const practiceHasGoal = currentEvents.some(event => event.type === "goal");
+  const timeline = Array.isArray(liveState?.lineupTimeline) ? liveState.lineupTimeline : [];
+  const practiceHasSubstitution = scope.environment === "practice" && timeline.some((item,index) => {
+    if (!index) return false;
+    return Object.entries(item.snapshots || {}).some(([teamId, lineup]) => {
+      const before = new Set(Object.values(timeline[index - 1].snapshots?.[teamId]?.positions || {}).filter(Boolean));
+      return before.size > 0 && Object.values(lineup?.positions || {}).some(name => name && !before.has(name));
+    });
+  });
+  const practiceHasCard = currentEvents.some(event => ["yellow_card","red_card"].includes(event.type));
+  const practiceHasInjury = currentEvents.some(event => ["injury_knock","injury_sitting_out"].includes(event.type));
+  const practiceSecondHalf = ["second_half","full_time"].includes(liveState?.clockPhase);
   useEffect(() => {
     if (scope.environment !== "practice" || !onPracticeProgress) return undefined;
-    onPracticeProgress({verified: practiceVerified, hasGoal: practiceHasGoal});
+    onPracticeProgress({verified: practiceVerified, hasGoal: practiceHasGoal, hasSubstitution:practiceHasSubstitution, hasCard:practiceHasCard, hasInjury:practiceHasInjury, secondHalf:practiceSecondHalf});
     return () => onPracticeProgress(null);
-  }, [scope.environment, onPracticeProgress, practiceVerified, practiceHasGoal]);
+  }, [scope.environment, onPracticeProgress, practiceVerified, practiceHasGoal, practiceHasSubstitution, practiceHasCard, practiceHasInjury, practiceSecondHalf]);
 
   const [loadAttempt,setLoadAttempt]=useState(0);
   const [finishPending,setFinishPending]=useState(()=>scope.environment!=="practice" && Boolean(readBooth(scope)?.finishSummary));
@@ -201,6 +213,7 @@ export default function VenueLiveMatchRuntime({
     loadAttempt,
     scope.venueId,
     scope.seasonId,
+    scope.fixtureId, scope.liveDocumentId,
   ]);
 
   const liveController =
@@ -607,10 +620,18 @@ export default function VenueLiveMatchRuntime({
     refereeDeviceId,
   ]);
 
+  const [takeoverRecoveryError, setTakeoverRecoveryError] = useState("");
   const handleRequestTakeOver = useCallback(async () => {
+    setTakeoverRecoveryError("");
     if(scope.environment !== "practice") {
       const result=await boothRequest(scope,"requestTakeover",{fixtureId:liveStateRef.current?.fixtureId});
       if(result.live){rememberBoothContext(scope,result);setLiveState(recoverFieldClock(result.live));}
+      if (result.takeoverRequest) setLiveState(current => {
+        if (!current || current.liveMatchController?.deviceId === refereeDeviceId) return current;
+        const request = current.liveMatchTakeoverRequest;
+        if (Date.parse(request?.requestedAtISO) >= Date.parse(result.takeoverRequest.requestedAtISO)) return current;
+        return {...current, liveMatchTakeoverRequest: result.takeoverRequest};
+      });
       return;
     }
     if (!canUseRefereeControls || canControlCurrentLiveMatch) return;
@@ -630,7 +651,7 @@ export default function VenueLiveMatchRuntime({
     canUseRefereeControls,
     canControlCurrentLiveMatch,
     currentController,
-    persistPatch,
+    persistPatch, refereeDeviceId, scope,
   ]);
 
   const handleRejectTakeOver = useCallback(async () => {
@@ -689,6 +710,7 @@ export default function VenueLiveMatchRuntime({
         window.clearInterval(interval);
         handleTakeOver().catch((error) => {
           console.error("[VenueLiveMatch] Takeover failed:", error);
+          setTakeoverRecoveryError(error.message || "Could not take over. Try again.");
         });
       }
     }, 500);
@@ -965,6 +987,7 @@ export default function VenueLiveMatchRuntime({
       onTakeOverLiveMatch={
         handleTakeOver
       }
+      takeoverRecoveryError={takeoverRecoveryError}
       onRequestTakeOverLiveMatch={
         handleRequestTakeOver
       }

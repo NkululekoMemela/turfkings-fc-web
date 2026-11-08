@@ -1,47 +1,142 @@
-import {visibleFieldMatchEvents} from '../core/fieldMatchFeed.mjs';
-import React,{useEffect,useMemo,useState} from 'react';
-import {getVenueLiveMatchDoc} from '../storage/venueLiveMatchRepository.js';
-import {onSnapshot} from 'firebase/firestore';
-import {db} from '../firebaseConfig.js';
-import {subscribeToMatchHighlights} from '../storage/venueVideoHighlightsRepository.js';
-import {fieldSpectatorView,fieldSpectatorScore} from '../core/fieldSpectatorView.mjs';
-import {fieldHalfSecondsLeft} from '../core/fieldMatchClock.js';
-const clock=n=>`${String(Math.floor(Math.max(0,n)/60)).padStart(2,'0')}:${String(Math.floor(Math.max(0,n)%60)).padStart(2,'0')}`;
-export default function VenueLeagueSpectatorPage({venue,season={},teams=[],dataScope,currentLive=null,requestedFixtureId="",onBack,onBackToLanding,activeClubId}){
- const venueId=venue?.id||dataScope?.venueId||activeClubId||'';
- const scope=useMemo(()=>dataScope||{kind:'venueLeague',environment:'official',venueId,seasonId:season?.id||''},[dataScope?.environment,dataScope?.practiceSessionId,venueId,season?.id]);
- const [live,setLive]=useState(currentLive),[error,setError]=useState(''),[now,setNow]=useState(Date.now),[clips,setClips]=useState([]),[clipLimit,setClipLimit]=useState(12);
- useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
- useEffect(()=>{
-  setLive(currentLive);if(!scope.venueId||!scope.seasonId)return;
-  let stop;try{stop=onSnapshot(getVenueLiveMatchDoc(db,scope),snap=>{const value=snap.data();setLive(value?{...value,_receivedAt:Date.now()}:null);setError('');},()=>setError('Live updates interrupted. Reconnecting…'));}catch{setError('Match updates are unavailable.');}
-  return()=>stop?.();
- },[scope.venueId,scope.seasonId,scope.environment,scope.practiceSessionId]);
- const requested=requestedFixtureId&&[...(season.results||[]),...(season.matchDayHistory||[]).flatMap(day=>day.results||[])].find(result=>(result.fixtureId||result.id)===requestedFixtureId);
- const view=requestedFixtureId&&live?.fixtureId!==requestedFixtureId ? (requested?{kind:'result',match:requested}:{kind:'empty',match:null}) : fieldSpectatorView({season,live,now}),match=view.match||{};
- const score=fieldSpectatorScore(match),feedEvents=visibleFieldMatchEvents(score.events),byId=id=>(Array.isArray(teams)?teams:[]).find(t=>String(t.id)===id)||{};
- const a={...byId(score.a),...(match.teamASnapshot||{}),label:match.teamASnapshot?.label||byId(score.a).label||byId(score.a).name||match.teamALabel||score.a},b={...byId(score.b),...(match.teamBSnapshot||{}),label:match.teamBSnapshot?.label||byId(score.b).label||byId(score.b).name||match.teamBLabel||score.b};
- const matchId=String(match.videoHighlightsMatchId||match.currentVideoHighlightsMatchId||(match.fixtureId&&scope.seasonId?`venue__${venueId}__${scope.seasonId}__${match.fixtureId}`:'')||match.id||'');
- useEffect(()=>{setClips([]);setClipLimit(12);if(!matchId||!venueId||scope.environment==='practice')return;return subscribeToMatchHighlights({matchId,clubId:venueId,onChange:setClips,onError:()=>setClips([])});},[matchId,venueId,scope.environment]);
- const elapsed=live?.running&&!live?.timeUp&&live?.clockPhase!=='halftime'?Math.max(0,Math.floor((now-(live._receivedAt||now))/1000)):0;
- const remaining=Math.max(0,(Number(live?.secondsLeft)||0)-elapsed);
- const label=team=>String(team.label||team.name||'Team');
- const badge=team=>{const src=team.transparentLogoUrl||team.logoUrl||team.branding?.logoUrl||team.image;return src?<img src={src} alt="" width="64" height="64" style={{objectFit:'contain'}}/>:<span aria-hidden="true" style={{fontSize:32}}>⚽</span>;};
- return <main className="page live-page field-spectator-page">
-  <section className="card"><small>{view.kind==='live'?'LIVE MATCH':view.kind==='result'?'FULL TIME':view.kind==='upcoming'?'UPCOMING MATCH':'MATCH CENTRE'}</small>
-   {view.kind==='empty'?<p>No fixture announced yet.</p>:<>
-    <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto minmax(0,1fr)',alignItems:'center',gap:16,padding:'24px 0',textAlign:'center'}}>
-     <div>{badge(a)}<h3>{label(a)}</h3></div>
-     <strong style={{fontSize:32,whiteSpace:'nowrap'}}>{view.kind==='upcoming'?'VS':`${score.goalsA} – ${score.goalsB}`}</strong>
-     <div>{badge(b)}<h3>{label(b)}</h3></div>
-    </div>
-    {view.kind==='live'&&<p role="timer" style={{textAlign:'center',fontSize:30,fontWeight:850}}>{clock(live?.clockVersion===1?fieldHalfSecondsLeft({...live,secondsLeft:remaining}):remaining)}{live?.clockPhase==='halftime'?' · Halftime':live?.running?'':' · Paused'}</p>}
-    {view.kind==='upcoming'&&<p style={{textAlign:'center'}}>{new Intl.DateTimeFormat('en-ZA',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Johannesburg'}).format(new Date(match.atMs))}</p>}
-    {feedEvents.length>0&&<div><h3>Match events</h3>{feedEvents.map((e,i)=><p key={e.id||i}><small>{clock(Number(e.timeSeconds)||0)}</small> {e.type==='goal'?'⚽':e.type==='red_card'?'🟥':e.type==='yellow_card'?'🟨':'•'} {String(e.scorer||e.playerName||e.player||'')}{e.assist?` · Assist: ${String(e.assist)}`:''}</p>)}</div>}
-   </>}
-   {error&&<p role="status">{error}</p>}
-   {(onBack||onBackToLanding)&&<button className="secondary-btn" onClick={onBack||onBackToLanding}>Back to Field</button>}
-  </section>
-  {clips.length>0&&<section className="card"><h3>Match highlights</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>{clips.slice(0,clipLimit).map(c=><video key={c.id} controls playsInline preload="none" poster={c.thumbnailUrl||c.posterUrl||''} src={c.playableUrl||c.videoUrl||c.downloadUrl||c.mediaUrl} style={{width:'100%',maxHeight:340,borderRadius:14}}/>)}</div>{clips.length>clipLimit&&<button className="secondary-btn" onClick={()=>setClipLimit(n=>n+12)}>More highlights</button>}</section>}
- </main>;
+import React, {useEffect, useMemo, useState} from "react";
+import {onSnapshot} from "firebase/firestore";
+import {db} from "../firebaseConfig.js";
+import {getVenueLiveMatchDoc} from "../storage/venueLiveMatchRepository.js";
+import {subscribeToMatchHighlights} from "../storage/venueVideoHighlightsRepository.js";
+import {fieldSpectatorView, fieldSpectatorScore} from "../core/fieldSpectatorView.mjs";
+import {fieldHalfSecondsLeft} from "../core/fieldMatchClock.js";
+import {visibleFieldMatchEvents} from "../core/fieldMatchFeed.mjs";
+import {fieldHighlightMatchId, clipBelongsToLiveFixture} from "../core/liveFixtureClips.mjs";
+import "./VenueLeagueSpectatorPage.css";
+
+const clock = seconds => {
+  const n = Math.max(0, Number(seconds) || 0);
+  return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(Math.floor(n % 60)).padStart(2, "0")}`;
+};
+const phases = {first_half: "First half", halftime: "Half-time", second_half: "Second half", full_time: "Full time"};
+const events = {goal: ["⚽", "Goal"], red_card: ["🟥", "Red card"], yellow_card: ["🟨", "Yellow card"], injury: ["🩹", "Injury"], foul: ["•", "Foul"]};
+const kickoff = new Intl.DateTimeFormat("en-ZA", {dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg"});
+
+function MatchReel({matchId, venueId, fixtureId, seasonId}) {
+  const [clips, setClips] = useState([]);
+  const [selected, select] = useState("");
+  useEffect(() => {
+    let active = true;
+    const stop = subscribeToMatchHighlights({matchId, clubId: venueId, onChange: items => {
+      if (active) setClips(items.filter(clip => clipBelongsToLiveFixture(clip, {matchId, venueId, fixtureId, seasonId})));
+    }, onError: () => { if (active) setClips([]); }});
+    return () => { active = false; stop(); };
+  }, [matchId, venueId, fixtureId, seasonId]);
+
+  if (!clips.length) return null;
+  const current = clips.find(clip => clip.id === selected) || clips[0];
+  const index = clips.indexOf(current);
+  return <section className="field-watch-panel field-watch-reel" aria-label="Match highlights">
+    <header><h2>Match highlights</h2><span>{index + 1} / {clips.length}</span></header>
+    <video key={current.id} controls playsInline preload="metadata"
+      aria-label={current.title || "Match highlight"}
+      poster={current.thumbnailUrl || current.posterUrl || undefined} src={current.playableUrl}/>
+    <footer>
+      <button type="button" aria-label="Previous clip" disabled={!index} onClick={() => select(clips[index - 1].id)}>‹</button>
+      <div><strong>{current.title || current.playerName || current.scorer || "Match clip"}</strong>
+        <small>{current.normalizedType}</small></div>
+      <button type="button" aria-label="Next clip" disabled={index + 1 === clips.length} onClick={() => select(clips[index + 1].id)}>›</button>
+    </footer>
+  </section>;
+}
+
+function Team({team}) {
+  const logo = team.transparentLogoUrl || team.logoUrl || team.branding?.logoUrl || team.image;
+  return <div className="field-watch-team">
+    <span className="field-watch-crest">{logo ? <img src={logo} alt=""/> : <span aria-hidden="true">⚽</span>}</span>
+    <strong>{team.label || team.name || "Team"}</strong>
+  </div>;
+}
+
+export default function VenueLeagueSpectatorPage({venue, season = {}, teams = [], dataScope, currentLive = null, requestedFixtureId = "", onBack, onBackToLanding, activeClubId}) {
+  const venueId = venue?.id || dataScope?.venueId || activeClubId || "";
+  const seasonId = dataScope?.seasonId || season?.id || "";
+  const environment = dataScope?.environment || "official";
+  const practiceSessionId = dataScope?.practiceSessionId;
+  const matchSummary = requestedFixtureId ? season.liveMatches?.[requestedFixtureId]
+    : Object.values(season.liveMatches || {}).find(match => match?.status === "live");
+  const liveDocumentId = environment === "practice" ? "current" : matchSummary?.liveDocumentId || "current";
+  const scope = useMemo(() => ({kind: "venueLeague", environment, venueId, seasonId, practiceSessionId, liveDocumentId}),
+    [environment, venueId, seasonId, practiceSessionId, liveDocumentId]);
+  const [snapshot, setSnapshot] = useState(null);
+  const [error, setError] = useState("");
+  const [now, setNow] = useState(Date.now);
+  const live = snapshot?.scope === scope ? snapshot.value : currentLive;
+  useEffect(() => {
+    if (!scope.venueId || !scope.seasonId) return;
+    let active = true;
+    let stop;
+    try {
+      stop = onSnapshot(getVenueLiveMatchDoc(db, scope), snap => {
+        if (!active) return;
+        const value = snap.data();
+        setSnapshot({scope, value: value ? {...value, _receivedAt: Date.now()} : null});
+        setError("");
+      }, () => { if (active) setError("Live updates interrupted."); });
+    } catch {
+      setError("Match updates are unavailable.");
+    }
+    return () => { active = false; stop?.(); };
+  }, [scope]);
+  useEffect(() => {
+    if (live?.status !== "live" || !live.running || live.timeUp) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [live?.status, live?.running, live?.timeUp]);
+
+  const {kind, match} = fieldSpectatorView({season, live, now, requestedFixtureId});
+  if (!match) return <main className="page live-page field-spectator-page">
+    <section className="field-watch-panel"><p>{requestedFixtureId ? "This fixture is unavailable." : "No fixture announced yet."}</p></section>
+    {error && <p role="status">{error}</p>}
+  </main>;
+  const score = fieldSpectatorScore(match);
+  const team = (side, id) => {
+    const listed = teams.find(entry => String(entry.id) === id);
+    return {...listed, label: listed?.label || listed?.name || match[`team${side}Label`] || id,
+      ...match[`team${side}Snapshot`]};
+  };
+  const phase = kind === "result" || match.timeUp ? "Full time"
+    : kind === "upcoming" ? "Upcoming"
+    : match.awaitingKitVerification ? "Lineups" : phases[match.clockPhase] || "Live";
+  const elapsed = match.running && !match.timeUp && match.clockPhase !== "halftime"
+    ? Math.max(0, Math.floor((now - (match._receivedAt || now)) / 1000)) : 0;
+  const remaining = Math.max(0, (Number(match.secondsLeft) || 0) - elapsed);
+  const fixtureId = match.fixtureId || match.id;
+  const matchId = environment !== "practice" && kind !== "upcoming" ? fieldHighlightMatchId(venueId, seasonId, fixtureId) : "";
+  const feed = visibleFieldMatchEvents(score.events).sort((a,b) => Number(a.timeSeconds || 0) - Number(b.timeSeconds || 0));
+
+  return <main className="page live-page field-spectator-page">
+    <section className="field-watch-panel field-watch-scoreboard" aria-label="Match score">
+      <div className="field-watch-status" data-live={kind === "live" && match.running && !match.timeUp}>{phase}</div>
+      <div className="field-watch-score">
+        <Team team={team("A", score.a)}/>
+        <strong>{kind === "upcoming" ? "VS" : `${score.goalsA} – ${score.goalsB}`}</strong>
+        <Team team={team("B", score.b)}/>
+      </div>
+      {kind === "upcoming" && Number.isFinite(match.atMs) && <small>{kickoff.format(match.atMs)}</small>}
+      {kind === "live" && !match.timeUp && !match.awaitingKitVerification && match.clockPhase !== "halftime" &&
+        <small role="timer">{clock(match.clockVersion === 1 ? fieldHalfSecondsLeft({...match, secondsLeft: remaining}) : remaining)}{!match.running && " · Paused"}</small>}
+    </section>
+    {matchId && <MatchReel key={matchId} matchId={matchId} venueId={venueId} fixtureId={fixtureId} seasonId={seasonId}/>}
+    {feed.length > 0 && <section className="field-watch-panel field-watch-events">
+      <h2>Match events</h2>
+      <ol>{feed.map((event, i) => {
+        const [symbol, label] = events[event.type] || ["•", "Match event"];
+        return <li key={event.id || i}>
+          <span className="field-watch-minute">{clock(event.timeSeconds)}</span><span aria-label={label} role="img">{symbol}</span>
+          <div><strong>{event.scorer || event.playerName || event.player || label}</strong>
+            {event.assist && <small>Assist: {event.assist}</small>}</div>
+          <span className="field-watch-event-side" aria-label={event.teamId === score.a ? "Home" : "Away"}
+            data-side={event.teamId === score.a ? "home" : event.teamId === score.b ? "away" : undefined}/>
+        </li>;
+      })}</ol>
+    </section>}
+    {error && <p role="status">{error}</p>}
+    {(onBack || onBackToLanding) && <button className="secondary-btn field-watch-back" onClick={onBack || onBackToLanding}>Back to Field</button>}
+  </main>;
 }

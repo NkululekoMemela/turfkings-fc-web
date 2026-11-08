@@ -1105,6 +1105,8 @@ async function hardResetMatchDoc(
       ref,
       {
         matchNumber: summaryInfo.matchNumber,
+        matchType: "LEAGUE",
+        videoHighlightsMatchId: summaryInfo.videoHighlightsMatchId || null,
         teamAId: summaryInfo.teamAId,
         teamBId: summaryInfo.teamBId,
         standbyId: summaryInfo.standbyId,
@@ -2854,6 +2856,7 @@ export function ThreeTeamLeagueLiveMatchPage({
   timeUp,
   running,
   teams,
+  currentVideoHighlightsMatchId = "",
   currentMatchNo,
   currentMatch,
   currentEvents,
@@ -4373,6 +4376,7 @@ export function ThreeTeamLeagueLiveMatchPage({
     hardResetMatchDoc(
       {
         matchNumber: currentMatchNo,
+        videoHighlightsMatchId: currentVideoHighlightsMatchId,
         teamAId,
         teamBId,
         standbyId,

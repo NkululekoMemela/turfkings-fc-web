@@ -179,7 +179,7 @@ function buildHandlers({db, sendBatch, region}) {
     }),
 
     onFieldSeasonPlayClosesRegistration: onDocumentWritten({
-      document: "leagueVenues/{venueId}/seasons/{seasonId}/matches/current",
+      document: "leagueVenues/{venueId}/seasons/{seasonId}/matches/{matchId}",
       region, retry: true,
     }, async event => {
       const match = event.data?.after?.data();

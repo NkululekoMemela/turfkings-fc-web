@@ -972,6 +972,7 @@ export default function MatchSignupPage({
   dataScope = null,
   onBack,
   onProceedToPayment,
+  practiceCompanyFunding = false,
   initialTicketOpen=null,
 }) {
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
@@ -7760,7 +7761,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                 width: isMobile ? "100%" : "min(360px, 100%)",
               }}
             >
-              💳 Continue to payment
+              {practiceCompanyFunding ? "Continue to company authorisation" : "💳 Continue to payment"}
             </button>
 
             {weeksToPayNow.length === 0 && selectedWeeks.length > 0 ? (
