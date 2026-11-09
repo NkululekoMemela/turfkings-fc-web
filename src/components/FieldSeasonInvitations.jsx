@@ -110,7 +110,7 @@ export function FieldSeasonStartModal({
   const [firstPrize, setFirstPrize] = useState("");
   const [secondPrize, setSecondPrize] = useState("");
   const [thirdPrize, setThirdPrize] = useState("");
-  const [gameFormat, setGameFormat] = useState(isPractice ? "5_V_5" : season?.gameFormat || "5_V_5");
+  const [gameFormat, setGameFormat] = useState(season?.gameFormat || "5_V_5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(0);
@@ -172,22 +172,21 @@ export function FieldSeasonStartModal({
             </label>
           ))}
           <label style={{ display: "grid", gap: ".3rem", margin: ".8rem 0" }}>
-            League size
+            Match format
             <PremiumSelect className="text-input" value={gameFormat} disabled={busy}
               onChange={event => setGameFormat(event.target.value)}>
-              {FIELD_GAME_FORMATS.filter(([value]) => !isPractice || value === "5_V_5").map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+              {FIELD_GAME_FORMATS.map(([value, label]) => (
+                <option key={value} value={value}>{value === "11_V_11" ? `${label} · full pitch` : label}</option>
               ))}
             </PremiumSelect>
           </label>
-          <fieldset style={{border:"1px solid #77b4a666",borderRadius:14,padding:14,margin:"16px 0"}}>
+          <fieldset className="field-fixture-leg-options">
             <legend>League fixtures</legend>
-            <label style={{display:"block",marginBottom:12}}><input type="radio" name="fixtureLegs" checked={fixtureLegs === 2} disabled={busy} onChange={() => {setFixtureLegs(2);setSingleLegConfirmed(false);}} /> Home and away · standard</label>
-            <p>Every Club plays every opponent twice, once at home and once away.</p>
-            <label style={{display:"block",marginTop:14}}><input type="radio" name="fixtureLegs" checked={fixtureLegs === 1} disabled={busy} onChange={() => {setFixtureLegs(1);setSingleLegConfirmed(false);}} /> Single leg · shorter league</label>
+            <label><input type="radio" name="fixtureLegs" checked={fixtureLegs === 2} disabled={busy} onChange={() => {setFixtureLegs(2);setSingleLegConfirmed(false);}} /> Home and away · standard</label>
+            <label><input type="radio" name="fixtureLegs" checked={fixtureLegs === 1} disabled={busy} onChange={() => {setFixtureLegs(1);setSingleLegConfirmed(false);}} /> Single leg · shorter league</label>
             {fixtureLegs === 1 && <div role="alert" style={{padding:12,border:"1px solid #e5a974",borderRadius:12,marginTop:12}}>
               <strong>No return fixtures. Each pair of Clubs meets only once.</strong>
-              <label style={{display:"block",marginTop:10}}><input type="checkbox" required checked={singleLegConfirmed} disabled={busy} onChange={event => setSingleLegConfirmed(event.target.checked)} /> I confirm this is a single-leg league and will communicate it to the Clubs.</label>
+              <label><input type="checkbox" required checked={singleLegConfirmed} disabled={busy} onChange={event => setSingleLegConfirmed(event.target.checked)} /> I confirm this is a single-leg league and will communicate it to the Clubs.</label>
             </div>}
           </fieldset>
           <details className="field-season-details">

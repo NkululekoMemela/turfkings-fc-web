@@ -69,6 +69,7 @@ import {
   GAME_FORMAT,
   normalizeMatchMode,
   normalizeGameFormat,
+  resolveGameFormat,
 } from "./core/matchConfig.js";
 
 
@@ -92,6 +93,7 @@ import {
   FORMATIONS_5,
   FORMATIONS_6,
   FORMATIONS_7,
+  FORMATIONS_11,
   buildCleanSheetEventsForMatch,
   buildFriendlyDefensiveBlockEvents,
 } from "./core/lineups.js";
@@ -826,10 +828,7 @@ function ensureSeasonSchedulingShape(season) {
     season?.matchType || legacyGameFormat,
     MATCH_TYPE.FRIENDLY
   );
-  const resolvedGameFormat = normalizeGameFormat(
-    legacyGameFormat,
-    GAME_FORMAT.FIVE_V_FIVE
-  );
+  const resolvedGameFormat = resolveGameFormat(season.gameFormat, legacyGameFormat);
 
   return {
     ...season,
@@ -1722,8 +1721,9 @@ function buildVideoHighlightsMatchId({
   currentMatchNo,
   matchType,
   currentMatch,
+  kickoffAt,
 } = {}) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date(kickoffAt || Date.now()).toISOString().slice(0, 10);
   const resolvedType = normalizeMatchMode(matchType || gameFormat, MATCH_TYPE.FRIENDLY);
   const resolvedFormat = normalizeGameFormat(gameFormat || GAME_FORMAT.FIVE_V_FIVE)
     .toLowerCase()
@@ -1742,7 +1742,8 @@ function buildVideoHighlightsMatchId({
     return `league__${seasonPart}__match_${matchPart}__${teamA}_vs_${teamB}`;
   }
 
-  return `friendly__${resolvedFormat}__${today}`;
+  const kickoffKey = kickoffAt ? `__${new Date(kickoffAt).getTime()}__${Number(currentMatchNo || 1)}` : "";
+  return `friendly__${resolvedFormat}__${today}${kickoffKey}`;
 }
 
 
@@ -2236,6 +2237,8 @@ function getFormationMapForGameFormat(rawGameFormat) {
   if (resolved === GAME_FORMAT.SIX_V_SIX) {
     return FORMATIONS_6;
   }
+
+  if (resolved === GAME_FORMAT.ELEVEN_V_ELEVEN) return FORMATIONS_11;
 
   if (resolved === GAME_FORMAT.SEVEN_V_SEVEN) {
     return FORMATIONS_7;
@@ -4190,7 +4193,7 @@ function MainApp() {
         : s?.friendlyMatchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
     matchType = normalizeMatchMode(s?.matchType || s?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = normalizeGameFormat(s?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = resolveGameFormat(s?.gameFormat, s?.cameraGameFormat);
     activeTeamIds = Array.isArray(s?.activeTeamIds) ? s.activeTeamIds : [];
     fiveVFiveTeams =
       isPracticeMode || s?.isPracticeSeason || String(s?.seasonId || "").startsWith("practice")
@@ -4227,7 +4230,7 @@ function MainApp() {
     } = legacy || createDefaultState());
 
     matchType = normalizeMatchMode(legacy?.matchType || legacy?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = normalizeGameFormat(legacy?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
+    gameFormat = resolveGameFormat(legacy?.gameFormat, legacy?.cameraGameFormat);
     activeTeamIds = Array.isArray(legacy?.activeTeamIds)
       ? legacy.activeTeamIds
       : [];
@@ -4631,7 +4634,7 @@ function MainApp() {
    * referee session and may be ahead of effectiveLiveMatch.
    */
   const liveVideoHighlightsMatchId = useMemo(() => {
-    if (liveMatchDraft?.status === "running" && liveMatchDraft.videoHighlightsMatchId) {
+    if ((liveMatchDraft?.status === "running" || liveMatchDraft?.awaitingKitVerification) && liveMatchDraft.videoHighlightsMatchId) {
       return liveMatchDraft.videoHighlightsMatchId;
     }
     const liveMatch =
@@ -4656,6 +4659,7 @@ function MainApp() {
       currentMatchNo: liveMatchNo,
       matchType: liveMatchType,
       currentMatch: liveMatch,
+      kickoffAt: pendingMatchStartContext?.createdAt,
     });
   }, [
     activeSeasonId,
@@ -5620,22 +5624,14 @@ function MainApp() {
     applyMatchTypeChange(safeMatchType);
   };
 
-  const handleSetGameFormat = (nextFormat) => {
-    const safeFormat = normalizeGameFormat(nextFormat, GAME_FORMAT.FIVE_V_FIVE);
+  const gameFormatChangeBlocked = Boolean(hasLiveMatch || running || liveMatchDraft?.awaitingKitVerification);
 
-    if (hasRecordedMatchDayState) {
-      window.alert(
-        "Game format switching is locked once a match has started or match-day records exist. Use the override option if you really need to force the switch."
-      );
+  const handleSetGameFormat = (nextFormat) => {
+    if (gameFormatChangeBlocked) {
+      window.alert("Finish or discard the live match before changing the game format.");
       return;
     }
-
-    applyGameFormatChange(safeFormat);
-  };
-
-  const handleForceSetGameFormat = (nextFormat) => {
-    const safeFormat = normalizeGameFormat(nextFormat, GAME_FORMAT.FIVE_V_FIVE);
-    applyGameFormatChange(safeFormat);
+    applyGameFormatChange(normalizeGameFormat(nextFormat));
   };
 
   const handleSetMatchMode = (nextMode) => {
@@ -5779,7 +5775,7 @@ function MainApp() {
     const startContext = {
       matchNo: activeMatchNo,
       createdAt: new Date().toISOString(),
-      currentMatch: safeStartMatch,
+      currentMatch: { ...safeStartMatch, gameFormat },
       teams: matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams,
       fiveVFiveTeams: getActiveFriendlyTeams(fiveVFiveTeams),
       identity: pageIdentity,
@@ -5836,7 +5832,7 @@ function MainApp() {
       activeSeasonId,
       activeClubId,
       matchNo: activeMatchNo,
-      currentMatch: safeStartMatch,
+      currentMatch: startContext.currentMatch,
       teams: startContext.teams,
       fiveVFiveTeams: startContext.fiveVFiveTeams,
       identity: pageIdentity,
@@ -5848,6 +5844,7 @@ function MainApp() {
       startedAtISO: startContext.createdAt,
       videoHighlightsMatchId: buildVideoHighlightsMatchId({
         activeSeasonId, gameFormat, currentMatchNo: activeMatchNo, matchType, currentMatch: safeStartMatch,
+        kickoffAt: startContext.createdAt,
       }),
       expectedEndAtISO,
       scheduledFinishAtISO,
@@ -6280,6 +6277,8 @@ function MainApp() {
           teamBLabel: resolvedTeamBLabel,
           teamASnapshot: teamASnapshotSafe,
           teamBSnapshot: teamBSnapshotSafe,
+          teamALogoUrl: resolveCameraTeamLogoUrl(teamASnapshotSafe),
+          teamBLogoUrl: resolveCameraTeamLogoUrl(teamBSnapshotSafe),
           goalsA,
           goalsB,
           winnerId: rotationResult.winnerId,
@@ -7696,7 +7695,7 @@ function MainApp() {
             matchDayHistory: newLeagueHistory,
             friendlyMatchDayHistory: newFriendlyHistory,
             matchType: MATCH_TYPE.FRIENDLY,
-            gameFormat: GAME_FORMAT.FIVE_V_FIVE,
+            gameFormat: resolveGameFormat(prevSeason.gameFormat, prevSeason.cameraGameFormat),
             activeTeamIds: (prevSeason.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
             fiveVFiveTeams: ensureFiveVFiveTeamsShape(prevSeason?.fiveVFiveTeams),
             currentMatchNo: 1,
@@ -7788,7 +7787,7 @@ function MainApp() {
           matchDayHistory: newLeagueHistory,
           friendlyMatchDayHistory: newFriendlyHistory,
           matchType: MATCH_TYPE.FRIENDLY,
-          gameFormat: GAME_FORMAT.FIVE_V_FIVE,
+          gameFormat: resolveGameFormat(prev.gameFormat, prev.cameraGameFormat),
           activeTeamIds: (prev.teams || []).map((team) => team?.id).filter(Boolean).slice(0, 2),
           fiveVFiveTeams: ensureFiveVFiveTeamsShape(prev?.fiveVFiveTeams),
           currentMatchNo: 1,
@@ -8170,13 +8169,14 @@ function MainApp() {
      * the same authoritative fixture being refereed right now.
      */
     const recordingMatchId =
-      (hasLiveMatch && liveMatchDraft?.videoHighlightsMatchId) ||
+      ((hasLiveMatch || liveMatchDraft?.awaitingKitVerification) && liveMatchDraft?.videoHighlightsMatchId) ||
       buildVideoHighlightsMatchId({
         activeSeasonId,
         gameFormat: cameraGameFormat,
         currentMatchNo: cameraMatchNo,
         matchType: cameraMatchType,
         currentMatch: cameraMatch,
+        kickoffAt: pendingMatchStartContext?.createdAt,
       });
 
     const organisingClubId =
@@ -8382,7 +8382,8 @@ function MainApp() {
       );
     }
 
-    const matchId = currentVideoHighlightsMatchId;
+    const matchId = String(payload?.matchId || "").trim();
+    if (!matchId) throw new Error("Choose a match for this clip.");
 
     const clipId =
       String(payload?.clipId || payload?.id || "").trim() ||
@@ -8397,10 +8398,10 @@ function MainApp() {
         clipId,
         id: clipId,
         matchId,
-        seasonId: matchType === MATCH_TYPE.FRIENDLY ? null : activeSeasonId || null,
-        matchType,
-        gameFormat,
-        matchNo: activeMatchNo,
+        seasonId: payload.seasonId || null,
+        matchType: payload.matchType || matchType,
+        gameFormat: payload.gameFormat || gameFormat,
+        matchNo: payload.matchNo || activeMatchNo,
         status: "pending",
         createdAt: payload?.createdAt || new Date().toISOString(),
         createdBy:
@@ -10100,8 +10101,8 @@ function MainApp() {
           onSetMatchType={handleSetMatchType}
           onForceSetMatchType={handleForceSetMatchType}
           onSetGameFormat={handleSetGameFormat}
-          onForceSetGameFormat={handleForceSetGameFormat}
           formatSwitchLocked={hasRecordedMatchDayState}
+          gameFormatChangeBlocked={gameFormatChangeBlocked}
           onSetMatchMode={handleSetMatchMode}
           onGenerateScheduledPlan={handleGenerateScheduledPlan}
           onUpdateSmartOffset={handleUpdateSmartOffset}
@@ -10147,6 +10148,7 @@ function MainApp() {
         <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
           clubModeLabel={matchType===MATCH_TYPE.LEAGUE?"Mini-league":"Friendly"}
+          gameFormat={gameFormat}
           identity={pageIdentity}
           activeRole={activeRole}
           currentUser={null}
@@ -10230,7 +10232,11 @@ function MainApp() {
           onRejectTakeoverRequest={handleRejectTakeoverRequest}
           pendingMatchStartContext={pendingMatchStartContext}
           matchType={pendingMatchStartContext?.matchType || matchType}
-          gameFormat={pendingMatchStartContext?.gameFormat || gameFormat}
+          gameFormat={resolveGameFormat(
+            pendingMatchStartContext?.gameFormat,
+            liveMatchDraft?.status === "running" ? liveMatchDraft.gameFormat : null,
+            gameFormat
+          )}
           onUpdateMatchSeconds={handleUpdateMatchSeconds}
           expectedEndAtISO={
             (pendingMatchStartContext?.matchType || matchType) ===
@@ -10391,6 +10397,7 @@ function MainApp() {
           clubName={activeClubName}
           clubLogo={activeClubIdentity?.logoUrl || activeClubIdentity?.logo || ""}
           identity={pageIdentity}
+          currentTeams={matchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
           activeRole={activeRole}
           user={authUser}
           isPracticeMode={isPracticeMode}
@@ -10407,7 +10414,7 @@ function MainApp() {
       {page === PAGE_VIEW_HIGHLIGHTS && !isPracticeMode && (
         <VideoHighlightsPage
           fixtureResults={clubHighlightResults(safeV2ForStats?.seasons || [])}
-          matchId={currentVideoHighlightsMatchId}
+          matchId={liveMatchDraft?.videoHighlightsMatchId || currentVideoHighlightsMatchId}
           activeClubId={activeClubId}
           identity={pageIdentity}
           activeRole={activeRole}

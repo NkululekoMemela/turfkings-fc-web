@@ -5550,13 +5550,33 @@ export default function VenueEntryPage({
         ? `venue__${venue.id}__${venueSeason.id}__${videoFixtureId}`
         : "";
       const selectedVideoFixture=(venueSeason?.fixtures||[]).find(f=>f.id===videoFixtureId);
-      const selectedVideoResult=[...(venueSeason?.results||[]),...(venueSeason?.matchDayHistory||[]).flatMap(d=>d.results||[])].find(r=>r.fixtureId===videoFixtureId);
+      const videoResults = new Map([
+        ...(venueSeason?.matchDayHistory || []).flatMap(day => day.results || []),
+        ...(venueSeason?.results || []),
+      ].map(result => [result.fixtureId, result]));
+      const selectedVideoResult = videoResults.get(videoFixtureId);
+      const videoFixtures = (venueSeason?.fixtures || []).map(fixture => {
+        const result = videoResults.get(fixture.id);
+        const clubA = mappedTeams.find(team => team.id === fixture.clubAId);
+        const clubB = mappedTeams.find(team => team.id === fixture.clubBId);
+        const playedAt = result?.startedAtISO || result?.completedAtMs ||
+          result?.completedAtISO || (liveMatch?.fixtureId === fixture.id ? liveMatch.startedAtMs || liveMatch.startedAtISO || liveMatch.startedAt : null);
+        return {
+          fixtureId: fixture.id, teamAId: fixture.clubAId, teamBId: fixture.clubBId,
+          matchNo: result?.matchNo, matchType: "LEAGUE", gameFormat: venueSeason.gameFormat, seasonId: venueSeason.id, matchId: `venue__${venue.id}__${venueSeason.id}__${fixture.id}`,
+          label: `${result?.clubAName || fixture.clubAName || clubA?.label || fixture.clubAId} vs ${result?.clubBName || fixture.clubBName || clubB?.label || fixture.clubBId}`,
+          teamALogoUrl: result?.teamALogoUrl || clubA?.logoUrl || clubA?.branding?.logoUrl,
+          teamBLogoUrl: result?.teamBLogoUrl || clubB?.logoUrl || clubB?.branding?.logoUrl,
+          playedAt, date: playedAt || fixture.scheduledLocal || fixture.scheduledAt,
+          goalsA: result?.goalsA ?? fixture.goalsA, goalsB: result?.goalsB ?? fixture.goalsB,
+        };
+      });
       const videoCurrentMatch=selectedVideoFixture?buildCurrentMatchFromFixture({teamAId:selectedVideoFixture.clubAId,teamBId:selectedVideoFixture.clubBId},mappedTeams):currentMatch;
 
       return (
         <VenueLeagueVideoHighlightsPage
           initialMatchFilter={videoFixtureFocus?videoMatchId:''}
-          fixtureOptions={(venueSeason?.fixtures||[]).map(f=>{const result=[...(venueSeason?.results||[]),...(venueSeason?.matchDayHistory||[]).flatMap(d=>d.results||[])].find(r=>r.fixtureId===f.id);return {fixtureId:f.id,matchId:`venue__${venue.id}__${venueSeason.id}__${f.id}`,label:`${f.clubAName||f.clubAId} vs ${f.clubBName||f.clubBId}`,teamALogoUrl:mappedTeams.find(t=>t.id===f.clubAId)?.logoUrl||mappedTeams.find(t=>t.id===f.clubAId)?.branding?.logoUrl,teamBLogoUrl:mappedTeams.find(t=>t.id===f.clubBId)?.logoUrl||mappedTeams.find(t=>t.id===f.clubBId)?.branding?.logoUrl,date:f.scheduledLocal||f.scheduledAt,goalsA:result?.goalsA,goalsB:result?.goalsB};})}
+          fixtureOptions={videoFixtures}
           canModerate={isFieldAdministrator||(hasActiveFieldRole&&effectiveRole==='referee')}
           canComment={hasActiveFieldRole||isVenueOwner||['club_member','club_rep'].includes(effectiveRole)}
           onAttachHighlightToClubChat={clip=>{setFormationChatDraft({kind:'highlight',clipId:clip.clipId||clip.id,venueId:venue.id,ownerUid:currentUser.uid,matchId:clip.matchId||videoMatchId,title:clip.title||'Match highlight',mediaUrl:clip.mediaUrl||clip.videoUrl||clip.downloadUrl,type:clip.normalizedType||clip.type||'highlight'});setVenuePage('chat');}}
@@ -5887,6 +5907,9 @@ export default function VenueEntryPage({
           "Only an authorized Field official or referee can start this match."
         }
         nextFixtureLabel={fieldMatchLabel(nextFixture)}
+        startKitSeasonId={canOperateFieldMatch ? venueSeason?.id : ""}
+        startKitMatchDayId={nextFixture?.matchDayId}
+        startKitFixtureId={nextFixture?.id}
         startTeamIds={nextFixture?.clubAId && nextFixture?.clubBId
           ? [nextFixture.clubAId, nextFixture.clubBId] : []}
         takeoverTeamIds={liveMatch ? [

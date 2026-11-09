@@ -591,7 +591,7 @@ function buildGuestOpponentTeam({
   };
 }
 
-function buildTurfKingsChallengeTeam({ players = [], teamColorName = "Green" } = {}) {
+function buildTurfKingsChallengeTeam({ players = [], teamColorName = "Green", activeClubName = "Turf Kings" } = {}) {
   return {
     id: TURF_KINGS_CHALLENGE_ID,
     label: toTitleCase(activeClubName) || "Turf Kings",
@@ -1675,7 +1675,7 @@ export function SquadsPage({
     setLocalLeagueTeams(cleanedLeagueTeams);
     setLocalFiveVFiveTeams(cleanedFiveVFiveTeams);
 
-    onUpdateLeagueTeams?.(cleanedLeagueTeams);
+    onUpdateTeams?.(cleanedLeagueTeams);
     onUpdateFiveVFiveTeams?.(cleanedFiveVFiveTeams);
 
     setTurfKingsChallengePlayers((current) =>
@@ -2998,6 +2998,15 @@ export function SquadsPage({
 
 
   const getSquadPreviewSlots = () => {
+    if (playersPerSide === 11) {
+      return [
+        { label: "GK", x: 50, y: 89 },
+        ...[16, 39, 61, 84].map(x => ({ label: "DEF", x, y: 68 })),
+        ...[16, 39, 61, 84].map(x => ({ label: "MID", x, y: 44 })),
+        ...[36, 64].map(x => ({ label: "ST", x, y: 19 })),
+      ];
+    }
+
     if (playersPerSide === 7) {
       return [
         { label: "GK", x: 50, y: 88 },
@@ -3446,6 +3455,7 @@ export function SquadsPage({
 
   const renderTeamsheetCard = () => {
     const matchTeams = isLeague ? sourceTeams.slice(0, 3) : sourceTeams.slice(0, 2);
+    const teamsheetFormat = [gameFormatLabel, teamsheetDisplayDateParts.scheduleLabel].filter(Boolean).join(" · ");
     const isClubChallengeTeamsheet = Boolean(guestOpponentEnabled && activeChallengeFixture);
 
     const getChallengeTeamLogo = (team, index) => {
@@ -3477,7 +3487,7 @@ export function SquadsPage({
         activeClubLogo={activeClubLogo}
         TURF_KINGS_LOGO_URL={TURF_KINGS_LOGO_URL}
         activeClubName={activeClubName}
-        teamsheetDisplayDateParts={teamsheetDisplayDateParts}
+        teamsheetDisplayDateParts={{...teamsheetDisplayDateParts, scheduleLabel: teamsheetFormat}}
         getTeamTheme={getTeamTheme}
         getChallengeTeamLogo={getChallengeTeamLogo}
         getPreviewTeamName={getPreviewTeamName}

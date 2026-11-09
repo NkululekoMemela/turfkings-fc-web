@@ -339,6 +339,7 @@
 .field-takeover-arrow { color: #a9e1ff; font-size: 12px; line-height: 1; }
 .field-tile-crest {
   border-radius: 50%; box-sizing: border-box; padding: 2px;
+  overflow: hidden;
   background: #f5f9ff; color: #101e36; border: 1px solid #b4c6df;
 }
 .field-start-fixture .field-tile-crest { width: 24px; height: 24px; }
@@ -352,4 +353,21 @@
 @keyframes field-takeover-nudge {
   0%, 50%, 100% { translate: 0 0; }
   20% { translate: 0 -3px; }
+}
+
+.field-start-art {display:inline-grid; place-items:center; min-height:34px; min-width:78px;}
+.field-start-art > span {grid-area:1/1; display:grid; place-items:center;}
+.field-start-art .field-tile-crest {width:32px;height:32px;border-width:3px;padding:1px;}
+.field-start-art .field-start-ball {display:none;font-size:1.4rem;}
+@media (prefers-reduced-motion: no-preference) {
+  .field-start-art--cycle .field-start-ball {display:grid;animation:field-start-show-ball 12s linear infinite;}
+  .field-start-art--cycle .field-start-ball > span {animation:field-start-bounce 12s ease-in-out infinite;}
+  .field-start-art--cycle .field-start-crests {animation:field-start-show-crests 12s linear infinite;}
+}
+@keyframes field-start-show-ball {0%,16% {opacity:1;} 19%,96% {opacity:0;} 100% {opacity:1;}}
+@keyframes field-start-show-crests {0%,16% {opacity:0;} 19%,96% {opacity:1;} 100% {opacity:0;}}
+@keyframes field-start-bounce {
+  0%,6%,12%,100% {transform:translateY(0);}
+  3% {transform:translateY(-6px);}
+  9% {transform:translateY(-4px);}
 }

@@ -10,6 +10,7 @@ export const GAME_FORMAT = Object.freeze({
   FIVE_V_FIVE: "5_V_5",
   SIX_V_SIX: "6_V_6",
   SEVEN_V_SEVEN: "7_V_7",
+  ELEVEN_V_ELEVEN: "11_V_11",
 });
 
 export const GAME_FORMAT_CONFIG = Object.freeze({
@@ -31,6 +32,9 @@ export const GAME_FORMAT_CONFIG = Object.freeze({
     shortLabel: "7v7",
     playersPerSide: 7,
   },
+  [GAME_FORMAT.ELEVEN_V_ELEVEN]: {
+    value: GAME_FORMAT.ELEVEN_V_ELEVEN, label: "11 v 11", shortLabel: "11v11", playersPerSide: 11,
+  },
 });
 
 export const MATCH_MODE_OPTIONS = Object.freeze([
@@ -42,6 +46,7 @@ export const GAME_FORMAT_OPTIONS = Object.freeze([
   GAME_FORMAT_CONFIG[GAME_FORMAT.FIVE_V_FIVE],
   GAME_FORMAT_CONFIG[GAME_FORMAT.SIX_V_SIX],
   GAME_FORMAT_CONFIG[GAME_FORMAT.SEVEN_V_SEVEN],
+  GAME_FORMAT_CONFIG[GAME_FORMAT.ELEVEN_V_ELEVEN],
 ]);
 
 export function normalizeMatchMode(rawMode, fallback = MATCH_MODE.FRIENDLY) {
@@ -58,7 +63,10 @@ export function normalizeMatchMode(rawMode, fallback = MATCH_MODE.FRIENDLY) {
     value === GAME_FORMAT.SEVEN_V_SEVEN ||
     value === "5V5" ||
     value === "6V6" ||
-    value === "7V7"
+    value === "7V7" ||
+    value === GAME_FORMAT.ELEVEN_V_ELEVEN ||
+    value === "11V11" ||
+    value === "11_ASIDE"
   ) {
     return MATCH_MODE.FRIENDLY;
   }
@@ -68,6 +76,10 @@ export function normalizeMatchMode(rawMode, fallback = MATCH_MODE.FRIENDLY) {
 
 export function normalizeGameFormat(rawFormat, fallback = GAME_FORMAT.FIVE_V_FIVE) {
   const value = String(rawFormat || "").trim().toUpperCase();
+
+  if ([GAME_FORMAT.ELEVEN_V_ELEVEN, "11V11", "11_ASIDE"].includes(value)) {
+    return GAME_FORMAT.ELEVEN_V_ELEVEN;
+  }
 
   if (value === GAME_FORMAT.SEVEN_V_SEVEN || value === "7V7" || value === "7_ASIDE") {
     return GAME_FORMAT.SEVEN_V_SEVEN;
@@ -87,6 +99,16 @@ export function normalizeGameFormat(rawFormat, fallback = GAME_FORMAT.FIVE_V_FIV
   }
 
   return fallback;
+}
+
+// Prefer the saved match or season value; old camera-only records remain readable.
+export function resolveGameFormat(...candidates) {
+  for (const candidate of candidates) {
+    if (["LEAGUE", "3_TEAM_LEAGUE"].includes(String(candidate || "").trim().toUpperCase())) continue;
+    const format = normalizeGameFormat(candidate, "");
+    if (format) return format;
+  }
+  return GAME_FORMAT.FIVE_V_FIVE;
 }
 
 export function getGameFormatConfig(rawFormat) {
@@ -121,7 +143,7 @@ export function buildMatchClassification({
   legacyGameFormat,
 } = {}) {
   const resolvedMode = normalizeMatchMode(matchMode || legacyGameFormat);
-  const resolvedFormat = normalizeGameFormat(gameFormat || legacyGameFormat);
+  const resolvedFormat = resolveGameFormat(gameFormat, legacyGameFormat);
 
   return {
     matchMode: resolvedMode,

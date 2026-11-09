@@ -9,7 +9,7 @@ const validId = value => typeof value === "string" &&
 const fingerprint = value => createHash("sha256")
   .update(JSON.stringify(value)).digest("hex");
 
-function project({scope, day, fixture, candidates, saved, carried = []}) {
+function project({scope, day, fixture, candidates, saved, carried = [], minimum = 5, maximum = 6}) {
   const revision = fingerprint({
     scope, date: day.dateLocal, fixtureId: fixture.id,
     scheduledLocal: fixture.scheduledLocal || "",
@@ -24,18 +24,18 @@ function project({scope, day, fixture, candidates, saved, carried = []}) {
   });
   const selected = Array.isArray(saved?.memberIds) ? saved.memberIds : [];
   const byId = new Map(candidates.map(player => [player.memberId, player]));
-  const validSelection = selected.length >= 5 && selected.length <= 6 &&
+  const validSelection = selected.length >= minimum && selected.length <= maximum &&
     new Set(selected).size === selected.length && selected.every(id => byId.has(id));
   const currentSelection = validSelection && saved?.fingerprint === revision;
   const draftIds = validSelection ? selected : carried.length ? carried :
-    candidates.slice(0, 6).map(player => player.memberId);
+    candidates.slice(0, maximum).map(player => player.memberId);
   const numbers = currentSelection ? saved?.kitNumbers || {} : {};
   const allocated = applyMatchBibs(draftIds.map(id=>byId.get(id)),currentSelection ? saved?.kitAssignments || {} : {});
   const players = allocated.map(player => {
     return Object.hasOwn(numbers, player.sourcePlayerId)
       ? {...player, jerseyNumber: numbers[player.sourcePlayerId], kitNumberSource: "captain"} : player;
   });
-  const kitReady = players.length >= 5 && players.length <= 6 &&
+  const kitReady = players.length >= minimum && players.length <= maximum &&
     new Set(players.map(player => Number(player.jerseyNumber))).size === players.length &&
     players.every(player => (player.ownsNumberedBib === true || player.matchBib?.available === true || (player.matchBib?.assigned === true && player.matchBib?.allocationSource === "field")) &&
       String(player.bibColor || "").trim() && player.jerseyNumber !== null &&
@@ -43,10 +43,10 @@ function project({scope, day, fixture, candidates, saved, carried = []}) {
       Number(player.jerseyNumber) === Number(player.matchBib?.number ?? byId.get(player.memberId).jerseyNumber));
   const confirmed = currentSelection && kitReady && saved?.kitConfirmed === true;
   return {
-    matchDayId: day.id, dateLocal: day.dateLocal,
+    matchDayId: day.id, dateLocal: day.dateLocal, minimum, maximum,
     fixtureId: fixture.id, fingerprint: revision,
     confirmed, ready: kitReady, rosterSource: validSelection ? "captain" : carried.length ? "carried" : "season",
-    needsSelection: draftIds.length < 5,
+    needsSelection: draftIds.length < minimum,
     selectedMemberIds: draftIds, players, kitAssignments: currentSelection ? saved?.kitAssignments || {} : {},
     kitNumbers: Object.fromEntries(players.map(player => [player.sourcePlayerId, player.jerseyNumber ?? null])),
     submittedAtMs: confirmed ? Number(saved.submittedAtMs || 0) : 0,
@@ -71,9 +71,8 @@ function sendWindow({day, fixture, now = Date.now()}) {
 async function loadDay({tx, db, scope, matchDayId}) {
   if (!validId(matchDayId)) throw new Error("Choose a valid match day.");
   const context = await service.loadContext(tx, db, scope);
-  if (context.season.gameFormat !== "5_V_5") {
-    throw new Error("Five or six-player squads apply to five-a-side leagues.");
-  }
+  const {fieldFormat} = await import("./fieldBoothShared/fieldFormat.mjs");
+  const {minimum, maximum} = fieldFormat(context.season.gameFormat);
   if (!context.season.schedulePublishedAtMs) {
     throw new Error("The Field must release its fixtures first.");
   }
@@ -162,13 +161,13 @@ async function loadDay({tx, db, scope, matchDayId}) {
   candidates.splice(0,candidates.length,...planned);
   candidates.sort((a, b) => a.fullName.localeCompare(b.fullName));
   let submission = project({
-    scope, day, fixture, candidates,
+    scope, day, fixture, candidates, minimum, maximum,
     saved: context.squad?.matchDaySubmissions?.[matchDayId],
-    carried: require("./rollingFieldSquad.cjs").carriedMemberIds({season:context.season,squad:context.squad,day,clubId:scope.clubId,candidates}),
+    carried: require("./rollingFieldSquad.cjs").carriedMemberIds({season:context.season,squad:context.squad,day,clubId:scope.clubId,candidates,minimum,maximum}),
   });
-  if (submission.players.length >= 5) {
+  if (submission.players.length >= minimum) {
     const selectedPlayers = automaticFixtureBibs(submission.players, matchColour,confirmedStock,carryPins);
-    submission = project({scope, day, fixture, candidates: selectedPlayers});
+    submission = project({scope, day, fixture, candidates: selectedPlayers, minimum, maximum});
     submission.rosterSource = "season";
   }
   submission.stockConfirmed=Boolean(stockConfig.confirmedAtMs);
@@ -211,10 +210,10 @@ async function submit({db, user, body, now = Date.now()}) {
   const {venueId, seasonId, clubId, matchDayId, memberIds} = body || {};
   const scope = {venueId, seasonId, clubId};
   if (!Array.isArray(memberIds) || memberIds.length < 5 ||
-      memberIds.length > 6 ||
+      memberIds.length > 12 ||
       new Set(memberIds).size !== memberIds.length ||
       !memberIds.every(validId)) {
-    throw new Error("Select five or six different players. Six is the maximum.");
+    throw new Error("Select distinct eligible players.");
   }
   const kitPolicy=await import("./playerKitPolicy.mjs");
   const {assertLeagueBibs}=await import("./leagueBibPolicy.mjs");
@@ -222,6 +221,10 @@ async function submit({db, user, body, now = Date.now()}) {
     const data = await loadDay({tx, db, scope, matchDayId});
     if (!service.canManageSquad(data.club, user)) {
       throw new Error("Only this Club's captain or administrator can send its squad.");
+    }
+    const {minimum, maximum} = data.submission;
+    if (memberIds.length < minimum || memberIds.length > maximum) {
+      throw new Error(`Select ${minimum} or ${maximum} different players for this fixture.`);
     }
     if(!data.submission.stockConfirmed)throw new Error("Ask the Field to confirm bib stock first.");
     const window = sendWindow({

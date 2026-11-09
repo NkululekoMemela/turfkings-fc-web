@@ -925,26 +925,21 @@ service cloud.firestore {
         ).data.league.activeSeason;
         let fixture = season.fixtures[data.fixtureIndex];
         return approval.actorUid == request.auth.uid
-          && (season.gameFormat != "5_V_5" || (
+          && (
             approval.get("stockRevision", 0) > 0
             && exists(/databases/$(database)/documents/leagueVenues/$(venueId)/bibHireConfig/stock)
             && approval.stockRevision == get(/databases/$(database)/documents/leagueVenues/$(venueId)/bibHireConfig/stock).data.revision
-          ))
+          )
           && approval.venueId == venueId && approval.seasonId == seasonId
           && approval.fixtureId == data.fixtureId
           && data.get("paidSquads", {}) == approval.get("squads", {})
-          && (
-            season.gameFormat != "5_V_5"
-            || (
-              data.get("confirmedLineupSnapshot", {}) ==
-                approval.get("startingLineups", {})
-              && approval.get("startingLineups", {}).size() == 2
-            )
-          )
+          && data.get("confirmedLineupSnapshot", {}) == approval.get("startingLineups", {})
+          && approval.get("startingLineups", {}).size() == 2
           && approval.matchDayId == fixture.matchDayId
           && approval.clubAId == fixture.clubAId
           && approval.clubBId == fixture.clubBId
           && approval.gameFormat == season.gameFormat
+          && data.get("gameFormat", season.gameFormat) == approval.gameFormat
           && approval.matchDayHistory == season.get("matchDayHistory", [])
           && approval.matchDays == season.get("matchDays", [])
           && approval.get("liveMatchesAtApproval", season.get("liveMatches", {}))

@@ -282,7 +282,6 @@ export function LandingPage({
   onBrowseMatchType,
   onForceSetMatchType,
   onSetGameFormat,
-  onForceSetGameFormat,
   formatSwitchLocked = false,
   onSetLeagueMode,
   onSetMatchMode,
@@ -307,6 +306,7 @@ export function LandingPage({
   isSpectator = false,
   canStartMatch = false,
   hasRecordedMatchDayState = false,
+  gameFormatChangeBlocked = false,
   onReady,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
@@ -1209,11 +1209,7 @@ export function LandingPage({
     }
 
     if (change.kind === "gameFormat") {
-      if (isFormatLocked && typeof onForceSetGameFormat === "function") {
-        onForceSetGameFormat(change.value);
-      } else {
-        onSetGameFormat?.(change.value);
-      }
+      onSetGameFormat?.(change.value);
       return;
     }
 
@@ -1860,13 +1856,14 @@ export function LandingPage({
                       type="button"
                       className="secondary-btn"
                       onClick={() => {
-                        if (isFormatLocked) return;
+                        if (gameFormatChangeBlocked) return;
                         requestGameFormatChange(option.value);
                       }}
-                      disabled={isFormatLocked}
+                      disabled={gameFormatChangeBlocked}
                       style={{
                         borderRadius: "999px",
-                        padding: "0.45rem 0.9rem",
+                        padding: option.playersPerSide === 11 && !active ? "0.45rem 0.65rem" : "0.45rem 0.9rem",
+                        opacity: option.playersPerSide === 11 && !active ? 0.75 : 1,
                         color: "#ffffff",
                         border: active
                           ? "1px solid rgba(34, 197, 94, 0.55)"

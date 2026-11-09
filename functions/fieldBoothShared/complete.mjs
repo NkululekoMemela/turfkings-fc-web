@@ -108,6 +108,8 @@ export function completeBoothSeason({season, fixtureId, summary, currentEvents, 
           ? lineupTimeline
           : [],
         completedByUid: user.uid,
+        startedAtISO: liveMatch.startedAtISO || liveMatch.kickoffAtISO ||
+          liveMatch.startedAt?.toDate?.().toISOString() || null,
         completedAtMs,
       };
 

@@ -16,7 +16,7 @@ export function clubFixtureHighlightMatchId(match, seasonId) {
   if (!match) return "";
   const format = text(match.gameFormat || match.matchMode).toLowerCase().replace(/_/g, "");
   const start = time(match.startedAtISO || match.createdAt);
-  if (text(match.matchType).toLowerCase() !== "league" && format && Number.isFinite(start) && /^(friendly|5v5|11v11)$/.test(format)) {
+  if (text(match.matchType).toLowerCase() !== "league" && format && Number.isFinite(start) && /^(friendly|5v5|6v6|7v7|11v11)$/.test(format)) {
     return `friendly__${format === "friendly" ? "5v5" : format}__${new Date(start).toISOString().slice(0, 10)}`;
   }
   const season = match.seasonId || seasonId;

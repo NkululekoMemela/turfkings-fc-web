@@ -40,12 +40,15 @@ import {
 import {
   GAME_TYPE_6,
   GAME_TYPE_7,
+  GAME_TYPE_11,
   FORMATIONS_5,
   FORMATIONS_6,
   FORMATIONS_7,
+  FORMATIONS_11,
   DEFAULT_FORMATION_ID_5,
   DEFAULT_FORMATION_ID_6,
   DEFAULT_FORMATION_ID_7,
+  DEFAULT_FORMATION_ID_11,
   loadSavedLineups,
   resolvePreferredTeamLineup,
   createVerifiedLineupSnapshot,
@@ -83,6 +86,7 @@ import TeamIdentityEditor from "../components/TeamIdentityEditor";
 
 function getLineupGameTypeFromFormat(rawFormat) {
   const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.ELEVEN_V_ELEVEN) return GAME_TYPE_11;
   if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return GAME_TYPE_7;
   if (safeFormat === GAME_FORMAT.SIX_V_SIX) return GAME_TYPE_6;
   return "5";
@@ -90,6 +94,7 @@ function getLineupGameTypeFromFormat(rawFormat) {
 
 function getLiveFormationsMap(rawFormat) {
   const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.ELEVEN_V_ELEVEN) return FORMATIONS_11;
   if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return FORMATIONS_7;
   if (safeFormat === GAME_FORMAT.SIX_V_SIX) return FORMATIONS_6;
   return FORMATIONS_5;
@@ -97,6 +102,7 @@ function getLiveFormationsMap(rawFormat) {
 
 function getLiveDefaultFormationId(rawFormat) {
   const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.ELEVEN_V_ELEVEN) return DEFAULT_FORMATION_ID_11;
   if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return DEFAULT_FORMATION_ID_7;
   if (safeFormat === GAME_FORMAT.SIX_V_SIX) return DEFAULT_FORMATION_ID_6;
   return DEFAULT_FORMATION_ID_5;
@@ -4328,11 +4334,11 @@ export function VenueLeagueLiveMatchPage({
   }, []);
 
   useEffect(() => {
-    const shouldSoundFinalWhistle =
-      additionalTimeFinished ||
+    const shouldSoundWhistle =
+      fieldClockPhase === "halftime" || additionalTimeFinished ||
       (timeUp && !pendingAdditionalTimeSeconds && !additionalTimeRunning);
 
-    if (!shouldSoundFinalWhistle) {
+    if (!shouldSoundWhistle) {
       stopAlarmLoop(alarmLoopRef);
       return;
     }
@@ -4358,6 +4364,7 @@ export function VenueLeagueLiveMatchPage({
       stopAlarmLoop(alarmLoopRef);
     };
   }, [
+    fieldClockPhase,
     timeUp,
     pendingAdditionalTimeSeconds,
     additionalTimeRunning,

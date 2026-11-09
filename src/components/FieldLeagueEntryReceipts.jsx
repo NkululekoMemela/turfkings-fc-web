@@ -147,7 +147,7 @@ export default function FieldLeagueEntryReceipts({venueId, seasonId, initialClub
                 style={{minHeight: 44, padding: "8px 14px", fontSize: 13}}
                 disabled={Boolean(busyId)||loading||Boolean(error)}
                 onClick={() => markPaid(club)}>
-                {busyId === club.clubId ? "Recording…" : "Mark paid"}
+                {busyId === club.clubId ? "Recording…" : "Record payment received"}
               </button>
             )}
           </div>

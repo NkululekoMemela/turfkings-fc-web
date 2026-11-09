@@ -1,3 +1,4 @@
+import {getPlayersPerSide} from "../core/matchConfig.js";
 import FieldPageFrame from "../components/FieldPageFrame.jsx";
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import NotificationTicketNotice from "../components/NotificationTicketNotice.jsx";
@@ -28,7 +29,6 @@ import { resolveClubPaymentSettings } from "../core/payments/paymentProviders";
 import {
   getClubDoc,
   getClubCollection,
-  getClubStateDoc,
   getPlayersCollection,
   getPlayerPhotosCollection,
   getPendingSignupsCollection,
@@ -59,9 +59,7 @@ import {
   returnPracticeRedeemedMatchTicketToWallet,
 } from "../core/payments/practiceMatchCreditsRepository";
 
-const MIN_PLAYERS = 10;
 const MAX_PLAYERS = 25;
-const LEAGUE_PLAYERS = 15;
 const DEFAULT_VISIBLE_SLOTS = 6;
 const MAX_VISIBLE_ROWS_BEFORE_SCROLL = 5;
 const COST_PER_GAME = 65;
@@ -644,7 +642,7 @@ function getCalendarMonthsData(weeks = []) {
   });
 }
 
-function getStatus(count, maxPlayers = MAX_PLAYERS, isChallenge = false) {
+function getStatus(count, maxPlayers = MAX_PLAYERS, isChallenge = false, sideSize = 5) {
   const cap = Number(maxPlayers || MAX_PLAYERS);
   if (count >= cap) {
     return { key: "full", label: "Full", shortLabel: "Full" };
@@ -652,31 +650,13 @@ function getStatus(count, maxPlayers = MAX_PLAYERS, isChallenge = false) {
   if (isChallenge) {
     return { key: "challenge", label: "Challenge", shortLabel: "Challenge" };
   }
-  if (count >= LEAGUE_PLAYERS) {
+  if (count >= 3 * sideSize) {
     return { key: "league", label: "League", shortLabel: "League" };
   }
-  if (count >= MIN_PLAYERS) {
+  if (count >= 2 * sideSize) {
     return { key: "viable", label: "Game on", shortLabel: "Game on" };
   }
   return { key: "low", label: "needs players", shortLabel: "not filled" };
-}
-
-function getIdentityKeys(identity, displayName, shortName) {
-  return uniqueStrings([
-    identity?.memberId,
-    identity?.playerId,
-    identity?.shortName,
-    identity?.fullName,
-    identity?.displayName,
-    identity?.name,
-    identity?.playerName,
-    identity?.email,
-    displayName,
-    shortName,
-    firstNameOf(displayName),
-    slugFromLooseName(displayName),
-    slugFromLooseName(shortName),
-  ]).map(normKey);
 }
 
 function getPlayerLookupKeys(player) {
@@ -690,236 +670,6 @@ function getPlayerLookupKeys(player) {
     firstNameOf(player?.fullName || player?.shortName || ""),
     slugFromLooseName(player?.fullName || player?.shortName || ""),
   ]).map(normKey);
-}
-
-function findCurrentPlayersTeam(teams = [], identity, displayName, shortName) {
-  const identityKeys = getIdentityKeys(identity, displayName, shortName);
-
-  for (const team of teams) {
-    const players = Array.isArray(team?.players) ? team.players : [];
-
-    const found = players.some((entry) => {
-      const candidates =
-        typeof entry === "string"
-          ? [entry, firstNameOf(entry), slugFromLooseName(entry)]
-          : [
-              entry?.playerId,
-              entry?.memberId,
-              entry?.id,
-              entry?.uid,
-              entry?.shortName,
-              entry?.fullName,
-              entry?.displayName,
-              entry?.name,
-              entry?.playerName,
-              firstNameOf(
-                entry?.shortName ||
-                  entry?.fullName ||
-                  entry?.displayName ||
-                  entry?.name ||
-                  entry?.playerName
-              ),
-              slugFromLooseName(
-                entry?.shortName ||
-                  entry?.fullName ||
-                  entry?.displayName ||
-                  entry?.name ||
-                  entry?.playerName
-              ),
-            ];
-
-      return uniqueStrings(candidates)
-        .map(normKey)
-        .some((k) => identityKeys.includes(k));
-    });
-
-    if (found) return team;
-  }
-
-  return null;
-}
-
-function extractAllSeasonsMatchDayHistory(mainData) {
-  const state = mainData?.state || {};
-  const seasons = Array.isArray(state?.seasons) ? state.seasons : [];
-  const all = [];
-
-  seasons.forEach((season) => {
-    const history = Array.isArray(season?.matchDayHistory)
-      ? season.matchDayHistory
-      : [];
-    history.forEach((day) => {
-      all.push({
-        ...day,
-        seasonId: season?.seasonId || "",
-      });
-    });
-  });
-
-  return all;
-}
-
-function buildAttendanceFromMatchDayHistory({
-  matchDayHistory = [],
-  identity,
-  displayName,
-  shortName,
-}) {
-  const identityKeys = getIdentityKeys(identity, displayName, shortName);
-  const allMatchDays = new Set();
-  const attendedMatchDays = new Set();
-  let gamesPlayed = 0;
-
-  (Array.isArray(matchDayHistory) ? matchDayHistory : []).forEach((day) => {
-    const seasonId = String(day?.seasonId || "").trim();
-    const localDayId = String(day?.id || day?.matchDayId || "").trim();
-    if (!localDayId) return;
-
-    const compositeDayId = seasonId ? `${seasonId}__${localDayId}` : localDayId;
-    allMatchDays.add(compositeDayId);
-
-    const playerAppearances = Array.isArray(day?.playerAppearances)
-      ? day.playerAppearances
-      : [];
-
-    const matchingEntry = playerAppearances.find((entry) => {
-      const rowKeys = uniqueStrings([
-        entry?.playerId,
-        entry?.playerName,
-        entry?.shortName,
-        entry?.displayName,
-        firstNameOf(
-          entry?.playerName || entry?.shortName || entry?.displayName || ""
-        ),
-        slugFromLooseName(
-          entry?.playerName || entry?.shortName || entry?.displayName || ""
-        ),
-      ]).map(normKey);
-
-      return rowKeys.some((k) => identityKeys.includes(k));
-    });
-
-    if (!matchingEntry) return;
-
-    attendedMatchDays.add(compositeDayId);
-
-    const directMatchesPlayed = Number(
-      matchingEntry?.matchesPlayed ?? matchingEntry?.gamesPlayed
-    );
-
-    if (Number.isFinite(directMatchesPlayed) && directMatchesPlayed > 0) {
-      gamesPlayed += directMatchesPlayed;
-    } else {
-      const playedFlag = String(
-        matchingEntry?.played ??
-          matchingEntry?.didPlay ??
-          matchingEntry?.wasInGame ??
-          ""
-      ).toLowerCase();
-
-      if (
-        playedFlag === "true" ||
-        playedFlag === "1" ||
-        playedFlag === "yes"
-      ) {
-        gamesPlayed += 1;
-      }
-    }
-  });
-
-  const attended = attendedMatchDays.size;
-  const total = allMatchDays.size;
-  const percent = total > 0 ? Math.round((attended / total) * 100) : null;
-
-  return {
-    loading: false,
-    percent,
-    attended,
-    total,
-    gamesPlayed,
-  };
-}
-
-function buildAttendanceFromAttendanceCollection({
-  rows = [],
-  identity,
-  displayName,
-  shortName,
-}) {
-  const identityKeys = getIdentityKeys(identity, displayName, shortName);
-
-  const playerRows = rows.filter((row) => {
-    const rowKeys = uniqueStrings([
-      row.playerId,
-      row.playerName,
-      row.shortName,
-      row.displayName,
-      firstNameOf(row.playerName || row.shortName || row.displayName || ""),
-      slugFromLooseName(
-        row.playerName || row.shortName || row.displayName || ""
-      ),
-    ]).map(normKey);
-
-    return rowKeys.some((k) => identityKeys.includes(k));
-  });
-
-  const allMatchDays = new Set(
-    rows
-      .map((row) =>
-        `${String(row.seasonId || "").trim()}__${String(
-          row.matchDayId || ""
-        ).trim()}`
-      )
-      .filter((x) => x !== "__")
-  );
-
-  const attendedMatchDays = new Set(
-    playerRows
-      .filter((row) => {
-        const value = String(
-          row.attended ?? row.isPresent ?? row.present ?? "true"
-        ).toLowerCase();
-        return value !== "false" && value !== "0" && value !== "no";
-      })
-      .map(
-        (row) =>
-          `${String(row.seasonId || "").trim()}__${String(
-            row.matchDayId || ""
-          ).trim()}`
-      )
-      .filter((x) => x !== "__")
-  );
-
-  const attended = attendedMatchDays.size;
-  const total = allMatchDays.size;
-  const percent = total > 0 ? Math.round((attended / total) * 100) : null;
-
-  const gamesPlayed = playerRows.reduce((sum, row) => {
-    const directValue = Number(row.gamesPlayed ?? row.matchesPlayed);
-    if (Number.isFinite(directValue) && directValue > 0) return sum + directValue;
-
-    const playedFlag = String(
-      row.played ?? row.didPlay ?? row.wasInGame ?? ""
-    ).toLowerCase();
-
-    if (
-      playedFlag === "true" ||
-      playedFlag === "1" ||
-      playedFlag === "yes"
-    ) {
-      return sum + 1;
-    }
-
-    return sum;
-  }, 0);
-
-  return {
-    loading: false,
-    percent,
-    attended,
-    total,
-    gamesPlayed,
-  };
 }
 
 function buildBeneficiaryStableKey(mode, targetId, targetName) {
@@ -958,13 +708,12 @@ function statusFromWeekState(selectedWeeks, paidWeeks) {
 
 export default function MatchSignupPage({
   clubModeLabel = "Friendly",
+  gameFormat,
   identity,
   activeRole = "",
   currentUser,
   teams = [],
   activeSeasonId,
-  selectedTeamName = "",
-  currentTeamName = "",
   activeClubId = "turf-kings",
   activeClub = null,
   isPracticeMode = false,
@@ -1110,13 +859,6 @@ export default function MatchSignupPage({
   const [matchTicketMinimized, setMatchTicketMinimized] = useState(false);
   const [directoryPlayers, setDirectoryPlayers] = useState([]);
 
-  const [attendanceBadge, setAttendanceBadge] = useState({
-    loading: true,
-    percent: null,
-    attended: 0,
-    total: 0,
-    gamesPlayed: 0,
-  });
   const [liveWeekKeys, setLiveWeekKeys] = useState({});
   const [livePlayerWeeks, setLivePlayerWeeks] = useState({});
   const [liveCommittedUsers, setLiveCommittedUsers] = useState([]);
@@ -1843,109 +1585,6 @@ export default function MatchSignupPage({
   );
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadAttendanceBadge() {
-      if (beneficiary.isGuest) {
-        if (!cancelled) {
-          setAttendanceBadge({
-            loading: false,
-            percent: null,
-            attended: 0,
-            total: 0,
-            gamesPlayed: 0,
-          });
-        }
-        return;
-      }
-
-      try {
-        const mainRef = getClubStateDoc(db, activeClubId);
-        const mainSnap = await getDoc(mainRef);
-
-        if (cancelled) return;
-
-        const targetIdentity = {
-          playerId: beneficiary.playerId,
-          shortName: beneficiary.shortName,
-          fullName: beneficiary.fullName,
-          displayName: beneficiary.fullName,
-        };
-
-        const allHistory = mainSnap.exists()
-          ? extractAllSeasonsMatchDayHistory(mainSnap.data() || {})
-          : [];
-
-        if (Array.isArray(allHistory) && allHistory.length > 0) {
-          const badgeFromHistory = buildAttendanceFromMatchDayHistory({
-            matchDayHistory: allHistory,
-            identity: targetIdentity,
-            displayName: beneficiary.fullName,
-            shortName: beneficiary.shortName,
-          });
-
-          if (!cancelled) setAttendanceBadge(badgeFromHistory);
-          return;
-        }
-
-        const seasonSnaps = await getDocs(getClubCollection(db, CLUB_COLLECTIONS.seasons, activeClubId));
-        if (cancelled) return;
-
-        const rows = [];
-        await Promise.all(
-          seasonSnaps.docs.map(async (seasonDoc) => {
-            try {
-              const attendanceSnap = await getDocs(
-                collection(db, "clubs", activeClubId, "seasons", seasonDoc.id, "attendance")
-              );
-              attendanceSnap.forEach((docSnap) =>
-                rows.push({
-                  seasonId: seasonDoc.id,
-                  ...(docSnap.data() || {}),
-                })
-              );
-            } catch (error) {
-              console.warn(
-                "Attendance fallback skipped for season:",
-                seasonDoc.id,
-                error
-              );
-            }
-          })
-        );
-
-        if (cancelled) return;
-
-        const badgeFromAttendance = buildAttendanceFromAttendanceCollection({
-          rows,
-          identity: targetIdentity,
-          displayName: beneficiary.fullName,
-          shortName: beneficiary.shortName,
-        });
-
-        setAttendanceBadge(badgeFromAttendance);
-      } catch (err) {
-        console.error("Failed to load attendance badge:", err);
-        if (!cancelled) {
-          setAttendanceBadge({
-            loading: false,
-            percent: null,
-            attended: 0,
-            total: 0,
-            gamesPlayed: 0,
-          });
-        }
-      }
-    }
-
-    loadAttendanceBadge();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [beneficiary]);
-
-  useEffect(() => {
     const cached = readSignupCache(pendingId);
     if (cached) {
       setSelectedWeeks(
@@ -2482,41 +2121,6 @@ export default function MatchSignupPage({
   const photoData =
     getPlayerPhoto(beneficiary.fullName) || getPlayerPhoto(beneficiary.shortName);
 
-  const currentTeam = useMemo(
-    () =>
-      beneficiary.isGuest
-        ? null
-        : findCurrentPlayersTeam(
-            teams,
-            {
-              playerId: beneficiary.playerId,
-              shortName: beneficiary.shortName,
-              fullName: beneficiary.fullName,
-            },
-            beneficiary.fullName,
-            beneficiary.shortName
-          ),
-    [teams, beneficiary]
-  );
-
-  const resolvedCurrentTeamName = useMemo(() => {
-    const identityTeamName = String(
-      identity?.selectedTeamName ||
-        identity?.currentTeamName ||
-        identity?.teamName ||
-        identity?.team ||
-        ""
-    ).trim();
-
-    return (
-      String(selectedTeamName || "").trim() ||
-      String(currentTeamName || "").trim() ||
-      identityTeamName ||
-      String(currentTeam?.name || currentTeam?.teamName || currentTeam?.label || "").trim() ||
-      "—"
-    );
-  }, [selectedTeamName, currentTeamName, identity, currentTeam]);
-
   const allRows = useMemo(() => {
     const rowsFromCommittedUsers = liveCommittedUsers.map((user, index) => ({
       id: user.userId || `${slugFromLooseName(user.fullName)}_${index}`,
@@ -2862,10 +2466,10 @@ export default function MatchSignupPage({
         return {
           ...week,
           count: fullCount,
-          status: getStatus(fullCount, week.maxPlayers, week.isChallenge),
+          status: getStatus(fullCount, week.maxPlayers, week.isChallenge, getPlayersPerSide(gameFormat)),
         };
       }),
-    [weeks, weekSelectionsAll]
+    [weeks, weekSelectionsAll, gameFormat]
   );
 
   const matchTicketUseWeeks = useMemo(() => {
@@ -3857,24 +3461,6 @@ export default function MatchSignupPage({
     : selectedCount > 0
     ? `${selectedCount} week${selectedCount > 1 ? "s" : ""} selected`
     : "tick a box";
-
-  const attendanceBadgeText = attendanceBadge.loading
-    ? "Attendance loading..."
-    : attendanceBadge.percent == null
-    ? beneficiary.isGuest
-      ? "New guest player"
-      : "Attendance not available"
-    : `${attendanceBadge.percent}% attendance`;
-
-  const attendanceSubtext = attendanceBadge.loading
-    ? ""
-    : attendanceBadge.percent == null
-    ? beneficiary.isGuest
-      ? "Guest player has no previous attendance record"
-      : ""
-    : `${attendanceBadge.attended}/${attendanceBadge.total} weeks · ${attendanceBadge.gamesPlayed} game${
-        attendanceBadge.gamesPlayed === 1 ? "" : "s"
-      } played`;
 
   const unpaidPlayersCount = useMemo(
     () =>
@@ -5477,7 +5063,6 @@ export default function MatchSignupPage({
 
   const contentMaxWidth = isMobile ? "100%" : "1180px";
 
-  const historicalViewMode = weeksToPayNow.length === 0;
 
 const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
   if (!week?.isChallenge) return base;
@@ -5507,8 +5092,6 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
       <SignupHeroHeader
         photoData={photoData}
         beneficiary={beneficiary}
-        attendanceBadgeText={attendanceBadgeText}
-        attendanceSubtext={attendanceSubtext}
         isMobile={isMobile}
         isPracticeMode={isPracticeMode}
         matchTicketBusy={matchTicketBusy}
@@ -7597,55 +7180,10 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           settings={clubBookingSettings} defaultLimit={MAX_PLAYERS} />
       )}
 
-      <section className="card signup-summary-card">
-        {historicalViewMode ? (
-          <>
-            <div className="signup-summary-header">
-              <div className="signup-summary-player">
-                <div className="signup-summary-avatar">
-                  {photoData ? (
-                    <img src={photoData} alt={beneficiary.fullName} />
-                  ) : (
-                    <span>
-                      {String(beneficiary.shortName || "P")
-                        .charAt(0)
-                        .toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <h3>Summary</h3>
-                </div>
-              </div>
-            </div>
-
-            <div className="signup-summary-rows">
-              <div className="summary-row">
-                <span>Attendance</span>
-                <strong>
-                  {attendanceBadge.percent == null
-                    ? "—"
-                    : `${attendanceBadge.percent}%`}
-                </strong>
-              </div>
-
-              <div className="summary-row">
-                <span>Weeks attended</span>
-                <strong>{attendanceBadge.attended}</strong>
-              </div>
-
-              <div className="summary-row">
-                <span>Games played</span>
-                <strong>{attendanceBadge.gamesPlayed}</strong>
-              </div>
-
-              <div className="summary-row">
-                <span>Current team</span>
-                <strong>{resolvedCurrentTeamName}</strong>
-              </div>
-
-              {isFullyPaidSelection ? (
-                <>
+      {isFullyPaidSelection ? (
+        <section className="card signup-summary-card">
+          <h3>Booking summary</h3>
+          <div className="signup-summary-rows">
                   <div className="summary-row">
                     <span>Upcoming fixtures paid</span>
                     <strong>
@@ -7672,49 +7210,11 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                       </strong>
                     </div>
                   ) : null}
-                </>
-              ) : null}
-
-              <div className="summary-row total">
-                <span>Profile</span>
-                <div style={{ textAlign: "right" }}>
-                  <strong>
-                    {beneficiary.isGuest ? "Guest player" : "Squad player"}
-                  </strong>
-                  <div className="muted small">
-                    {beneficiary.isGuest
-                      ? "No old stats yet"
-                      : attendanceBadge.percent == null
-                      ? "History loading"
-                      : isFullyPaidSelection
-                      ? "Fully paid and confirmed"
-                      : "Ready for next month"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="signup-summary-header">
-              <div className="signup-summary-player">
-                <div className="signup-summary-avatar">
-                  {photoData ? (
-                    <img src={photoData} alt={beneficiary.fullName} />
-                  ) : (
-                    <span>
-                      {String(beneficiary.shortName || "P")
-                        .charAt(0)
-                        .toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <h3>Summary</h3>
-                </div>
-              </div>
-            </div>
-
+          </div>
+        </section>
+      ) : weeksToPayNow.length > 0 ? (
+        <section className="card signup-summary-card">
+          <h3>Payment summary</h3>
             <div className="signup-summary-rows">
               <div className="summary-row">
                 <span>Selected match days</span>
@@ -7764,18 +7264,8 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
               {practiceCompanyFunding ? "Continue to company authorisation" : "💳 Continue to payment"}
             </button>
 
-            {weeksToPayNow.length === 0 && selectedWeeks.length > 0 ? (
-              <p className="muted small" style={{ marginTop: 10 }}>
-                All selected weeks are already paid.
-              </p>
-            ) : selectedWeeks.length > 0 ? (
-              <p className="muted small" style={{ marginTop: 10 }}>
-                Payment is still required. You can continue to payment or change your selected weeks.
-              </p>
-            ) : null}
-          </>
-        )}
-      </section>
+        </section>
+      ) : null}
     </div></FieldPageFrame>
   );
 }

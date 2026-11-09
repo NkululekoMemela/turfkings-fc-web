@@ -125,9 +125,10 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
   const selectedPlayers=selected.map(id=>data?.candidates?.find(player=>player.memberId===id)).filter(Boolean).map(player=>{const bib=kitAssignments[player.sourcePlayerId];if(!bib)return player;const number=kitNumbers[player.sourcePlayerId]??player.jerseyNumber??null;return {...player,jerseyNumber:number,bibColor:bib.color||'',matchBib:{...bib,number,available:true}};});
   const clashes=kitColourClashes(selectedPlayers,data?.opponentColours||[]);
   const kitIssues=[...leagueBibIssues(selectedPlayers,kitNumbers),...(clashes.length?[`Opponent uses ${clashes.join(", ")}. Choose a different bib colour.`]:[])];
+  const {minimum = 5, maximum = 6} = data || {};
   const deadline=data?.deadlineAtMs ? new Date(data.deadlineAtMs).toLocaleString("en-ZA",{timeZone:"Africa/Johannesburg",dateStyle:"medium",timeStyle:"short"}) : "";
   const ready = !busy && !loading && kitConfirmed && kitIssues.length === 0 &&
-    selected.length >= 5 && selected.length <= 6 &&
+    selected.length >= minimum && selected.length <= maximum &&
     new Set(selected).size === selected.length &&
     selected.every(id => data?.candidates?.some(player => player.memberId === id));
   const unchanged = data?.confirmed &&
@@ -153,7 +154,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
             {unchanged ? "✓ Availability confirmed." :
               ready ? "Season squad, colours and numbers are ready automatically. Change only exceptions." :
               data.stockConfirmed===false ? "Waiting for Field bib stock." :
-              selected.length>=5 ? "Check the kit warnings below and confirm the actual bibs." : `${selected.length}/6 selected. Choose 5 or 6 players.`}
+              selected.length>=minimum ? "Check the kit warnings below and confirm the actual bibs." : `${selected.length}/${maximum} selected. Choose ${minimum} or ${maximum} players.`}
           </p>
           {data.matchColour&&<p className="muted small">Match colour: <strong>{data.matchColour}</strong> · numbers assigned by the Field.</p>}
           <details open={!data.ready || data.needsSelection} className="league-weekly-adjustments">
@@ -161,7 +162,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
           {data.opponentColours?.length>0&&<small className="muted">Opponent: {data.opponentColours.join(", ")} · choose a different colour.</small>}
           <label className="league-shared-bib-color">Match bibs<PremiumSelect aria-label="Team bib source" value={teamBibSource} disabled={busy} onChange={event=>{const source=event.target.value;setTeamBibSource(source);fillTeamBibs(source,sharedBibColor);}}><option value="">Individual kit</option><option value="hired">Hired bibs where needed</option><option value="club">Club bibs where needed</option></PremiumSelect></label>
           <label className="league-shared-bib-color">Club / hire bib colour<PremiumSelect value={sharedBibColor} onChange={event=>{const color=event.target.value;setSharedBibColor(color);fillTeamBibs(teamBibSource,color);setKitConfirmed(false);if(!teamBibSource)setKitAssignments(current=>Object.fromEntries(Object.entries(current).map(([key,bib])=>[key,{...bib,color}])));}}><option value="">Choose colour</option>{data.matchColour&&!["Blue","Green","Orange","Gold","Red","White","Black"].includes(data.matchColour)&&<option value={data.matchColour}>{data.matchColour} · fixture</option>}{["Blue","Green","Orange","Gold","Red","White","Black"].map(color=><option key={color} value={color} disabled={(data.opponentColours||[]).map(kitColourKey).includes(kitColourKey(color)) || Boolean(data.matchColour&&kitColourKey(color)!==kitColourKey(data.matchColour))}>{color}{(data.opponentColours||[]).map(kitColourKey).includes(kitColourKey(color))?" · opponent":""}</option>)}</PremiumSelect></label>
-          {teamBibSource&&<small className="muted">Owned bibs keep their numbers when colours match. Hired bibs use (1)–(6). Confirm the supplied bibs match.</small>}
+          {teamBibSource&&<small className="muted">Owned bibs keep their numbers when colours match. Hired bibs use the numbers supplied by the Field. Confirm the supplied bibs match.</small>}
           <div className="league-send-players">
             {data.candidates.map(player => {
               const index = selected.indexOf(player.memberId);
@@ -171,7 +172,7 @@ export default function LeagueMatchDaySubmission({scope, games, revision, onChan
                     onChange={() => {setKitConfirmed(false);setSelected(current =>
                       current.includes(player.memberId)
                         ? current.filter(id => id !== player.memberId)
-                        : current.length < 6 ? [...current, player.memberId] : current
+                        : current.length < maximum ? [...current, player.memberId] : current
                     );}} />
                   <span>{kitNumbers[player.sourcePlayerId] != null && kitNumbers[player.sourcePlayerId] !== "" ? `(${kitNumbers[player.sourcePlayerId]}) ` : "(-) "}{player.fullName}
                     <small>{kitAssignments[player.sourcePlayerId]?.source === "hired" ? "Hired bib assigned" : kitAssignments[player.sourcePlayerId] ? "Club bib assigned" : player.matchBib?.allocationSource === "field" ? "Field-assigned bib" : player.ownsNumberedBib === true ? "Own bib" : "Assign a match bib"}</small>

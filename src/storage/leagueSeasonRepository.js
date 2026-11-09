@@ -117,6 +117,7 @@ import {
   FORMATIONS_5,
   FORMATIONS_6,
   FORMATIONS_7,
+  FORMATIONS_11,
 } from "../core/lineups.js";
 import {
   GAME_FORMAT,
@@ -802,8 +803,7 @@ export async function startVenueFixture({
     }
 
     const paidSquadsForStart = approval.squads || {};
-    if (season.gameFormat === "5_V_5" &&
-        [fixture.clubAId, fixture.clubBId].some(clubId =>
+    if ([fixture.clubAId, fixture.clubBId].some(clubId =>
           !approval.startingLineups?.[clubId])) {
       throw new Error("The approved starting lineup is missing. Try again.");
     }
@@ -830,6 +830,7 @@ export async function startVenueFixture({
 
     const match = {
       fixtureId,
+      gameFormat: approval.gameFormat,
       liveDocumentId: fixtureId,
       matchNo,
       ...(fixture.pitchNumber ? {pitchNumber:fixture.pitchNumber, scheduledLocal:fixture.scheduledLocal} : {}),
@@ -879,8 +880,7 @@ export async function startVenueFixture({
       ...data,
       startApprovalId: approvalResponse.approvalId,
       paidSquads: paidSquadsForStart,
-      confirmedLineupSnapshot: season.gameFormat === "5_V_5"
-        ? approval.startingLineups : null,
+      confirmedLineupSnapshot: approval.startingLineups,
       running: false,
       awaitingKitVerification: true,
       clockVersion: 1,
@@ -1087,7 +1087,7 @@ export async function completeVenueFixture({
         ? FORMATIONS_6
         : gameFormat === GAME_FORMAT.SEVEN_V_SEVEN
           ? FORMATIONS_7
-          : FORMATIONS_5;
+          : gameFormat === GAME_FORMAT.ELEVEN_V_ELEVEN ? FORMATIONS_11 : FORMATIONS_5;
       const matchMeta = {
         matchType: "LEAGUE",
         gameFormat,

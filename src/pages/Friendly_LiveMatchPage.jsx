@@ -26,12 +26,18 @@ import {
   getDocs,
 } from "firebase/firestore";
 import {
+  GAME_TYPE_5,
+  GAME_TYPE_6,
+  GAME_TYPE_7,
+  GAME_TYPE_11,
   FORMATIONS_5,
   FORMATIONS_6,
   FORMATIONS_7,
+  FORMATIONS_11,
   DEFAULT_FORMATION_ID_5,
   DEFAULT_FORMATION_ID_6,
   DEFAULT_FORMATION_ID_7,
+  DEFAULT_FORMATION_ID_11,
   loadSavedLineups,
   resolveLineupStorageKey,
   LINEUPS_CHANGED_EVENT,
@@ -137,6 +143,17 @@ function resolveFanmTeamIdentity(team = {}) {
 function getFriendlyFormationTools(gameFormat) {
   const playersPerSide = getGameFormatConfig(gameFormat).playersPerSide;
 
+  if (playersPerSide === 11) {
+    return {
+      playersPerSide,
+      formatLabel: "11 v 11",
+      shortLabel: "11v11",
+      formationMap: FORMATIONS_11,
+      defaultFormationId: DEFAULT_FORMATION_ID_11,
+      lineupStorageKey: GAME_TYPE_11,
+    };
+  }
+
   if (playersPerSide === 7) {
     return {
       playersPerSide,
@@ -144,7 +161,7 @@ function getFriendlyFormationTools(gameFormat) {
       shortLabel: "7v7",
       formationMap: FORMATIONS_7,
       defaultFormationId: DEFAULT_FORMATION_ID_7,
-      lineupStorageKey: "7",
+      lineupStorageKey: GAME_TYPE_7,
     };
   }
 
@@ -155,7 +172,7 @@ function getFriendlyFormationTools(gameFormat) {
       shortLabel: "6v6",
       formationMap: FORMATIONS_6,
       defaultFormationId: DEFAULT_FORMATION_ID_6,
-      lineupStorageKey: "6",
+      lineupStorageKey: GAME_TYPE_6,
     };
   }
 
@@ -165,7 +182,7 @@ function getFriendlyFormationTools(gameFormat) {
     shortLabel: "5v5",
     formationMap: FORMATIONS_5,
     defaultFormationId: DEFAULT_FORMATION_ID_5,
-    lineupStorageKey: "5",
+    lineupStorageKey: GAME_TYPE_5,
   };
 }
 

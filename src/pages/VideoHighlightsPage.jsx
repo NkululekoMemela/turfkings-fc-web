@@ -1,3 +1,4 @@
+import { partitionMatchHighlights, highlightMatchDay, highlightClipKey, UNASSIGNED_HIGHLIGHT_FIXTURE } from "../core/highlightFixtures.mjs";
 import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import HighlightFilters from '../components/HighlightFilters.jsx';
 import HighlightMatchFolders from '../components/HighlightMatchFolders.jsx';
@@ -748,6 +749,10 @@ function HighlightCard({
     onLike?.(highlight);
   };
 
+  const eligibleForLike = (highlight.status === "approved" || isArchivedTopVotedClip(highlight)) &&
+    !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
+    ["goal", "save", "skill", "momish"].includes(highlight.normalizedType);
+
   const handleLikeContextMenu = (event) => {
     if (!Number(likeCount || 0)) return;
 
@@ -931,7 +936,24 @@ function HighlightCard({
       ) : (
         <>
           <div className="fanm-clip-surface">
-      <HighlightThumbnail highlight={highlight} onWatched={clip=>{setIsExpanded(true);onWatched?.(clip);}} onFinish={()=>setIsExpanded(false)}/>
+      <HighlightThumbnail highlight={highlight} onWatched={onWatched} onFinish={()=>setIsExpanded(false)}
+        playerActions={<>
+          {eligibleForLike && canLike && (
+            <button type="button" className="fanm-highlight-player-like" aria-pressed={isLiked}
+              onPointerDown={startLikeLongPress} onPointerUp={cancelLikeLongPress}
+              onPointerCancel={cancelLikeLongPress} onPointerLeave={cancelLikeLongPress}
+              onContextMenu={handleLikeContextMenu} onClick={handleLikeClick}>
+              <span aria-hidden="true">{isLiked ? "♥" : "♡"}</span> {isLiked ? (voteLabel ? "Voted" : "Liked") : (voteLabel || "Like")}
+              {Number(likeCount || 0) > 0 ? ` · ${Number(likeCount || 0)}` : ""}
+            </button>
+          )}
+          {canAttachToChat && (
+            <button type="button" className="fanm-highlight-player-comment" onClick={()=>onAttachToClubChat?.(highlight)}>
+              Comment
+            </button>
+          )}
+        </>}
+      />
 
       <span className="fanm-clip-type">{typeBadgeLabel(highlight.normalizedType)}</span>
       <ClipOptions title={`Clip options · ${highlight.playerName||"Player"}`} onClose={()=>setShowShareMenu(false)}>
@@ -1113,13 +1135,7 @@ function HighlightCard({
         )}
       </ClipOptions>
       <div className="tkh-card-actions fanm-clip-social">
-        {(highlight.status === "approved" ||
-          isArchivedTopVotedClip(highlight)) &&
-          canLike &&
-          !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
-          ["goal", "save", "skill", "momish"].includes(
-            highlight.normalizedType
-          ) && (
+        {eligibleForLike && canLike && (
             <button
               type="button"
               className={`tkh-btn tkh-btn-vote ${
@@ -1157,13 +1173,7 @@ function HighlightCard({
             </button>
           )}
 
-        {(highlight.status === "approved" ||
-          isArchivedTopVotedClip(highlight)) &&
-          !canLike &&
-          !(highlight.highlightEra === "throwback" || highlight.isThrowback) &&
-          ["goal", "save", "skill", "momish"].includes(
-            highlight.normalizedType
-          ) && (
+        {eligibleForLike && !canLike && (
             <span
               className="tkh-btn tkh-btn-vote"
               title="Highlight votes"
@@ -1907,14 +1917,15 @@ export function VideoHighlightsPage({
   onBack,
 }) {
   const [fixtureFilter,setFixtureFilter]=useState(initialMatchFilter);
-  useEffect(()=>{setFixtureFilter(initialMatchFilter||'');if(initialMatchFilter){setMainTab('currentWeek');setSelectedTab('approved');}},[initialMatchFilter]);
+  const routedFixture = useRef("");
+  useEffect(()=>{routedFixture.current = "";setFixtureFilter(initialMatchFilter||'');if(initialMatchFilter){setMainTab('currentWeek');setSelectedTab('approved');}},[initialMatchFilter]);
   const fileInputRef = useRef(null);
   const categorySelectorRef = useRef(null);
   const stickyCategoryTimerRef = useRef(null);
 
   const resolvedMatchId = useMemo(
     () =>
-      String(fixtureFilter || matchId || "").trim() ||
+      String((fixtureFilter !== UNASSIGNED_HIGHLIGHT_FIXTURE && fixtureFilter) || matchId || "").trim() ||
       buildFallbackMatchId({
         matchType,
         gameFormat,
@@ -1999,9 +2010,7 @@ export function VideoHighlightsPage({
   );
   const [loadError, setLoadError] = useState("");
 
-  const [curationResult, setCurationResult] = useState(null);
   const [runningCuration, setRunningCuration] = useState(false);
-  const [cleanupInProgress, setCleanupInProgress] = useState(false);
   const [curationNotice, setCurationNotice] = useState("");
 
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -2034,6 +2043,7 @@ export function VideoHighlightsPage({
   const [clipDuration, setClipDuration] = useState(null);
   const [clipType, setClipType] = useState("goal");
   const [highlightEra, setHighlightEra] = useState("current_week");
+  const [uploadMatchId, setUploadMatchId] = useState(null);
   const [playerName, setPlayerName] = useState("");
   const [assistName, setAssistName] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -2248,9 +2258,7 @@ export function VideoHighlightsPage({
       const seen = new Set();
 
       const deduplicatedRaw = combinedRaw.filter((clip) => {
-        const key = String(
-          clip?.clipId || clip?.id || ""
-        ).trim();
+        const key = highlightClipKey(clip);
 
         if (!key) return true;
         if (seen.has(key)) return false;
@@ -2367,8 +2375,8 @@ export function VideoHighlightsPage({
 
   const allHighlights = useMemo(() => {
     const combined = [
-      ...(Array.isArray(currentMatchDayHighlights) ? currentMatchDayHighlights : []),
       ...(Array.isArray(firebaseHighlights) ? firebaseHighlights : []),
+      ...(Array.isArray(currentMatchDayHighlights) ? currentMatchDayHighlights : []),
       ...(Array.isArray(localHighlights) ? localHighlights : []),
     ];
 
@@ -2376,9 +2384,8 @@ export function VideoHighlightsPage({
 
     return combined
       .map((highlight, index) => normalizeHighlight(highlight, index))
-      .filter(highlight=>highlightMatchesMode(highlight,matchType))
       .filter((highlight) => {
-        const key = String(highlight?.id || highlight?.clipId || "").trim();
+        const key = highlightClipKey(highlight);
         if (!key) return true;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -2598,10 +2605,6 @@ export function VideoHighlightsPage({
     [allHighlights]
   );
 
-  const rejectedHighlights = useMemo(
-    () => allHighlights.filter((item) => item.status === "rejected"),
-    [allHighlights]
-  );
 
   const getHighlightDate = (item = {}) => {
     const value =
@@ -2628,225 +2631,59 @@ export function VideoHighlightsPage({
     return new Date(value);
   };
 
-  const isPreviousSeasonLeagueClip = (item = {}) => {
-    const searchable = [
-      item?.teamName,
-      item?.opponentName,
-      item?.homeTeam,
-      item?.awayTeam,
-      item?.title,
-      item?.description,
-      item?.matchId,
-      item?.fixtureId,
-      item?.seasonId,
-      item?.activeSeasonId,
-      item?.matchContext?.seasonId,
-    ]
-      .map((value) => String(value || "").toLowerCase())
-      .join(" ");
-
-    return (
-      searchable.includes("2026-s5") ||
-      searchable.includes("morocco") ||
-      searchable.includes("morroco") ||
-      searchable.includes("cabo verde") ||
-      searchable.includes("supa strikers") ||
-      searchable.includes("supa strickers")
-    );
-  };
-
-  const currentWeekHighlights = useMemo(
-    () =>
-      allHighlights.filter((item) => {
-        if (
-          item?.highlightEra === "throwback" ||
-          item?.isThrowback === true ||
-          item?.archivedClubFeed === true ||
-          item?.weeklyVotingClosed === true ||
-          item?.votingLocked === true ||
-          item?.seasonWinner === true ||
-          Boolean(item?.archivedAtISO) ||
-          isPreviousSeasonLeagueClip(item)
-        ) {
-          return false;
-        }
-
-        const clipSeasonId =
-          String(getHighlightSeasonId(item) || "").trim();
-
-        if (
-          isLeagueMode &&
-          activeSeasonId &&
-          clipSeasonId &&
-          clipSeasonId !== String(activeSeasonId).trim()
-        ) {
-          return false;
-        }
-
-        const clipMatchId = String(
-          item?.matchId ||
-          item?.fixtureId ||
-          item?.matchContext?.matchId ||
-          ""
-        ).trim();
-
-        const clipDate = getHighlightDate(item);
-
-        if (Number.isNaN(clipDate.getTime())) {
-          return Boolean(
-            clipMatchId &&
-            resolvedMatchId &&
-            clipMatchId === resolvedMatchId
-          );
-        }
-
-        const windowEnd = votingDeadline.getTime();
-        const windowStart =
-          windowEnd - (7 * 24 * 60 * 60 * 1000);
-
-        return (
-          clipDate.getTime() > windowStart &&
-          clipDate.getTime() <= windowEnd
-        );
-      }),
-    [
-      allHighlights,
-      resolvedMatchId,
-      votingDeadline,
-      activeSeasonId,
-      isLeagueMode,
-    ]
+  const { current: currentWeekHighlights, throwbacks: throwbackHighlights } = useMemo(
+    () => partitionMatchHighlights(allHighlights, archivedHighlights.map(normalizeHighlight), {
+      now: nowTick, fixtures: fixtureOptions, results: fixtureResults, mode: matchType,
+    }),
+    [allHighlights, archivedHighlights, nowTick, fixtureOptions, fixtureResults, matchType]
   );
 
-  const throwbackHighlights = useMemo(
-    () =>
-      allHighlights.filter((item) => {
-        const isThrowback =
-          item?.highlightEra === "throwback" ||
-          item?.isThrowback === true;
-
-        return (
-          isThrowback &&
-          item?.status === "approved" &&
-          Boolean(getHighlightMediaUrl(item))
-        );
-      }),
-    [allHighlights]
-  );
-
-  const scopedApprovedHighlights = useMemo(
-    () => allHighlights.filter((item) => item.status === "approved"),
-    [allHighlights]
-  );
-
-  const scopedPendingHighlights = useMemo(
-    () => allHighlights.filter((item) => item.status === "pending"),
-    [allHighlights]
-  );
-
-  const scopedRejectedHighlights = useMemo(
-    () => allHighlights.filter((item) => item.status === "rejected"),
-    [allHighlights]
-  );
-
-  const tabHighlights = useMemo(() => {
-    if (selectedTab === "pending") return scopedPendingHighlights;
-    if (selectedTab === "rejected") return scopedRejectedHighlights;
-    return scopedApprovedHighlights;
-  }, [selectedTab, scopedApprovedHighlights, scopedPendingHighlights, scopedRejectedHighlights]);
-
-  const fixtureChoices=useMemo(()=>clubHighlightFixtureOptions(filterHighlightClips([...tabHighlights,...(selectedTab==='approved'?archivedHighlights.filter(clip=>["approved","archived"].includes(clip.status)||clip.archivedClubFeed):[])].filter(clip=>highlightMatchesMode(clip,matchType)&&(mainTab==='throwback'?(clip.highlightEra==='throwback'||clip.isThrowback===true):!(clip.highlightEra==='throwback'||clip.isThrowback===true))),{type:selectedFilter,player:selectedPlayerFilter,viewed:watchedFilter,watchedIds:watchedClipIds}),fixtureOptions,clip=>getMatchupLabel(clip,teams,matchType),resolvedMatchId,fixtureResults),[tabHighlights,archivedHighlights,fixtureOptions,fixtureResults,teams,matchType,resolvedMatchId,mainTab,selectedTab,selectedFilter,selectedPlayerFilter,watchedFilter,watchedClipIds]);
-  const fixtureLabel=clip=>{const entry=fixtureChoices.find(f=>f.matchId===highlightFixtureId(clip,resolvedMatchId));return [entry?.label||'Match highlights',entry?.date].filter(Boolean).join(' · ');};
-  const visibleHighlights = useMemo(() => {
-    const isThrowbackClip = (item) =>
-      item?.highlightEra === "throwback" ||
-      item?.isThrowback === true;
-
-    const belongsToCurrentWeek = (item) => {
-      if (
-        isThrowbackClip(item) ||
-        item?.archivedClubFeed === true ||
-        item?.weeklyVotingClosed === true ||
-        item?.votingLocked === true ||
-        item?.seasonWinner === true ||
-        Boolean(item?.archivedAtISO) ||
-        isPreviousSeasonLeagueClip(item)
-      ) {
-        return false;
-      }
-
-      const clipSeasonId =
-        String(getHighlightSeasonId(item) || "").trim();
-
-      if (
-        isLeagueMode &&
-        activeSeasonId &&
-        clipSeasonId &&
-        clipSeasonId !== String(activeSeasonId).trim()
-      ) {
-        return false;
-      }
-
-      const clipMatchId = String(
-        item?.matchId ||
-        item?.fixtureId ||
-        item?.matchContext?.matchId ||
-        ""
-      ).trim();
-
-      /*
-       * Upload date is the primary current-week identity.
-       * Match identity is only a fallback for undated clips.
-       */
-      const clipDate = getHighlightDate(item);
-      if (Number.isNaN(clipDate.getTime())) {
-        return Boolean(
-          clipMatchId &&
-          resolvedMatchId &&
-          clipMatchId === resolvedMatchId
-        );
-      }
-
-      const windowEnd = votingDeadline.getTime();
-      const windowStart =
-        windowEnd - (7 * 24 * 60 * 60 * 1000);
-
-      return (
-        clipDate.getTime() > windowStart &&
-        clipDate.getTime() <= windowEnd
-      );
-    };
-
-    let filtered = tabHighlights.filter((item) => {
-      if (mainTab === "currentWeek") {
-        return belongsToCurrentWeek(item);
-      }
-
-      if (mainTab === "throwback") {
-        return isThrowbackClip(item);
-      }
-
-      return false;
-    });
-
-    if(fixtureFilter){
-      const candidates=[...allHighlights,...archivedHighlights].filter(item=>highlightMatchesMode(item,matchType));
-      filtered=[...new Map(candidates.filter(item=>highlightFixtureId(item,resolvedMatchId)===fixtureFilter&&(selectedTab==='approved'?item.status==='approved'||item.status==='archived'||item.archivedClubFeed:isModerator&&item.status===selectedTab)).map(item=>[`${highlightFixtureId(item,resolvedMatchId)}:${item.clipId||item.id}`,item])).values()];
+  useEffect(() => {
+    if (!initialMatchFilter || loadingHighlights || routedFixture.current === initialMatchFilter) return;
+    if (throwbackHighlights.some(clip => highlightFixtureId(clip) === initialMatchFilter) &&
+        !currentWeekHighlights.some(clip => highlightFixtureId(clip) === initialMatchFilter)) {
+      routedFixture.current = initialMatchFilter;
+      setMainTab("throwback");
+    } else if (currentWeekHighlights.some(clip => highlightFixtureId(clip) === initialMatchFilter)) {
+      routedFixture.current = initialMatchFilter;
     }
-    filtered=filterHighlightClips(filtered,{type:selectedFilter,player:selectedPlayerFilter,viewed:watchedFilter,watchedIds:watchedClipIds});
-    return groupHighlightFixtures(filtered,fixtureFilter,resolvedMatchId);
-  }, [
-    tabHighlights,fixtureFilter,allHighlights,archivedHighlights,selectedTab,isModerator,matchType,
-    selectedFilter,
-    selectedPlayerFilter,
-    watchedFilter,
-    watchedClipIds,
-    mainTab,
-    resolvedMatchId,
-    votingDeadline,
-    activeSeasonId,
-    isLeagueMode,
-  ]);
+  }, [initialMatchFilter, loadingHighlights, currentWeekHighlights, throwbackHighlights]);
+
+  const scopedPendingHighlights = (mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights)
+    .filter(clip => clip.status === "pending");
+
+  const uploadMatches = useMemo(() => {
+    const choices = [...fixtureOptions, ...fixtureResults.map(result => ({...result, matchId: result.id || result.matchId}))];
+    const today = highlightMatchDay(nowTick);
+    return [...new Map(choices.filter(fixture =>
+      fixture.matchId && fixture.label && highlightMatchDay(fixture.date) && highlightMatchDay(fixture.date) <= today
+    ).map(fixture => [fixture.matchId, fixture])).values()]
+      .sort((a,b) => highlightMatchDay(b.date).localeCompare(highlightMatchDay(a.date)));
+  }, [fixtureOptions, fixtureResults, nowTick]);
+  const selectedUploadMatch = uploadMatches.find(fixture =>
+    fixture.matchId === (uploadMatchId ?? fixtureFilter));
+
+  const categoryClips = useMemo(() => {
+    const clips = mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights;
+    return filterHighlightClips(clips.filter(clip =>
+      selectedTab === "approved" ? clip.status === "approved" :
+        isModerator && clip.status === selectedTab
+    ), {type: selectedFilter, player: selectedPlayerFilter, viewed: watchedFilter, watchedIds: watchedClipIds});
+  }, [mainTab, currentWeekHighlights, throwbackHighlights, selectedTab, isModerator,
+    selectedFilter, selectedPlayerFilter, watchedFilter, watchedClipIds]);
+
+  const fixtureChoices = useMemo(() => clubHighlightFixtureOptions(
+    categoryClips, fixtureOptions, clip => getMatchupLabel(clip, teams, clip.matchType || matchType),
+    UNASSIGNED_HIGHLIGHT_FIXTURE, fixtureResults
+  ), [categoryClips, fixtureOptions, teams, matchType, fixtureResults]);
+  const fixtureLabel = clip => {
+    const entry = fixtureChoices.find(f => f.matchId === highlightFixtureId(clip, UNASSIGNED_HIGHLIGHT_FIXTURE));
+    return [entry?.label || "Match highlights", entry?.date].filter(Boolean).join(" · ");
+  };
+  const visibleHighlights = useMemo(
+    () => groupHighlightFixtures(categoryClips, fixtureFilter, UNASSIGNED_HIGHLIGHT_FIXTURE),
+    [categoryClips, fixtureFilter]
+  );
 
   const voteCounts = useMemo(
     () => getVoteBuckets(localVotesByUser, approvedHighlights),
@@ -3038,6 +2875,7 @@ export function VideoHighlightsPage({
   }, [archiveSelection, onHighlightsSelectionChange]);
 
   const resetUpload = () => {
+    setUploadMatchId(null);
     setClipFile(null);
     setClipDuration(null);
     setClipType("goal");
@@ -3157,6 +2995,13 @@ export function VideoHighlightsPage({
       return;
     }
 
+    if (highlightEra !== "throwback" && !selectedUploadMatch) {
+      setUploadStage("failed");
+      setUploadStep("Choose the match played");
+      setUploadError("Choose a match for this clip, or use Throwbacks if the match is unknown.");
+      return;
+    }
+
     const basicError = validateFileBasics(clipFile);
     if (basicError) {
       setUploadStage("failed");
@@ -3225,12 +3070,20 @@ export function VideoHighlightsPage({
       needsTeam: cleanTeamName === PENDING_TEAM,
       durationSeconds: Math.round(clipDuration),
       fileSizeBytes: clipFile.size,
-      matchId: resolvedMatchId,
+      matchId: selectedUploadMatch?.matchId || UNASSIGNED_HIGHLIGHT_FIXTURE,
+      matchDateISO: highlightMatchDay(selectedUploadMatch?.date) || null,
+      teamAName: selectedUploadMatch?.label?.split(/\s+vs\s+/i)[0] || null,
+      teamBName: selectedUploadMatch?.label?.split(/\s+vs\s+/i).slice(1).join(" vs ") || null,
+      teamAId: selectedUploadMatch?.teamAId || null,
+      teamBId: selectedUploadMatch?.teamBId || null,
+      teamALogoUrl: selectedUploadMatch?.teamALogoUrl || null,
+      teamBLogoUrl: selectedUploadMatch?.teamBLogoUrl || null,
+      seasonId: selectedUploadMatch?.matchType === "FRIENDLY" ? null : selectedUploadMatch?.seasonId || activeSeasonId || null,
       activeClubId,
       clubId: activeClubId,
-      activeSeasonId,
-      matchType,
-      gameFormat,
+      activeSeasonId: selectedUploadMatch?.seasonId || activeSeasonId || null,
+      matchType: selectedUploadMatch?.matchType || matchType,
+      gameFormat: selectedUploadMatch?.gameFormat || gameFormat,
       matchNo: currentMatchNo,
       createdBy: identityKey,
       createdByName: identityName,
@@ -3248,7 +3101,7 @@ export function VideoHighlightsPage({
 
       if (resolvedMatchId) {
         savedHighlight = await VideoHighlightsRepository.uploadAndSaveRawHighlight({
-          matchId: resolvedMatchId,
+          matchId: payload.matchId,
           clubId: activeClubId,
           file: clipFile,
           highlight: payload,
@@ -3701,67 +3554,13 @@ export function VideoHighlightsPage({
       const user=auth.currentUser;if(!user?.emailVerified)throw Error('Sign in with your verified account.');
       const response=await fetch(`${getActiveFirebaseFunctionsBaseUrl()}/closeHighlightWeek`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({kind:'club',ownerId:activeClubId,matchId:resolvedMatchId}),signal:AbortSignal.timeout(180000)});
       const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'Could not close weekly voting.');
-      await loadHighlights();setCurationResult(null);setMainTab('winners');setCurationNotice('Weekly voting closed. Winners are preserved. Non-winning videos have been permanently deleted.');
+      await loadHighlights();setMainTab('winners');setCurationNotice('Weekly voting closed. Winners are preserved. Non-winning videos stay available for review in Throwbacks once the match week ends.');
 
     } catch (error) {
       console.error("[TK HIGHLIGHTS] Curation failed:", error);
       window.alert(error?.message || "Could not run curation.");
     } finally {
       setRunningCuration(false);
-    }
-  };
-
-  const handleConfirmCleanup = async () => {
-    if (!isModerator || !curationResult) return;
-
-    const cleanupCandidates = Array.isArray(curationResult.cleanupCandidates)
-      ? curationResult.cleanupCandidates
-      : [];
-
-    const winners = getCurationWinners(curationResult);
-
-    const confirmed = window.confirm(
-      `Confirm cleanup? ${winners.length} winning clip${winners.length === 1 ? "" : "s"} will be archived permanently and ${cleanupCandidates.length} non-winning clip${cleanupCandidates.length === 1 ? "" : "s"} will be removed from the server.`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setCleanupInProgress(true);
-      setCurationNotice("");
-
-      const confirmCleanup =
-        VideoHighlightsRepository.confirmCleanupAndArchiveHighlights ||
-        VideoHighlightsRepository.confirmAndDeleteVideoCleanupCandidates;
-
-      const result = await confirmCleanup({
-        matchId: resolvedMatchId,
-        winners,
-        cleanupCandidates,
-        curationRunId: curationResult.curationRunId || "",
-        curationMeta: {
-          matchType,
-          gameFormat,
-          activeSeasonId,
-          currentMatchNo,
-          teamContextText,
-        },
-      });
-
-      (result?.deleted || []).forEach((clip) => removeLocalHighlight(clip));
-
-      await loadHighlights();
-      setMainTab("winners");
-      setCurationNotice(
-        `Cleanup complete. ${result?.archivedCount ?? winners.length} winner${(result?.archivedCount ?? winners.length) === 1 ? "" : "s"} archived and ${result?.deletedCount ?? cleanupCandidates.length} clip${(result?.deletedCount ?? cleanupCandidates.length) === 1 ? "" : "s"} removed.`
-      );
-      setCurationResult(null);
-    } catch (error) {
-      console.error("[TK HIGHLIGHTS] Cleanup failed:", error);
-      window.alert(error?.message || "Could not complete cleanup.");
-      await loadHighlights();
-    } finally {
-      setCleanupInProgress(false);
     }
   };
 
@@ -5277,7 +5076,7 @@ export function VideoHighlightsPage({
                 ? "is-active"
                 : ""
             }
-            onClick={() => setMainTab("currentWeek")}
+            onClick={() => {setFixtureFilter("");setMainTab("currentWeek");}}
           >
             This Week
           </button>
@@ -5313,7 +5112,7 @@ export function VideoHighlightsPage({
                 ? "is-active"
                 : ""
             }
-            onClick={() => setMainTab("throwback")}
+            onClick={() => {setFixtureFilter("");setMainTab("throwback");}}
           >
             Club Memories
           </button>
@@ -5347,12 +5146,12 @@ export function VideoHighlightsPage({
               type="button"
               className={`pill-toggle ${mainTab === "currentWeek" ? "pill-toggle-active" : ""}`}
               onClick={() => setMainTab("currentWeek")}
-              title="Fresh clips grouped by match, each with its own voting countdown."
+              title="Matches played this week, Monday to Sunday in South Africa."
             >
               <span className="tkh-category-title">This Week</span>
               <small>Fresh competition</small>
               <span className="tkh-category-count">
-                {currentWeekHighlights.length}
+                {currentWeekHighlights.filter(clip => isModerator || clip.status === "approved").length}
               </span>
             </button>
 
@@ -5390,19 +5189,19 @@ export function VideoHighlightsPage({
               type="button"
               className={`pill-toggle ${mainTab === "throwback" ? "pill-toggle-active" : ""}`}
               onClick={() => setMainTab("throwback")}
-              title="Special club moments curated by admins"
+              title="Older clips available to watch or review"
             >
-              <span className="tkh-category-title">Club Memories</span>
-              <small>Special moments</small>
+              <span className="tkh-category-title">Throwbacks</span>
+              <small>Older match clips</small>
               <span className="tkh-category-count">
-                {throwbackHighlights.length}
+                {throwbackHighlights.filter(clip => isModerator || clip.status === "approved").length}
               </span>
             </button>
           </div>
 
         </div>
 
-        {(mainTab==='currentWeek'||mainTab==='throwback')&&<HighlightFilters type={selectedFilter} onType={setSelectedFilter} player={selectedPlayerFilter} onPlayer={setSelectedPlayerFilter} viewed={watchedFilter} onViewed={setWatchedFilter} review={selectedTab} onReview={setSelectedTab} moderator={isModerator} players={playerOptions} rejected={rejectedHighlights.length>0}/>}
+        {(mainTab==='currentWeek'||mainTab==='throwback')&&<HighlightFilters type={selectedFilter} onType={setSelectedFilter} player={selectedPlayerFilter} onPlayer={setSelectedPlayerFilter} viewed={watchedFilter} onViewed={setWatchedFilter} review={selectedTab} onReview={setSelectedTab} moderator={isModerator} players={playerOptions} rejected={(mainTab === "throwback" ? throwbackHighlights : currentWeekHighlights).some(clip => clip.status === "rejected")}/>}
         {(mainTab==='currentWeek'||mainTab==='throwback')&&<HighlightMatchFolders kind="club" ownerId={activeClubId} voting={mainTab==='currentWeek'} fixtures={fixtureChoices} value={fixtureFilter} onChange={value=>{setFixtureFilter(value);}}/>}
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && !isModerator && scopedPendingHighlights.length > 0 && (
@@ -5417,45 +5216,6 @@ export function VideoHighlightsPage({
           </div>
         )}
 
-        {isModerator && curationResult && (
-          <div className="tkh-curation-panel">
-            <div className="tkh-curation-title">
-              <span>⚠️ Cleanup preview</span>
-              <span className="tkh-curation-count">
-                {curationResult.cleanupCandidates?.length || 0} clip{(curationResult.cleanupCandidates?.length || 0) === 1 ? "" : "s"} will be removed
-              </span>
-            </div>
-
-            <div className="tkh-curation-summary">
-              <span>⭐ Winners: <strong>{getCurationWinners(curationResult).length}</strong></span>
-              <span>🧤 Best save: <strong>{curationResult.bestSave?.playerName || curationResult.bestSave?.title || "Pending"}</strong></span>
-              <span>🎯 Best skill: <strong>{curationResult.bestSkill?.playerName || curationResult.bestSkill?.title || "Pending"}</strong></span>
-            </div>
-
-            <div className="tkh-soft-line">
-              Review this before confirming. Winners remain; only non-selected clips are deleted from the server.
-            </div>
-
-            <div className="tkh-curation-actions">
-              <button
-                type="button"
-                className="tkh-btn tkh-btn-danger"
-                onClick={handleConfirmCleanup}
-                disabled={cleanupInProgress}
-              >
-                {cleanupInProgress ? "Cleaning..." : "Confirm Cleanup"}
-              </button>
-              <button
-                type="button"
-                className="tkh-btn"
-                onClick={() => setCurationResult(null)}
-                disabled={cleanupInProgress}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
 
         {(mainTab === "currentWeek" || mainTab === "throwback") && Boolean(fixtureFilter) && (
           <React.Fragment key={fixtureFilter}>
@@ -5518,8 +5278,8 @@ export function VideoHighlightsPage({
                     isThrowback && !previousWasThrowback;
 
                   return (
-                    <React.Fragment key={`${highlightFixtureId(highlight,resolvedMatchId)}:${highlight.id}`}>
-                      {(!previous||highlightFixtureId(previous,resolvedMatchId)!==highlightFixtureId(highlight,resolvedMatchId))&&<h3 className="fanm-highlight-fixture-heading">{fixtureLabel(highlight)}</h3>}
+                    <React.Fragment key={`${highlightFixtureId(highlight,UNASSIGNED_HIGHLIGHT_FIXTURE)}:${highlight.id}`}>
+                      {(!previous||highlightFixtureId(previous,UNASSIGNED_HIGHLIGHT_FIXTURE)!==highlightFixtureId(highlight,UNASSIGNED_HIGHLIGHT_FIXTURE))&&<h3 className="fanm-highlight-fixture-heading">{fixtureLabel(highlight)}</h3>}
                       {shouldShowThrowbackDivider && (
                         <div className="tkh-throwback-divider">
                           <strong>Throwbacks ✨</strong>
@@ -6085,6 +5845,18 @@ export function VideoHighlightsPage({
             </div>
 
             <div className="tkh-form-grid">
+              <div className="tkh-field" style={{gridColumn:"1 / -1"}}>
+                <label htmlFor="highlight-upload-match">Match played</label>
+                <PremiumSelect id="highlight-upload-match" className="tkh-select"
+                  value={selectedUploadMatch?.matchId || ""} disabled={uploading}
+                  onChange={event => setUploadMatchId(event.target.value)}>
+                  <option value="">{highlightEra === "throwback" ? "Match unknown" : "Choose the match"}</option>
+                  {uploadMatches.map(fixture => <option key={fixture.matchId} value={fixture.matchId}>
+                    {highlightMatchDay(fixture.date)} · {fixture.label}
+                  </option>)}
+                </PremiumSelect>
+              </div>
+
               <div className="tkh-field" style={{ gridColumn: "1 / -1" }}>
                 <label>Video file</label>
                 <input

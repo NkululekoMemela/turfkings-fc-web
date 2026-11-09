@@ -1,4 +1,5 @@
 import React from "react";
+import {fieldTeamsheetColour} from "../core/fieldTeamsheetColour.mjs";
 export default function SharedSquadTeamsheet({
   matchTeams,
   isClubChallengeTeamsheet,
@@ -74,6 +75,7 @@ export default function SharedSquadTeamsheet({
               const theme = getTeamTheme(team);
               const players = Array.isArray(team.players) ? team.players : [];
               const challengeLogo = getChallengeTeamLogo(team, index);
+              const fieldColour = fieldTeamsheet ? fieldTeamsheetColour(team) : "";
 
               return (
                 <div
@@ -106,7 +108,9 @@ export default function SharedSquadTeamsheet({
                             ) : null}
                           </span>
                         </h4>
-                        {!fieldTeamsheet && (
+                        {fieldTeamsheet ? (
+                          <p>{fieldColour ? <>Wear <strong>{fieldColour}</strong></> : "Kit colour pending"}</p>
+                        ) : (
                           <p>
                             Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
                           </p>

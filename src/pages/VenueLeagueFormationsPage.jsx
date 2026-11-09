@@ -68,81 +68,12 @@ import {
 import HandInjuryConfirmationModal from "../components/HandInjuryConfirmationModal.jsx";
 
 
-const FORMATIONS_11_WITH_ULTRA_DEFENSIVE = (() => {
-  const adjusted = {};
-
-  Object.entries(FORMATIONS_11 || {}).forEach(([key, formation]) => {
-    const idText = String(formation?.id || key || "").toLowerCase();
-    const labelText = String(formation?.label || "").toLowerCase();
-    const isThreeFiveTwo =
-      idText.includes("3_5_2") ||
-      idText.includes("352") ||
-      labelText.includes("3-5-2") ||
-      labelText.includes("352");
-
-    if (!isThreeFiveTwo) {
-      adjusted[key] = formation;
-      return;
-    }
-
-    const forwardIndexes = [];
-    const positions = (formation?.positions || []).map((pos, index) => {
-      const posText = `${pos?.id || ""} ${pos?.label || ""}`.toLowerCase();
-      const isForward =
-        posText.includes("st") ||
-        posText.includes("striker") ||
-        posText.includes("cf") ||
-        posText.includes("forward") ||
-        posText.includes("fwd") ||
-        posText.includes("ls") ||
-        posText.includes("rs");
-
-      if (isForward) forwardIndexes.push(index);
-      return { ...pos };
-    });
-
-    if (forwardIndexes.length >= 2) {
-      const first = forwardIndexes[0];
-      const second = forwardIndexes[1];
-      positions[first] = { ...positions[first], x: 34, y: positions[first].y ?? 18 };
-      positions[second] = { ...positions[second], x: 66, y: positions[second].y ?? 18 };
-    }
-
-    adjusted[key] = {
-      ...formation,
-      label: "3-5-2",
-      positions,
-    };
-  });
-
-  return {
-    ...adjusted,
-    "11_5_4_1": {
-      id: "11_5_4_1",
-      label: "5-4-1",
-      positions: [
-        { id: "gk", label: "GK", x: 50, y: 91 },
-        { id: "lb", label: "LB", x: 17, y: 73 },
-        { id: "lcb", label: "LCB", x: 34, y: 76 },
-        { id: "cb", label: "CB", x: 50, y: 78 },
-        { id: "rcb", label: "RCB", x: 66, y: 76 },
-        { id: "rb", label: "RB", x: 83, y: 73 },
-        { id: "lm", label: "LM", x: 22, y: 47 },
-        { id: "lcm", label: "CM", x: 40, y: 44 },
-        { id: "rcm", label: "CM", x: 60, y: 44 },
-        { id: "rm", label: "RM", x: 78, y: 47 },
-        { id: "st", label: "ST", x: 50, y: 18 },
-      ],
-    },
-  };
-})();
-
 function isSmallSidedGameType(type) {
   return type === GAME_TYPE_5 || type === GAME_TYPE_6 || type === GAME_TYPE_7;
 }
 
 function getFormationsMapForGameType(type) {
-  if (type === GAME_TYPE_11) return FORMATIONS_11_WITH_ULTRA_DEFENSIVE;
+  if (type === GAME_TYPE_11) return FORMATIONS_11;
   if (type === GAME_TYPE_7) return FORMATIONS_7;
   if (type === GAME_TYPE_6) return FORMATIONS_6;
   return FORMATIONS_5;
@@ -171,6 +102,7 @@ function getGameTypeLabel(type) {
 
 function gameFormatToFormationGameType(format) {
   const value = String(format || "").trim().toUpperCase();
+  if (["11_V_11", "11V11", "11_ASIDE"].includes(value)) return GAME_TYPE_11;
   if (value === "7_V_7" || value === "7V7" || value === "7_ASIDE") return GAME_TYPE_7;
   if (value === "6_V_6" || value === "6V6" || value === "6_ASIDE") return GAME_TYPE_6;
   return GAME_TYPE_5;
@@ -1073,6 +1005,7 @@ export function FormationsPage({
     [gameFormat]
   );
 
+  const usesTeamLineups = isSmallSidedGameType(gameType) || selectedSmallSidedGameType === GAME_TYPE_11;
   const visibleGameTypeOptions = useMemo(
     () => [selectedSmallSidedGameType],
     [selectedSmallSidedGameType]
@@ -1107,9 +1040,7 @@ export function FormationsPage({
 
   useEffect(() => {
     const nextGameType = gameFormatToFormationGameType(gameFormat);
-    if (isSmallSidedGameType(nextGameType)) {
-      setGameType(nextGameType);
-    }
+    setGameType(nextGameType);
   }, [gameFormat]);
 
   useEffect(() => {
@@ -1630,7 +1561,7 @@ export function FormationsPage({
       return loggedInCanonicalName || "";
     }
 
-    if (isSmallSidedGameType(gameType)) {
+    if (usesTeamLineups) {
       return selectedTeamCanonical?.captain || "";
     }
 
@@ -1648,7 +1579,7 @@ export function FormationsPage({
     currentAccessRole === "super_admin";
 
   const isSelectedTeamCaptain =
-    isSmallSidedGameType(gameType) &&
+    usesTeamLineups &&
     Boolean(loggedInCanonicalName) &&
     normKey(loggedInCanonicalName) ===
       normKey(selectedTeamCanonical?.captain || "");
@@ -1788,18 +1719,20 @@ export function FormationsPage({
     const manifest = fieldFormationContext.current?.clubs.find(
       club => club.clubId === targetTeam?.id
     );
+    const fieldSlots = targetFormationsMap[fieldSaved?.formationId]?.positions.map(position => position.id) || [];
     const hasCurrentFieldFormation = Boolean(
+      fieldSlots.length > 0 &&
       fieldSaved && (manifest?.ready || manifest?.confirmed) &&
       fieldSaved.matchDayId === fieldFormationContext.current?.matchDayId &&
       fieldSaved.squadFingerprint === manifest.fingerprint &&
-      ["p1", "p2", "p3", "p4", "p5"].every(slot =>
+      fieldSlots.every(slot =>
         targetPlayerPool.some(name =>
           normKey(name) === normKey(fieldSaved.positions?.[slot])
         )
       ) &&
-      new Set(["p1", "p2", "p3", "p4", "p5"].map(slot =>
+      new Set(fieldSlots.map(slot =>
         normKey(fieldSaved.positions?.[slot])
-      )).size === 5
+      )).size === fieldSlots.length
     );
 
     if (fieldLeagueScope && !hasCurrentFieldFormation) {
@@ -1818,10 +1751,11 @@ export function FormationsPage({
           normKey(player.fullName) === normKey(name)) || {}),
         fullName: name,
       }));
-      const assignment = buildBestOutfieldAssignment(
-        outfield, formation.positions
-      );
-      for (const item of assignment.assignments) {
+      const assignments = formation.positions.length === 11
+        ? formation.positions.filter(position => position.id !== goalkeeper?.id)
+          .slice(0, outfield.length).map((position, index) => ({position, player: outfield[index]}))
+        : buildBestOutfieldAssignment(outfield, formation.positions).assignments;
+      for (const item of assignments) {
         positions[item.position.id] = item.player.fullName;
       }
       for (const position of formation.positions) {
@@ -1865,6 +1799,7 @@ export function FormationsPage({
   }, [
     selectedTeamId,
     gameType,
+    selectedSmallSidedGameType,
     lineupsByTeam,
     selectedTeamCanonical,
     clubPlayers,
@@ -1956,7 +1891,7 @@ export function FormationsPage({
   }, [isFriendlyMatch, todayFriendlyHistory]);
 
   const benchPoolPlayers =
-    gameType === GAME_TYPE_11 ? clubPlayers : selectedTeamCanonical?.players || [];
+    usesTeamLineups ? selectedTeamCanonical?.players || [] : clubPlayers;
 
   const assignedKeys = new Set(
     Object.values(lineup.positions)
@@ -2019,7 +1954,7 @@ export function FormationsPage({
           context.venueId !== fieldLeagueScope.venueId ||
           context.seasonId !== fieldLeagueScope.seasonId) return;
       if (!club.canManageFormation && !canManageFieldFormations) return;
-      if (gameType !== "5") return;
+      if (gameType !== selectedSmallSidedGameType) return;
 
       const details = {
         venueId: context.venueId,
@@ -2032,8 +1967,8 @@ export function FormationsPage({
       const saveKey = JSON.stringify([
         context.seasonId, context.matchDayId, club.fingerprint,
         previewLineup.formationId,
-        ["p1", "p2", "p3", "p4", "p5"].map(slot =>
-          previewLineup.positions?.[slot] || null
+        formation.positions.map(({id}) =>
+          previewLineup.positions?.[id] || null
         ),
         previewLineup.benchSnapshot || [],
       ]);
@@ -2053,7 +1988,7 @@ export function FormationsPage({
             : await saveFieldMatchDayFormation(details);
           if (fieldFormationContext.current !== context) return;
           setLineupsByTeam(current => writeLineupVariant(
-            current, teamId, "5", result.lineup, result.role
+            current, teamId, gameType, result.lineup, result.role
           ));
           setFieldFormationMessage("✓ Starting formation saved.");
         } catch (error) {
@@ -2148,23 +2083,22 @@ export function FormationsPage({
   };
 
   useEffect(() => {
-    if (!fieldLeagueScope || gameType !== "5") return;
+    if (!fieldLeagueScope || gameType !== selectedSmallSidedGameType) return;
     const context = fieldFormationContext.current;
     const club = context?.clubs.find(item =>
       item.clubId === selectedTeamCanonical?.id);
     if (!(club?.ready || club?.confirmed) ||
         !(club.canManageFormation || canManageFieldFormations)) return;
-    const names = ["p1", "p2", "p3", "p4", "p5"]
-      .map(slot => lineup.positions?.[slot]);
-    if (names.some(name => !name) || new Set(names).size !== 5) return;
-    const mode = lineupsByTeam?.[club.clubId]?.["5"];
+    const names = formation.positions.map(({id}) => lineup.positions?.[id]);
+    if (names.some(name => !name) || new Set(names).size !== names.length) return;
+    const mode = lineupsByTeam?.[club.clubId]?.[gameType];
     const saved = mode?.variants?.captain || mode?.variants?.admin;
     if (saved?.matchDayId === context.matchDayId &&
         saved?.squadFingerprint === club.fingerprint) return;
     saveTeamLineup(club.clubId, lineup);
   }, [
     lineup, selectedTeamCanonical?.id, manifestClubs,
-    canManageFieldFormations, lineupsByTeam, gameType,
+    canManageFieldFormations, lineupsByTeam, gameType, selectedSmallSidedGameType, formation,
   ]);
 
   const handleFormationChange = (e) => {
@@ -2526,7 +2460,7 @@ export function FormationsPage({
         title="Double-click to save. On mobile, long-press to save."
       >
         <div className="lineups-controls">
-          {isSmallSidedGameType(gameType) ? (
+          {usesTeamLineups ? (
             <div className="field-row inline-field">
               <label>Team ({getGameTypeLabel(gameType)})</label>
               <div className="team-pill-row" style={{
@@ -2819,7 +2753,7 @@ export function FormationsPage({
                   boxShadow: "0 6px 14px rgba(2, 6, 23, 0.18)",
                 }}
               >
-                {isSmallSidedGameType(gameType) ? renderTeamIdentityLabel(selectedTeamCanonical, getGameTypeLabel(gameType)) : activeClubName}
+                {usesTeamLineups ? renderTeamIdentityLabel(selectedTeamCanonical, getGameTypeLabel(gameType)) : activeClubName}
               </div>
 
               {formation.positions.map((pos) => {
@@ -2870,7 +2804,7 @@ export function FormationsPage({
                     }}
                   >
                     <div className="player-token" style={{ position: "relative", overflow: "visible" }}>
-                      {decor?.rating != null && isSmallSidedGameType(gameType) ? (
+                      {decor?.rating != null && usesTeamLineups ? (
                         <div
                           style={{
                             position: "absolute",

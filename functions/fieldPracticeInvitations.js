@@ -52,6 +52,10 @@ function seasonSettings(settings) {
       turnaroundMinutes > 30) {
     throw new Error("Enter valid match times.");
   }
+  const legs = Number(settings.fixtureLegs ?? 2);
+  if (![1, 2].includes(legs) || (legs === 1 && settings.singleLegConfirmed !== true)) {
+    throw Error("Confirm the selected fixture format.");
+  }
   return {
     name, startsOn, entryFee: money(settings.entryFee),
     prizes, prizeMoney: prizes.first + prizes.second + prizes.third,
@@ -62,7 +66,7 @@ function seasonSettings(settings) {
     currency: "ZAR", scheduleVersion: 1,
     scheduleSettings: {
       startTime, matchMinutes, halftimeMinutes, turnaroundMinutes,
-      intervalDays: 7,
+      intervalDays: 7, legs,
     },
     matchSeconds: matchMinutes * 60,
   };
@@ -76,15 +80,16 @@ async function announce({
     throw new Error("Choose a valid Field Practice session.");
   }
   const config = seasonSettings(settings);
-  if (config.gameFormat !== "5_V_5") throw Error("Field Practice currently uses five-a-side.");
+  const {fieldFormat} = await import("./fieldBoothShared/fieldFormat.mjs");
+  const {minimum, maximum} = fieldFormat(config.gameFormat);
   const sessionRef = db.doc(`practiceSessions/${sessionId}`);
   validateSession((await sessionRef.get()).data(),
     user, venueId, sessionId, now);
 
   const clubs = await loadCopies({db, venueId, minimumClubs:config.minimumClubs, gameFormat:config.gameFormat});
   if (!clubs.length) throw new Error("No simulated Practice Clubs are available.");
-  if (clubs.length > 6 || clubs.some(c => c.players.length > 6)) {
-    throw new Error("Practice supports six Clubs with six players each.");
+  if (clubs.length > 6 || clubs.some(c => c.players.length < minimum || c.players.length > maximum)) {
+    throw new Error("The simulated squads do not match the selected format.");
   }
 
   const root = `sandboxes/practice/leagueVenues/${venueId}/sessions/${sessionId}`;

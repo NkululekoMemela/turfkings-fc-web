@@ -1,3 +1,5 @@
+import {fieldFormat} from "../../functions/fieldBoothShared/fieldFormat.mjs";
+import {fixtureColours} from "../../functions/automaticFixtureKit.mjs";
 import PracticeHighlights from "../components/PracticeHighlights.jsx";
 import PracticeFieldNews from "../components/PracticeFieldNews.jsx";
 import PracticeGuide from "../components/PracticeGuide.jsx";
@@ -88,15 +90,18 @@ async function preparePracticeSchedule(scope, copies) {
       currentMatchNo: 0,
     };
 
+    const {minimum, maximum} = fieldFormat(season.gameFormat);
     // Only the sandbox Club copies are used here.
     for (const day of schedule.matchDays) {
       for (const fixture of schedule.fixtures.filter(
         item => item.matchDayId === day.id
       )) {
+        const colours = fixtureColours(accepted.find(club=>club.clubId===fixture.clubAId), accepted.find(club=>club.clubId===fixture.clubBId));
         for (const clubId of [fixture.clubAId, fixture.clubBId]) {
           const club = accepted.find(item => item.clubId === clubId);
-          const players = (club.players || []).slice(0, 6);
-          const confirmed = players.length >= 5 &&
+          const matchColour = clubId === fixture.clubAId ? colours.home : colours.away;
+          const players = (club.players || []).slice(0, maximum).map(player=>({...player,bibColor:matchColour,matchBib:{...player.matchBib,color:matchColour}}));
+          const confirmed = players.length >= minimum &&
             players.every(p => p.memberId && p.sourcePlayerId && p.fullName) &&
             new Set(players.map(p => p.memberId)).size === players.length;
           const fingerprint = JSON.stringify([
@@ -112,7 +117,7 @@ async function preparePracticeSchedule(scope, copies) {
             matchDayId: day.id, fixtureId: fixture.id,
             dateLocal: day.dateLocal,
             scheduledLocal: fixture.scheduledLocal || "",
-            players, selectedMemberIds: players.map(p => p.memberId),
+            matchColour, players, selectedMemberIds: players.map(p => p.memberId),
             confirmed, fingerprint, submittedAtMs: Date.now(),
             submittedByUid: auth.currentUser.uid,
           });
@@ -139,7 +144,6 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   const [expired, setExpired] = useState(false);
   useEffect(()=>{if(expired)onExit?.();},[expired,onExit]);
   const [busy, setBusy] = useState(false);
-  const [practiceBookingsReady, setPracticeBookingsReady] = useState(false);
   const [entryReceiptCheck, setEntryReceiptCheck] = useState(null);
   const [practiceMatchProgress, setPracticeMatchProgress] = useState(null);
   const season = data?.league?.activeSeason || null;
@@ -172,6 +176,10 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
     liveMatch, scheduledFixtures, nextFixture, currentMatch,
   } = resolveFieldUpcomingMatch({season, teams});
 
+  const nextColours = nextFixture && fixtureColours(
+    clubs.find(club=>club.clubId===nextFixture.clubAId),
+    clubs.find(club=>club.clubId===nextFixture.clubBId),
+  );
   // Simulated accepted Clubs publish only this session's schedule.
   useEffect(() => {
     if (expired || !season?.id || season.fixtures?.length) return;
@@ -315,6 +323,8 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       onGoToHighlights={() => navigate("videos")}
       onOpenHighlightsCamera={() => navigate("videos")}
       onGoToLiveAsSpectator={() => navigate("live")}
+      startTeamIds={nextFixture ? [nextFixture.clubAId, nextFixture.clubBId] : []}
+      practiceStartColours={nextColours ? {[nextFixture.clubAId]:nextColours.home,[nextFixture.clubBId]:nextColours.away} : undefined}
       onStartMatch={startMatch}
       onOpenBackupModal={() => {
         if (season) setShowEndDay(true);
@@ -351,7 +361,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   } else if (page === "news" || page === "videos") {
     content = null;
   } else if (page === "signup") {
-    content = <FieldPracticeBookings scope={scope} season={season} nextFixture={nextFixture} onReady={setPracticeBookingsReady}
+    content = <FieldPracticeBookings scope={scope} season={season} nextFixture={nextFixture}
       receiptCheck={entryReceiptCheck} onReceiptCheck={setEntryReceiptCheck}/>;
   } else if (page === "hireStock") {
     content = <FieldBibHire venueId={venue.id} manage isPracticeMode/>;
@@ -409,8 +419,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
   };
   return <div style={{paddingBottom: 90}}>
     <PracticeGuide sessionKey={`field:${venue.id}:${auth.currentUser?.uid}:${session.sessionId}`}
-      steps={fieldGuideSteps.map(step => ({...step, completed:guideCompletion[step.target],
-        nextDisabled:step.target === "field-bookings-review" && !practiceBookingsReady}))}
+      steps={fieldGuideSteps.map(step => ({...step, completed:guideCompletion[step.target]}))}
       page={page} onNavigate={navigate} ready={Boolean(practiceVenue) && !["videos","news"].includes(page)}/>
     <PracticeHighlights key={session.sessionId} active={page==="videos"} expiresAt={session.expiresAt} onBack={()=>navigate("landing")}/>
     <PracticeFieldNews key={session.sessionId} active={page==="news"} season={season} onBack={()=>navigate("landing")}/>

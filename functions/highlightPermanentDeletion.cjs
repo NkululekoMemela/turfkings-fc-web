@@ -40,14 +40,19 @@ async function closeWeek(db,matchRef,context,now=Date.now()){
   const approved=clips.filter(c=>c.status==='approved'||c.status==='archived');
   const counts={},unique=new Set(),priority={};for(const like of likes.docs){const l=like.data();if(!l.clipId||!l.userId)continue;const key=l.userId+'~'+l.clipId;if(unique.has(key))continue;unique.add(key);counts[l.clipId]=(counts[l.clipId]||0)+1;if(l.isAdmin===true||l.isModerator===true){const t=Date.parse(l.createdAtISO||l.createdAt||'');if(Number.isFinite(t))priority[l.clipId]=Math.min(priority[l.clipId]??Infinity,t);}}
   const selection=curateHighlights({highlights:approved.map(c=>({...c,votes:0})),votesByUser:ballot,...(likes.size?{voteCounts:counts}:{}),adminLikePriority:priority});
-  const winnerIds=new Set(archived.docs.map(d=>d.id));
-  for(const w of selection.winners||[]){winnerIds.add(w.clipId||w.id);tx.set(matchRef.collection('archived').doc(w.clipId||w.id),{...w,matchId:context.matchId,weeklyWinner:true,winnerCategory:w.archiveCategory,weeklyWinnerRank:w.archiveRank,weeklyVotingClosed:true,votingLocked:true,frozenWeeklyVoteCount:w.voteCount||0,weeklyVoteCount:w.voteCount||0,archived:true,status:'archived',archivedAtISO:new Date(now).toISOString(),archivedAt:new Date(now).toISOString(),updatedAtServer:FieldValue.serverTimestamp()},{merge:true});}
-  for(const clip of clips){if(winnerIds.has(clip.clipId)){tx.set(matchRef.collection('raw').doc(clip.clipId),{weeklyVotingClosed:true,votingLocked:true},{merge:true});continue;}tx.set(matchRef.collection('cleanup_queue').doc(clip.clipId),{clipId:clip.clipId,storagePath:clip.storagePath||'',cleanupStatus:'permanent_delete_pending',reason:'Weekly voting closed; clip did not win',weeklyVotingClosed:true,at:FieldValue.serverTimestamp()},{merge:true});}
+   for(const w of selection.winners||[]){tx.set(matchRef.collection('archived').doc(w.clipId||w.id),{...w,matchId:context.matchId,weeklyWinner:true,winnerCategory:w.archiveCategory,weeklyWinnerRank:w.archiveRank,weeklyVotingClosed:true,votingLocked:true,frozenWeeklyVoteCount:w.voteCount||0,weeklyVoteCount:w.voteCount||0,archived:true,status:'archived',archivedAtISO:new Date(now).toISOString(),archivedAt:new Date(now).toISOString(),updatedAtServer:FieldValue.serverTimestamp()},{merge:true});}
+  for (const clip of clips) {
+   tx.set(matchRef.collection('raw').doc(clip.clipId), {
+    weeklyVotingClosed: true,
+    votingLocked: true,
+   }, {merge:true});
+  }
   tx.set(matchRef,{weeklyVotingClosed:true,weeklyVotingClosedAt:FieldValue.serverTimestamp()},{merge:true});
  });
- const queued=await matchRef.collection('cleanup_queue').where('weeklyVotingClosed','==',true).get();
- let failed=0;for(const item of queued.docs){try{await removeClip(db,matchRef,item.id,context,{protectWinner:true});}catch(e){failed++;console.error('Highlight cleanup retained for retry',item.ref.path,e.message);}}if(failed)throw Error('Some clips could not be deleted. They are retained for retry; winners are safe.');
+ // Legacy cleanup entries are no longer executed automatically. Moderators
+ // can still permanently delete individual clips from the library.
 }
+
 exports.closeHighlightWeek=onRequest({region:'us-central1',invoker:'public',cors:true,timeoutSeconds:180},async(req,res)=>{
  if(req.method!=='POST')return res.status(405).json({error:'Use POST.'});
  try{const bearer=String(req.headers.authorization||'').match(/^Bearer (.+)$/)?.[1];if(!bearer)throw Error('Sign in first.');const user=await getAuth().verifyIdToken(bearer,true);if(!user.email_verified||user.cameraSession)throw Error('Use your verified administrator account.');const {kind,ownerId,matchId}=req.body||{};if(!['club','field'].includes(kind)||![ownerId,matchId].every(valid))throw Error('Invalid weekly highlight reference.');const db=getFirestore();await authorised(db,user,kind,ownerId);const ref=db.doc(`${kind==='field'?'leagueVenues':'clubs'}/${ownerId}/video_highlights/${matchId}`);const [raw,parent]=await Promise.all([ref.collection('raw').get(),ref.get()]);if(!parent.data()?.weeklyVotingClosed&&weeklyDeadline(raw.docs.map(d=>d.data()),parent.data())>Date.now())throw Error('Weekly voting is still open. Winners are selected after five days.');await closeWeek(db,ref,{kind,ownerId,matchId});return res.json({closed:true});}catch(e){return res.status(400).json({error:e.message||'Could not close weekly voting.'});}

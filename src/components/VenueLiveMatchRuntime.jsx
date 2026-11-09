@@ -1,9 +1,10 @@
+import {resolveGameFormat} from "../core/matchConfig.js";
 import {boothRequest, readBooth, rememberBoothContext, rememberBoothState, finishBooth, queueBoothPatch, flushBooth, watchBooth, markBoothCancelled} from "../storage/fieldBoothJournal.js";
 import {recoverFieldClock} from "../core/fieldBoothRecovery.mjs";
 import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import {normalizeVenueLeagueScope} from "../core/venueLeaguePaths.js";
 import FieldMatchHalfClock from "./FieldMatchHalfClock.jsx";
-import { tickFieldMatchClock, startFieldSecondHalf } from "../core/fieldMatchClock.js";
+import { tickPracticeFieldMatchClock, practiceClockCanResume, mergePracticeFieldClock, startFieldSecondHalf } from "../core/fieldMatchClock.js";
 import React, {
   useCallback,
   useEffect,
@@ -163,7 +164,7 @@ export default function VenueLiveMatchRuntime({
       scope,
       onData: (nextState, metadata) => {
         if(nextState || !metadata?.fromCache)window.clearTimeout(timeout);
-        setLiveState(nextState);
+        setLiveState(previous => scope.environment === "practice" ? mergePracticeFieldClock(previous,nextState) : nextState);
         setLoadError("");
 
         if (!nextState) {
@@ -289,7 +290,7 @@ export default function VenueLiveMatchRuntime({
             return previous;
           }
 
-          return scope.environment === "practice" ? tickFieldMatchClock(previous) : recoverFieldClock(previous);
+          return scope.environment === "practice" ? tickPracticeFieldMatchClock(previous) : recoverFieldClock(previous);
 
         });
       },
@@ -303,6 +304,7 @@ export default function VenueLiveMatchRuntime({
     liveState?.running,
     liveState?.status,
     liveState?.timeUp,
+    scope.environment,
   ]);
 
   useEffect(() => {
@@ -326,6 +328,7 @@ export default function VenueLiveMatchRuntime({
           patch: {
             clockObservedAtMs: snapshot.clockObservedAtMs || Date.now(),
             clockVersion: snapshot.clockVersion || 0,
+            ...(scope.environment === "practice" ? {practiceHalfTicks:snapshot.practiceHalfTicks || 0} : {}),
             clockPhase: snapshot.clockPhase || "legacy",
             halftimeSeconds: snapshot.halftimeSeconds || 0,
             halftimeEndsAtMs: snapshot.halftimeEndsAtMs || 0,
@@ -388,10 +391,19 @@ export default function VenueLiveMatchRuntime({
     if (!canControlCurrentLiveMatch) {
       throw new Error("Only the controlling referee can start the second half.");
     }
-    const patch = {...startFieldSecondHalf(liveStateRef.current),clockObservedAtMs:Date.now()};
+    const patch = {...startFieldSecondHalf(liveStateRef.current),clockObservedAtMs:Date.now(),
+      ...(scope.environment === "practice" ? {practiceHalfTicks:0} : {})};
     await persistPatch(patch);
     setLiveState(previous => previous ? {...previous, ...patch} : previous);
   }, [canControlCurrentLiveMatch, persistPatch]);
+
+  async function resumePracticeClock() {
+    const live = liveStateRef.current;
+    if (!canControlCurrentLiveMatch || !practiceClockCanResume(live)) return;
+    const patch = {running:true, clockObservedAtMs:Date.now()};
+    await persistPatch(patch);
+    setLiveState(previous=>previous ? {...previous,...patch} : previous);
+  }
 
   const handleAddEvent = useCallback(
     (event) => {
@@ -472,12 +484,12 @@ export default function VenueLiveMatchRuntime({
     const previous=safeArray(live?.lineupTimeline);
     const elapsed=previous.length===0?0:Math.max(0,Number(live?.matchSeconds || 0)-Number(live?.secondsLeft || 0));
     const lineupTimeline=[...previous.filter(item=>Number(item?.timeSeconds)!==elapsed),{timeSeconds:elapsed,snapshots:snapshot}].sort((a,b)=>a.timeSeconds-b.timeSeconds);
-    const kickoff=live?.awaitingKitVerification?{clockObservedAtMs:Date.now(),awaitingKitVerification:false,running:true,startedAtMs:Date.now(),startedAtISO:new Date().toISOString()}:{};
+    const kickoff=(live?.awaitingKitVerification || (scope.environment === "practice" && live?.clockPhase === "first_half" && !live.running && live.secondsLeft === live.matchSeconds))?{clockObservedAtMs:Date.now(),awaitingKitVerification:false,running:true,startedAtMs:Date.now(),startedAtISO:new Date().toISOString()}:{};
     const patch={confirmedLineupSnapshot:snapshot,confirmedLineupsByMatchNo:next,lineupTimeline,...kickoff};
     await persistPatch(patch);
     setLiveState(previous=>({...previous,...patch}));
     setConfirmedLineupSnapshot(snapshot);setConfirmedLineupsByMatchNo(next);
-  },[persistPatch,canControlCurrentLiveMatch]);
+  },[persistPatch,canControlCurrentLiveMatch,scope.environment]);
 
   const handleCancelLineups =
     useCallback(async () => {
@@ -962,6 +974,11 @@ export default function VenueLiveMatchRuntime({
   return (
     <div className="field-live-runtime">
     {halfClock}
+    {canControlCurrentLiveMatch && practiceClockCanResume(liveState) && (
+      <button type="button" className="primary-btn" onClick={() => resumePracticeClock().catch(error=>fieldAlert(error.message))}>
+        Resume Practice clock
+      </button>
+    )}
     <LiveMatchPage
       {...sharedProps}
       leagueMatchComponent={VenueLeagueLiveMatchPage}
@@ -1004,18 +1021,15 @@ export default function VenueLiveMatchRuntime({
           liveState.currentMatch,
         matchType: "LEAGUE",
         matchMode: "fixtured",
-        gameFormat:
-          liveState.currentMatch
-            ?.gameFormat ||
-          season?.gameFormat ||
-          "5_V_5",
+        gameFormat: resolveGameFormat(
+          liveState.gameFormat, season?.gameFormat, liveState.currentMatch?.gameFormat
+        ),
       }}
       matchType="LEAGUE"
       matchMode="fixtured"
-      gameFormat={
-        season?.gameFormat ||
-        "5_V_5"
-      }
+      gameFormat={resolveGameFormat(
+        liveState.gameFormat, season?.gameFormat, liveState.currentMatch?.gameFormat
+      )}
       confirmedLineupSnapshot={
         confirmedLineupSnapshot
       }
