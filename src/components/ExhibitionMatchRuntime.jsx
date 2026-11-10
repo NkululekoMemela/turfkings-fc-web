@@ -14,6 +14,7 @@ function exhibitionDevice() {
   } catch {return crypto.randomUUID();}
 }
 const emptyEvents = [];
+const emptyColours = {};
 
 export default function ExhibitionMatchRuntime({clubId,fixtureId,identity,viewerOnly,publicViewer,onClose,onGoToStats,onChange}) {
   const [device] = useState(exhibitionDevice);
@@ -21,6 +22,7 @@ export default function ExhibitionMatchRuntime({clubId,fixtureId,identity,viewer
   const [watchClips,setWatchClips] = useState([]);
   const [error,setError] = useState("");
   const [recoveryError,setRecoveryError] = useState("");
+  const [colourSync,setColourSync] = useState(0);
   const [now,setNow] = useState(Date.now);
   const latest = useRef(null), poll = useRef(0), queue = useRef(Promise.resolve());
   const attemptedStart = useRef(false), automatic = useRef("");
@@ -154,8 +156,10 @@ export default function ExhibitionMatchRuntime({clubId,fixtureId,identity,viewer
   const request=live?.request && {...live.request,
     requestedAtISO:new Date(Date.parse(live.request.requestedAtISO)-offset).toISOString(),
     expiresAtISO:new Date(Date.parse(live.request.expiresAtISO)-offset).toISOString()};
+  const matchColoursKey=JSON.stringify(live?.matchColours || emptyColours);
+  const matchColours=useMemo(()=>JSON.parse(matchColoursKey),[matchColoursKey,colourSync]);
   const remove=(event)=>event && command("editEvent",{mode:"delete",eventId:event.id}).catch(()=>{});
-  return <div className="field-live-runtime">
+  return <div className="field-live-runtime exhibition-match-scroll">
     <ClubPageRibbon title={canOperate ? "Exhibition referee booth" : "Exhibition live match"} onHome={onClose}/>
     {error && <p role="alert" className="error-text">{error}</p>}
     {!match && <section className="card"><p role="status">{error ? "Match updates unavailable." : "Opening match…"}</p><button type="button" className="secondary-btn" onClick={onClose}>Back to Club</button></section>}
@@ -174,6 +178,9 @@ export default function ExhibitionMatchRuntime({clubId,fixtureId,identity,viewer
         identity={identity} activeRole="referee" canControlMatch={controls} canControlCurrentLiveMatch={controls}
         gameFormat={match.format} activeClubId={clubId} fieldPaidSquads={players} externalSavedLineups={saved}
         confirmedLineupSnapshot={live.confirmedLineups} refereeDeviceId={device}
+        matchTeamColorOverrides={matchColours}
+        onUpdateMatchTeamColorOverride={(teamId,colour)=>command("matchColour",{teamId,hex:colour.teamColorHex}).catch(()=>setColourSync(value=>value+1))}
+        onResetMatchTeamColorOverrides={()=>command("matchColour",{reset:true}).catch(()=>setColourSync(value=>value+1))}
         liveMatchController={live.controller} liveMatchTakeoverRequest={request}
         onRequestTakeOverLiveMatch={()=>{setRecoveryError("");return command("requestControl");}}
         onAcceptTakeoverRequest={()=>void command("transferControl").catch(()=>{})}

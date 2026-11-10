@@ -5828,15 +5828,6 @@ export default function VenueEntryPage({
         fieldSeason={venueSeason}
         fieldScheduleView={<>
           {isVenueOwner && venueSeason?.scheduleVersion === 1 && !venueSeason?.schedulePublishedAtMs && <FieldMatchDaySchedule venueId={venue.id} season={venueSeason} teams={teams} isCreator readOnly={false}/>}
-          <button type="button" className="field-fixtures-open"
-            onClick={() => setVenuePage("fixtures")}>
-            <span className="field-fixtures-open__icon" aria-hidden="true">▦</span>
-            <span>
-              <strong>Fixtures</strong>
-              <small>Match days, opponents and kickoff times</small>
-            </span>
-            <span aria-hidden="true">→</span>
-          </button>
         </>}
         fieldScheduleControls={isFieldAdministrator ? (
           <>

@@ -3,7 +3,7 @@
 const {test} = require("node:test");
 const assert = require("node:assert/strict");
 const {COLLECTION, sendClubChallenge, instigateClubChallenge, respondToClubChallenge,
-  updateChallengeTeam, operateChallenge, exhibitionOverview, bookExhibition, reviseClubChallenge, manageExhibitionBookings, saveExhibitionLineup, getExhibitionMatchday, challengeChat, changeExhibitionKit, expireExhibitionCancellations, watchExhibition} =
+  updateChallengeTeam, operateChallenge, exhibitionOverview, bookExhibition, reviseClubChallenge, manageExhibitionBookings, saveExhibitionLineup, getExhibitionMatchday, challengeChat, changeExhibitionKit, expireExhibitionCancellations, watchExhibition, isClubChallengeCaptain, listChallengeClubs} =
   require("../functions/clubChallengeService.cjs");
 
 const captain = (uid) => ({uid, email: `${uid}@example.test`, email_verified: true});
@@ -192,6 +192,30 @@ test("exhibition booking is members-only, capped at 15, and sums to the Club tot
   assert.equal(manager.signedMemberIds.length, 15);
   assert.equal(manager.readyCount, 12);
   assert.equal((await getOverview(away, "away")).fixtures[0].count, 0);
+});
+
+test("the FANM Club picker exposes active community Clubs only to the verified superuser", async () => {
+  const admin = {...captain("platform"), email: "nkululekolerato@gmail.com"};
+  const records = {
+    zulu: {clubName: "Zulu FC", badgeUrl: "/zulu.png", captainEmail: "private@example.test"},
+    alpha: {name: "Alpha FC", logoUrl: "/alpha.png", banking: {account: "private"}},
+    company: {clubType: "company"},
+    archived: {organizationArchive: {active: true}},
+    deleted: {status: "deleted"},
+  };
+  let reads = 0;
+  const db = {collection(name) {
+    assert.equal(name, "clubs");
+    reads++;
+    return {get: async () => ({docs: Object.entries(records).map(([id, data]) => ({id, data: () => data}))})};
+  }};
+  await assert.rejects(listChallengeClubs({db, user: home}), {code: "permission-denied"});
+  await assert.rejects(listChallengeClubs({db, user: {...admin, email_verified: false}}), {code: "permission-denied"});
+  assert.equal(reads, 0);
+  assert.deepEqual(await listChallengeClubs({db, user: admin}), {clubs: [
+    {id: "alpha", name: "Alpha FC", logoUrl: "/alpha.png"},
+    {id: "zulu", name: "Zulu FC", logoUrl: "/zulu.png"},
+  ]});
 });
 
 test("only the verified superuser can instigate and both captains must accept", async () => {
@@ -485,4 +509,30 @@ test("exhibition chat attaches only fixture videos and keeps account and reactio
   const deleted=(await act(away,"away")).messages.find(row=>row.id===message.id);
   assert.equal(deleted.deleted,true);
   assert.equal(deleted.attachment,null);
+});
+
+test("challenge push recipients must be captains who can respond to the invitation",async()=>{
+ const {db}=setup();
+ assert.equal(await isClubChallengeCaptain(db,"home",home),true);
+ assert.equal(await isClubChallengeCaptain(db,"away",away),true);
+ assert.equal(await isClubChallengeCaptain(db,"away",captain("admin")),false);
+ assert.equal(await isClubChallengeCaptain(db,"home",{...home,email_verified:false}),false);
+});
+test("only the active exhibition referee can override the match kit, without changing squad kit",async()=>{
+ const {db,send,respond,records}=setup();
+ const {fixtureId}=await send();
+ await respond(away,fixtureId,"accepted");
+ const path=`${COLLECTION}/${fixtureId}`, match=()=>records.get(path);
+ match().teams={home:{starters:[]},away:{starters:[]}};
+ const device="12345678-1234-1234-1234-123456789abc";
+ const act=(command,options={},user=home,clubId="home")=>operateChallenge({db,user,now,
+  data:{clubId,fixtureId,device,revision:match().live?.revision,command,...options}});
+ await act("start",{minutes:40,verifyFirst:true});
+ await assert.rejects(act("matchColour",{teamId:"home",hex:"#ff0000"}),/too similar/);
+ await assert.rejects(act("matchColour",{teamId:"home",hex:"#ffffff"},away,"away"),{code:"permission-denied"});
+ await act("matchColour",{teamId:"home",hex:"#ffffff"});
+ assert.equal(match().live.matchColours.home.teamColorHex,"#ffffff");
+ assert.equal(match().homeColour,terms.homeColour);
+ await act("matchColour",{reset:true});
+ assert.deepEqual(match().live.matchColours,{});
 });

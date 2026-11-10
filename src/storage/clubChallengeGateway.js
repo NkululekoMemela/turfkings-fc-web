@@ -1,7 +1,9 @@
 import {auth, getActiveFirebaseFunctionsBaseUrl, isStagingFirebase} from "../firebaseConfig";
 
 export const clubChallengesEnabled =
-  isStagingFirebase && import.meta.env.VITE_FANM_CLUB_CHALLENGES === "true";
+  isStagingFirebase
+    ? import.meta.env.VITE_FANM_CLUB_CHALLENGES !== "false"
+    : import.meta.env.VITE_FANM_CLUB_CHALLENGES_PRODUCTION === "true";
 
 export async function clubChallengeRequest(action, data, signal) {
   if (!clubChallengesEnabled) throw new Error("Club challenges are unavailable in this build.");

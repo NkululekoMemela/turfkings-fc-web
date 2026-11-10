@@ -5998,3 +5998,5 @@ exports.clubChallengeMatch = require("./clubChallengeHttp.cjs").clubChallengeMat
 const clubChallengeLifecycle = require("./clubChallengeLifecycle.cjs");
 exports.expireClubChallengeCancellations = clubChallengeLifecycle.expireClubChallengeCancellations;
 exports.notifyClubChallengeLifecycle = clubChallengeLifecycle.notifyClubChallengeLifecycle;
+
+exports.notifyClubChallengeInvitation = clubChallengeLifecycle.notifyClubChallengeInvitation;

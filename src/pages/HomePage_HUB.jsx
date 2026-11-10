@@ -531,12 +531,14 @@ export default function HomePage_HUB({
   const [awayColour, setAwayColour] = useState("#f59e0b");
   const [instigateHome, setInstigateHome] = useState("");
   const [instigateAway, setInstigateAway] = useState("");
+  const [instigateClubs, setInstigateClubs] = useState([]);
+  const [instigateLoading, setInstigateLoading] = useState(false);
+  const [instigateLoadError, setInstigateLoadError] = useState("");
   const isPlatformAdmin = isSuperAdmin(currentUser);
   const canInstigate = clubChallengesEnabled && !isPracticeMode && currentUser?.emailVerified && isPlatformAdmin;
   const instigationBlock = !currentUser?.emailVerified ? "Verify your FANM Google account to continue."
     : isPracticeMode ? "Switch to Official to create a FANM Challenge."
-    : !isStagingFirebase ? "Switch to Staging under Database environment to try FANM Challenges."
-    : !clubChallengesEnabled ? "Install the FANM staging build with Club Challenges enabled." : "";
+    : !clubChallengesEnabled ? (isStagingFirebase ? "Club challenges are disabled in this build." : "Switch to Staging under Database environment. This Production build has challenges turned off.") : "";
   const challengeScope = `${currentUser?.uid || ""}:${identity?.clubId || ""}`;
   useEffect(() => {
     if (!clubChallengesEnabled || isPracticeMode || !currentUser?.emailVerified || !identity?.clubId) return;
@@ -1027,11 +1029,22 @@ export default function HomePage_HUB({
     return clubChallengesEnabled && !isPracticeMode && challengeCaptainScope === challengeScope;
   }
 
+  async function loadInstigateClubs() {
+    setInstigateLoading(true);setInstigateLoadError("");setInstigateClubs([]);
+    try {
+      const {clubs}=await clubChallengeRequest("instigateClubs",{});
+      setInstigateClubs(clubs||[]);
+    } catch (error) {
+      setInstigateLoadError(error.message || "Could not load Clubs.");
+    } finally {setInstigateLoading(false);}
+  }
+
   function openInstigateMatch() {
     if (!canInstigate) return;
     setInstigateHome("");
     setInstigateAway("");
     setChallengeClub({instigate: true});
+    void loadInstigateClubs();
     setHomeColour("#1d4ed8");
     setAwayColour("#f59e0b");
     setChallengeFormat("11v11");
@@ -1097,7 +1110,7 @@ export default function HomePage_HUB({
 
     const instigated = Boolean(challengeClub?.instigate);
     if (instigated ? !canInstigate : !canCurrentUserSendChallenge()) {
-      setChallengeError(instigated ? "Use your verified FANM superuser account in the Official staging build." : "Only a verified Club captain can send a challenge.");
+      setChallengeError(instigated ? "Use your verified FANM superuser account in an Official build with challenges enabled." : "Only a verified Club captain can send a challenge.");
       return;
     }
 
@@ -1417,6 +1430,13 @@ export default function HomePage_HUB({
             </div>
           </div>
         </div>
+
+        {isPlatformAdmin && <section className="hub-fanm-challenge-shortcut" aria-label="FANM super-admin actions">
+          <button type="button" className="hub-nav__primary" disabled={!canInstigate} onClick={openInstigateMatch}>Create FANM Challenge</button>
+          {instigationBlock && <p role="status">{instigationBlock}</p>}
+          {!clubChallengesEnabled && !isStagingFirebase && <button type="button" className="hub-platform-view-button"
+            onClick={()=>{setEnvironmentToolsOpen(true);setShowTour(true);}}>Database environment</button>}
+        </section>}
 
         <p className="club-category-heading" aria-live="polite"><strong>{clubCategoryView==="company"?"Company clubs":"Community clubs"}</strong><span>{clubCategoryView==="company"?"Company-funded football":"Community-organised football"}</span></p>
         <div className="hub-club-filter-ribbon">
@@ -1884,12 +1904,17 @@ export default function HomePage_HUB({
             </div>
 
             <div className="hub-challenge-form-grid">
+              {challengeClub.instigate && (instigateLoading || instigateLoadError || instigateClubs.length < 2) &&
+                <div className="hub-challenge-form-grid__wide" role="status">
+                  {instigateLoading ? "Loading Clubs from this database…" : instigateLoadError || "At least two active community Clubs are needed."}
+                  {instigateLoadError && <button type="button" onClick={loadInstigateClubs}>Retry</button>}
+                </div>}
               {challengeClub.instigate && [["Home Club", instigateHome, setInstigateHome, instigateAway],
                 ["Away Club", instigateAway, setInstigateAway, instigateHome]].map(([label, value, setValue, otherId]) => (
                 <label key={label}><span>{label}</span>
-                  <select value={value} onChange={(event) => setValue(event.target.value)}>
+                  <select value={value} disabled={instigateLoading || instigateClubs.length < 2} onChange={(event) => setValue(event.target.value)}>
                     <option value="">Select Club</option>
-                    {clubsInCategory(visibleClubs, "community").filter((club) => club.id).map((club) => <option key={club.id} value={club.id} disabled={club.id === otherId}>{club.name}</option>)}
+                    {instigateClubs.map((club) => <option key={club.id} value={club.id} disabled={club.id === otherId}>{club.name}</option>)}
                   </select>
                 </label>
               ))}
@@ -1953,7 +1978,8 @@ export default function HomePage_HUB({
               <button
                 type="button"
                 onClick={submitChallengeRequest}
-                disabled={isSubmittingChallenge || Boolean(challengeStatus) || !challengeVenue.trim() || !challengeTotal.trim()}
+                disabled={isSubmittingChallenge || Boolean(challengeStatus) || !challengeVenue.trim() || !challengeTotal.trim() ||
+                  (challengeClub.instigate && (instigateLoading || !instigateHome || !instigateAway || instigateHome === instigateAway))}
               >
                 {isSubmittingChallenge ? "Sending…" : challengeClub.instigate ? "Invite both Clubs" : "Send challenge"}
               </button>

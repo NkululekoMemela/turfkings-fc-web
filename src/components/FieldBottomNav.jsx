@@ -3,6 +3,7 @@ import "./FieldBottomNav.css";
 
 const items = [
   { key: "landing", emoji: "🏡", label: "Home" },
+  { key: "fixtures", emoji: "🗓️", label: "Fixtures" },
   { key: "stats", emoji: "📊", label: "Stats" },
   { key: "squads", emoji: "👥", label: "Squads" },
   { key: "formations", image: "/formations-icon.png", label: "Lineups" },

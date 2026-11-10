@@ -1,4 +1,5 @@
-import React, {useRef, useState} from "react";
+import React, {useState} from "react";
+import TeamColourPalette from "./TeamColourPalette.jsx";
 
 const options = [
   ["#0f172a", "Black"], ["#f8fafc", "White"], ["#dc2626", "Red"],
@@ -14,14 +15,12 @@ const swatch = (hex) => /^#[0-9a-f]{6}$/i.test(hex) ? <i aria-hidden="true" clas
 
 export default function ExhibitionKitPicker({colour, opponentColour, clubName, disabled, onSave}) {
   const current = String(colour || "").toLowerCase();
-  const dialog = useRef(null);
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState("");
   const opponent = String(opponentColour || "").toLowerCase();
   const wearLabel = (hex) => hex ? `Wear ${exhibitionKitLabel(hex).toLowerCase()}` : "Choose kit colour";
   if (disabled) return <small className="exhibition-kit-readonly">{swatch(current)}{current ? wearLabel(current) : "Kit to be agreed"}</small>;
   async function select(next) {
-    dialog.current?.close();
     if (next === current || next === opponent || pending) return;
     setPending(next); setMessage("");
     try {await onSave(next);}
@@ -29,18 +28,9 @@ export default function ExhibitionKitPicker({colour, opponentColour, clubName, d
     finally {setPending("");}
   }
   return <div className="exhibition-kit-picker">
-    <button type="button" className="text-input exhibition-kit-trigger" aria-haspopup="dialog"
-      disabled={Boolean(pending)} onClick={() => dialog.current?.showModal()}>
-      <span>{swatch(pending || current)}{wearLabel(pending || current)}</span><span aria-hidden="true">⌄</span>
-    </button>
-    <dialog ref={dialog} className="exhibition-kit-dialog" aria-label={`Kit colour for ${clubName}`}>
-      <header><strong>Kit colour</strong><button type="button" aria-label="Close kit colours" onClick={() => dialog.current?.close()}>×</button></header>
-      <div className="exhibition-kit-options">{options.map(([id, label]) => (
-        <button type="button" key={id} aria-pressed={current === id} disabled={id === opponent} onClick={() => select(id)}>
-          <span>{swatch(id)}{label}</span><small>{id === opponent ? "Opponent" : current === id ? "Selected" : ""}</small>
-        </button>
-      ))}</div>
-    </dialog>
+    <TeamColourPalette label={`Kit colour for ${clubName}`} value={pending || current}
+      selectedLabel={wearLabel(pending || current)} options={options.map(([hex,name])=>({hex,name,value:hex}))}
+      isBlocked={option=>option.hex===opponent} disabled={Boolean(pending)} onSelect={select}/>
     {pending && <small role="status">Saving kit…</small>}
     {message && <small role="alert">{message}</small>}
   </div>;

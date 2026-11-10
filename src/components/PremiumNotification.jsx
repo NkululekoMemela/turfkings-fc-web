@@ -8,6 +8,9 @@ function NoticeArtwork({item}){
  const data=item.data||{},[switched,setSwitched]=useState(null);
  const portrait=safeImage(data.senderPhotoUrl),logo=safeImage(data.groupLogoUrl);
  useEffect(()=>{if(!portrait||!logo)return;const timer=setTimeout(()=>setSwitched(item),3000);return()=>clearTimeout(timer);},[item,portrait,logo]);
+ if(data.type==="club_exhibition_invitation")return <span className="fanm-notice-source fanm-notice-club-pair" style={{display:"inline-flex",alignItems:"center",gap:4}}>
+   <Badge src={safeImage(data.homeCrestUrl)} label={data.homeClubName}/><span aria-hidden="true">vs</span><Badge src={safeImage(data.awayCrestUrl)} label={data.awayClubName}/>
+ </span>;
  const showPortrait=!!portrait&&switched!==item;
  return <span className="fanm-notice-source"><Badge portrait={showPortrait} src={showPortrait?portrait:logo||safeImage(data.fieldLogoUrl||data.imageUrl)||portrait} label={data.senderName||data.sourceName||data.clubName||"⚽"}/></span>;
 }

@@ -2661,6 +2661,7 @@ function MainApp() {
   const [selectedHomeClub, setSelectedHomeClub] = useState(null);
   const [selectedLeagueVenue, setSelectedLeagueVenue] = useState(null);
   const [portalOriginClubId, setPortalOriginClubId] = useState("");
+  const [challengeInvitationOpen, setChallengeInvitationOpen] = useState(null);
   const [fieldNav, setFieldNav] = useState({ ready: false, page: "landing" });
   const fieldRefereeLockedRef=useRef(false);fieldRefereeLockedRef.current=fieldNav.refereeLocked===true;
   const [fieldNavTarget, setFieldNavTarget] = useState(null);
@@ -2908,7 +2909,11 @@ function MainApp() {
           setNativeChatOpenRequest(null);
           setSessionMode("official");writeSessionModeIntent("official");setShowSessionSelector(false);
           if(directDestination.clubId!==activeClubId)setSelectedHomeClub(buildClubIdentity({id:directDestination.clubId}));
-          if(directDestination.kind==="news"){
+          if(directDestination.kind==="challenge-invitation"){
+            setExhibitionDesk(null);
+            setChallengeInvitationOpen({...directDestination,openedAt:Date.now()});
+            setPage(PAGE_LANDING);
+          }else if(directDestination.kind==="news"){
             setNativeTicketOpenRequest(null);
             setNativePollOpenRequest({...directDestination,openedAt:Date.now()});setPage(PAGE_NEWS);
           }else{
@@ -8698,7 +8703,7 @@ function MainApp() {
   return (
     <ClubRibbonProvider club={activeClubIdentity} mode={browseMatchType===MATCH_TYPE.LEAGUE?'Mini-league':'Friendly'} onHome={handleBackToLanding}><div
       className={`app-root ${showBottomNav ? "has-bottom-nav" : ""} ${
-        page === PAGE_LANDING ? "app-root--landing" : ""
+        page === PAGE_LANDING ? (showExhibitionDesk ? "app-root--exhibition" : "app-root--landing") : ""
       } ${page === PAGE_VENUE_ENTRY ? "app-root--field" : ""}`}
     >
       {[PAGE_LANDING, PAGE_MATCH_SIGNUP, PAGE_SQUADS, PAGE_FORMATIONS].includes(page) &&
@@ -10117,9 +10122,9 @@ function MainApp() {
       )}
 
       {page === PAGE_LANDING && (<>
-        {clubChallengesEnabled && !isPracticeMode && authUser?.uid && auth.currentUser?.emailVerified &&
+        {clubChallengesEnabled && !isPracticeMode && !showExhibitionDesk && authUser?.uid && auth.currentUser?.emailVerified &&
           <ClubChallengeInbox key={`challenge:${activeClubId}:${authUser.uid}`} clubId={activeClubId}
-            userId={authUser.uid} promptOnly onChange={exhibition.refresh} />}
+            userId={authUser.uid} promptOnly invitationOpen={challengeInvitationOpen?.clubId === activeClubId ? challengeInvitationOpen : null} onChange={exhibition.refresh} />}
         {showExhibitionDesk &&
           <ExhibitionMatchRuntime key={exhibitionDesk.fixtureId} clubId={activeClubId} fixtureId={exhibitionDesk.fixtureId}
             identity={pageIdentity} viewerOnly={exhibitionDesk.viewerOnly} publicViewer={exhibitionDesk.publicViewer} onClose={() => setExhibitionDesk(null)}

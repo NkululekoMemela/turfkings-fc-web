@@ -158,3 +158,31 @@
 .exhibition-signup-arrow { margin-inline-start:.2rem; }
 .exhibition-details-bubble[open] .exhibition-signup-arrow { transform:rotate(180deg); }
 .exhibition-select-players { display:flex; align-items:center; gap:.55rem; text-align:left; min-height:44px; }
+
+.club-challenge-notification-dock {
+  position: fixed; right: max(.75rem, env(safe-area-inset-right)); top: calc(12.1rem + env(safe-area-inset-top));
+  z-index: 900; pointer-events: auto;
+}
+.club-challenge-dialog.tk-admin-notification-card {
+  width: min(540px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box;
+  background: radial-gradient(circle at top left, #22d3ee38, transparent 38%), radial-gradient(circle at bottom right, #22c55e24, transparent 40%), linear-gradient(180deg,#0f172a,#020617);
+  border: 1px solid #7dd3fc57; border-radius: 24px; overscroll-behavior: contain;
+}
+.club-challenge-dialog .club-challenge-brand { width: 44px; height: 44px; object-fit: contain; flex: 0 0 44px; }
+.club-challenge-dialog .challenge-matchup { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); margin-top: 12px; }
+.club-challenge-dialog .challenge-crest { width: 57px; height: 57px; }
+.club-challenge-dialog .tk-admin-notification-actions > button { min-height: 44px; white-space: normal; }
+.club-challenge-invitation-nav { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-block: .8rem; }
+.tk-admin-notification-dock.club-challenge-notification-dock {
+  top: calc(12.1rem + env(safe-area-inset-top, 0px));
+}
+.club-challenge-notification-dock .tk-admin-notification-bell {
+  position: relative; display: grid; place-items: center; width: 46px; height: 46px; pointer-events: auto;
+  border: 1px solid #7dd3fc88; border-radius: 50%; background: #163149; color: #eff8ff; font-size: 1.12rem;
+  box-shadow: 0 6px 22px #0006;
+}
+.club-challenge-notification-dock .tk-admin-notification-count {
+  position: absolute; top: -5px; right: -5px; min-width: 21px; min-height: 21px;
+  display: grid; place-items: center; padding: 0 3px; border: 2px solid #102439; border-radius: 999px;
+  background: #c53d48; color: #fff; font: 800 .72rem/1 system-ui, sans-serif;
+}
