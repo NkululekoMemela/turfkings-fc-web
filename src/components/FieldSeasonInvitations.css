@@ -225,3 +225,14 @@
 .field-season-dialog .field-fixture-leg-options input[type="checkbox"] {
   width:1rem; min-width:1rem; height:1rem; min-height:0; margin:0; padding:0; flex:none;
 }
+
+.field-season-closure-review { margin: 1rem 0; padding: .9rem; border: 1px solid #cca75a66; border-radius: 15px; background: linear-gradient(135deg,#15293c,#111a2c); }
+.field-season-closure-count { display:flex; align-items:center; gap:.7rem; }
+.field-season-closure-count > span {font-size:2rem;}
+.field-season-closure-count small,.field-season-closure-review li small {display:block;margin-top:.25rem;color:#b8cadb;}
+.field-season-closure-review details {margin-top:.8rem;}
+.field-season-closure-review summary {cursor:pointer;font-weight:700;}
+.field-season-closure-review ul {padding:0;list-style:none;display:grid;gap:.45rem;max-height:12rem;overflow:auto;}
+.field-season-closure-review li {padding:.5rem;border-radius:.5rem;background:#ffffff08;}
+.field-season-premature-warning {padding:.6rem;border:1px solid #dba74877;border-radius:.6rem;background:#3c2b16;color:#ffe6af;}
+.field-season-winner {padding:.7rem;color:#ffdf82;background:#a0752022;border-radius:.7rem;}

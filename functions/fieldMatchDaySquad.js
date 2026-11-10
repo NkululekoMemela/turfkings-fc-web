@@ -68,7 +68,7 @@ function sendWindow({day, fixture, now = Date.now()}) {
   };
 }
 
-async function loadDay({tx, db, scope, matchDayId}) {
+async function loadDay({tx, db, scope, matchDayId, supersededUnstartedFixtureId = ""}) {
   if (!validId(matchDayId)) throw new Error("Choose a valid match day.");
   const context = await service.loadContext(tx, db, scope);
   const {fieldFormat} = await import("./fieldBoothShared/fieldFormat.mjs");
@@ -80,9 +80,17 @@ async function loadDay({tx, db, scope, matchDayId}) {
   const live = await tx.get(db.doc(
     `leagueVenues/${scope.venueId}/seasons/${scope.seasonId}/matches/current`
   ));
+  // Only the internal kickoff recovery may disregard its already-vetted unplayed draft.
+  // Public squad endpoints do not forward this argument.
+  const superseded = supersededUnstartedFixtureId &&
+    context.season.fixtures?.some(item => item.id === supersededUnstartedFixtureId &&
+      item.matchDayId === matchDayId && item.status === "scheduled" &&
+      [item.clubAId,item.clubBId].includes(scope.clubId));
+  const editableSeason = superseded ? {...context.season, liveMatches:Object.fromEntries(
+    Object.entries(context.season.liveMatches||{}).filter(([id])=>id!==supersededUnstartedFixtureId))} : context.season;
   const {day, fixture} = policy.assertClubMatchDayEditable({
-    season: context.season, clubId: scope.clubId, matchDayId,
-    liveMatch: live.data() || null,
+    season: editableSeason, clubId: scope.clubId, matchDayId,
+    liveMatch: superseded && live.data()?.fixtureId === supersededUnstartedFixtureId ? null : live.data() || null,
   });
   const base = await loadSeasonStartSquad({transaction: tx, db, scope, includeRegistered: true});
   const availability = context.squad?.matchDayAvailability?.[matchDayId] || {};

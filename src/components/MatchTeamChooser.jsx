@@ -2,7 +2,7 @@ import { FANM_NATIONAL_TEAMS, FANM_PRO_CLUBS } from "../data/fanm/fanmTeamLibrar
 import React, { useState } from "react";
 import "./MatchTeamChooser.css";
 
-function TeamBadge({ team }) {
+function TeamBadge({ team, ringColour }) {
   const [failedUrl, setFailedUrl] = useState("");
   const name = String(team?.name || team?.label || "Team");
   const normalize = value => String(value || "").trim().toLowerCase();
@@ -20,7 +20,7 @@ function TeamBadge({ team }) {
   const initials = name.split(/\s+/).filter(Boolean)
     .slice(0, 2).map(word => word[0]).join("").toUpperCase();
   return (
-    <span className="match-team-chooser__badge" aria-hidden="true">
+    <span className="match-team-chooser__badge" style={ringColour ? {"--fixture-kit-ring": ringColour} : undefined} aria-hidden="true">
       {logo && logo !== failedUrl
         ? <img src={logo} alt="" onError={() => setFailedUrl(logo)} />
         : flag
@@ -38,6 +38,7 @@ function TeamBadge({ team }) {
 
 export default function MatchTeamChooser({
   label, value, teams = [], renderLabel, onChange, disabled, side, roundCrest = false,
+  compactFixture = false, hideReadOnlyHint = false, ringColour,
 }) {
   const selected = teams.find(team => String(team.id) === String(value));
   const nameOf = team => renderLabel
@@ -45,17 +46,17 @@ export default function MatchTeamChooser({
     : team.label || team.name || "Team";
   const identity = (
     <>
-      <TeamBadge team={selected} />
+      <TeamBadge team={selected} ringColour={ringColour} />
       <span className="match-team-chooser__identity">
-        <small>{label}</small>
+        {!compactFixture && <small>{label}</small>}
         <strong>{selected ? nameOf(selected) : "Choose team"}</strong>
-        <span>{disabled ? "Match pairing" : "Tap to choose"}</span>
+        {!compactFixture && !(disabled && hideReadOnlyHint) && <span>{disabled ? "Match pairing" : "Tap to choose"}</span>}
       </span>
       {!disabled && <span className="match-team-chooser__arrow" aria-hidden="true">⌄</span>}
     </>
   );
   return (
-    <div className={`match-team-chooser match-team-chooser--${side}${roundCrest ? " match-team-chooser--round" : ""}`}>
+    <div className={`match-team-chooser match-team-chooser--${side}${roundCrest ? " match-team-chooser--round" : ""}${compactFixture ? " match-team-chooser--compact-fixture" : ""}`}>
       {disabled ? (
         <div className="match-team-chooser__card">{identity}</div>
       ) : (

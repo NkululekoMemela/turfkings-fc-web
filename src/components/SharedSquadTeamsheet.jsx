@@ -20,6 +20,7 @@ export default function SharedSquadTeamsheet({
   downloadSibling = null,
   exportBusy = false,
   challengeBrandLogo,
+  showExhibitionRoles = false,
 }) {
     return (
       <div className="teamsheet-export-wrap">
@@ -46,7 +47,7 @@ export default function SharedSquadTeamsheet({
 
         <div
           ref={teamsheetCardRef}
-          className={`teamsheet-card${isClubChallengeTeamsheet ? " teamsheet-card--club-challenge" : ""}`}
+          className={`teamsheet-card${isClubChallengeTeamsheet ? " teamsheet-card--club-challenge" : ""}${showExhibitionRoles ? " teamsheet-card--exhibition-glow" : ""}`}
         >
           <div className="teamsheet-card-head">
             <div className="teamsheet-card-club">
@@ -112,6 +113,8 @@ export default function SharedSquadTeamsheet({
                         </h4>
                         {fieldTeamsheet ? (
                           <p>{fieldColour ? <>Wear <strong>{fieldColour}</strong></> : "Kit colour pending"}</p>
+                        ) : showExhibitionRoles ? (
+                          <p>{team.exhibitionSide === "away" ? "Away team" : "Home team"}</p>
                         ) : (
                           <p>
                             Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
@@ -119,11 +122,11 @@ export default function SharedSquadTeamsheet({
                         )}
                       </div>
                     </div>
-                    <span className="teamsheet-card-team-abbrev">
+                    {showExhibitionRoles ? <p className="exhibition-teamsheet-wear">Wear <strong>{team.teamColorName || theme.colorName || "to be agreed"}</strong></p> : <span className="teamsheet-card-team-abbrev">
                       {resolveSquadTeamIdentity(team)?.abbr ||
                         team.abbrev ||
                         ""}
-                    </span>
+                    </span>}
                   </div>
 
                   <ol>

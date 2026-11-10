@@ -3658,7 +3658,7 @@ export function SquadsPage({
       exhibitionPlayers.set(key, name);
       return key;
     });
-    return {id: club.id, label: club.name, badge: club.logoUrl, players: ids,
+    return {id: club.id, label: club.name, badge: club.logoUrl, players: ids, exhibitionSide: side,
       kitColour: side === "home" ? fixture.homeColour : fixture.awayColour,
       teamColorName: exhibitionKitLabel(side === "home" ? fixture.homeColour : fixture.awayColour),
       captainId: own && draft ? draft.captainId : saved?.captainId || ""};
@@ -3670,7 +3670,7 @@ export function SquadsPage({
   const exhibitionName = (id) => exhibitionPlayers.get(id) || "";
   const exhibitionLocked = (teamId) => teamId !== activeClubId || !exhibitionEditable;
   const renderExhibitionTeamsheet = () => <SharedSquadTeamsheet
-    matchTeams={getExhibitionTeams()} isClubChallengeTeamsheet teamsheetCardRef={teamsheetCardRef}
+    matchTeams={getExhibitionTeams()} isClubChallengeTeamsheet showExhibitionRoles teamsheetCardRef={teamsheetCardRef}
     handleSaveTeamsheetCardAsImage={() => setExhibitionExportOpen(true)}
     challengeBrandLogo="/favicon.png" exportBusy={exhibitionExportBusy}
     activeClubLogo={activeClubLogo} activeClubName={activeClubName}

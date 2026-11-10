@@ -1,3 +1,4 @@
+import {fieldFixturePreview} from "../core/fieldUpcomingMatch.js";
 import FixtureCrests from "../components/FixtureCrests.jsx";
 import {getFieldMatchDaySquads} from "../storage/fieldSeasonSquadRepository.js";
 import {fieldOperatingHoursLine} from "../core/fieldOperatingHours.mjs";
@@ -310,6 +311,7 @@ export default function VenueLandingPage({
   onStartMatch,
   onTakeoverMatch,
   nextFixtureLabel = "",
+  previewFixture = null,
   takeoverFixtureLabel = "",
   startTeamIds = [],
   practiceStartColours,
@@ -660,7 +662,27 @@ export default function VenueLandingPage({
     window.addEventListener("focus",load);
     return () => {active = false;window.removeEventListener("focus",load);};
   }, [activeClubId, startKitSeasonId, startKitMatchDayId, startKitFixtureId]);
+  const localDate = () => new Date(Date.now() + 7200000).toISOString().slice(0, 10);
+  const [today, setToday] = useState(localDate);
+  useEffect(() => {
+    const timer = window.setInterval(() => setToday(localDate()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const fixturePreview = fieldFixturePreview({season: fieldSeason, fixture: previewFixture, today});
+  const showFieldFixture = Boolean(fixturePreview);
+  const fixtureToday = fixturePreview?.isMatchDay;
+  const previewDate = fixturePreview?.date || "";
+  const canChangeFixture = canStartMatch && !hasLiveMatch;
+  const fixtureDateLabel = /^\d{4}-\d{2}-\d{2}$/.test(previewDate)
+    ? new Intl.DateTimeFormat("en-ZA", {weekday:"short", day:"numeric", month:"short", timeZone:"UTC"})
+      .format(new Date(`${previewDate}T12:00:00Z`)) : "";
   const startColours = practiceStartColours || (startKits?.fixtureId === startKitFixtureId ? startKits.colours : undefined);
+  const fixtureRing = (clubId, side) => {
+    if (!fixtureToday) return undefined;
+    const team = teams.find(item => item.id === clubId);
+    return startColours?.[clubId]?.trim().replace(/\s+/g,"") ||
+      (side === "away" ? team?.awayColor || team?.homeColor : team?.homeColor);
+  };
   const showTakeover = Boolean(hasLiveMatch && onTakeoverMatch);
   const activeGameFormatLabel = activeGameFormatOption?.label || "5 v 5";
   const resolvedMatchSeconds = Number.isFinite(Number(matchSeconds))
@@ -1654,7 +1676,7 @@ export default function VenueLandingPage({
           </section>
         )}
 
-        <header className="match-preview-heading">
+        {showFieldFixture && <header className="match-preview-heading">
           <div className="match-preview-heading__title">
             <h2>{hasLiveMatch && !nextFixtureLabel ? "Live match:" : "Upcoming match:"}</h2>
           </div>
@@ -1669,47 +1691,29 @@ export default function VenueLandingPage({
               </span>
             )}
           </div>
-        </header>
+        </header>}
 
-
-
-
-        {isThreeTeamLeague && (
-          <div
-            className={`match-setup-row ${
-              fixturedMode
-                ? "fixture-premium-pairing"
-                : ""
-            }`}
-          >
-            <MatchTeamChooser
-              label="On-field Team 1"
-              roundCrest
-              value={teamAId || ""}
-              teams={optionsForTeamA}
-              renderLabel={renderOptionLabel}
-              onChange={handleTeamAChange}
-              disabled={!canStartMatch || hasLiveMatch}
-              side="a"
-            />
-
+        {showFieldFixture && <div className="field-landing-fixture">
+          <div className="match-setup-row field-landing-pair">
+            <MatchTeamChooser label="On-field Team 1" roundCrest
+              value={previewFixture.clubAId} teams={optionsForTeamA}
+              renderLabel={fixtureToday ? renderOptionLabel : undefined}
+              onChange={handleTeamAChange} disabled={!canChangeFixture} side="a"
+              compactFixture={!fixtureToday} hideReadOnlyHint
+              ringColour={fixtureRing(previewFixture.clubAId, "home")} />
             <span className="vs-label match-team-versus">VS</span>
-
-            <MatchTeamChooser
-              label="On-field Team 2"
-              roundCrest
-              value={teamBId || ""}
-              teams={optionsForTeamB}
-              renderLabel={renderOptionLabel}
-              onChange={handleTeamBChange}
-              disabled={!canStartMatch || hasLiveMatch}
-              side="b"
-            />
+            <MatchTeamChooser label="On-field Team 2" roundCrest
+              value={previewFixture.clubBId} teams={optionsForTeamB}
+              renderLabel={fixtureToday ? renderOptionLabel : undefined}
+              onChange={handleTeamBChange} disabled={!canChangeFixture} side="b"
+              compactFixture={!fixtureToday} hideReadOnlyHint
+              ringColour={fixtureRing(previewFixture.clubBId, "away")} />
           </div>
-        )}
-
-
-
+          {!fixtureToday && <p className="field-landing-kickoff">{[
+            fixtureDateLabel, fixturePreview.time &&
+              `${fixturePreview.time} SAST`, previewFixture.venueName || activeClubName,
+          ].filter(Boolean).join(" · ")}</p>}
+        </div>}
 
         {canStartMatch ? (
           <div
@@ -1772,10 +1776,10 @@ export default function VenueLandingPage({
             >
               {renderTileContent({
                 isMobile,
-                icon: startTeamIds.length === 2 ? (
+                icon: showFieldFixture && startTeamIds.length === 2 ? (
                   <span className={`field-start-art${showTakeover ? "" : " field-start-art--cycle"}`} aria-hidden="true">
                     {!showTakeover && <span className="field-start-ball"><span>⚽</span></span>}
-                    <span className="field-start-crests"><FieldTileCrests ids={startTeamIds} teams={teams} colours={startColours} /></span>
+                    <span className="field-start-crests"><FieldTileCrests ids={startTeamIds} teams={teams} colours={fixtureToday ? startColours : undefined} /></span>
                   </span>
                 ) : showTakeover ? null : "⚽",
                 desktopLines: ["Start Match"],

@@ -11,7 +11,7 @@ function reverseResult(season,fixtureId){
  const fixture=(season.fixtures||[]).find(f=>f.id===fixtureId);
  if(!fixture||fixture.status!=='completed')throw Error('This fixture is no longer completed.');
  if(Object.values(season.liveMatches||{}).some(m=>m.status==='live'))throw Error('Finish or cancel the live match before reversing this result.');
- const matchesEvent=(e)=>e.fixtureId===fixtureId||Number(e.matchNo)===Number(result.matchNo);
+ const matchesEvent=(e)=>e.fixtureId===fixtureId||(!e.fixtureId&&result.matchNo!=null&&Number(e.matchNo)===Number(result.matchNo));
  const liveMatches={...(season.liveMatches||{})};delete liveMatches[fixtureId];
  const {goalsA,goalsB,scoreA,scoreB,winnerId,isDraw,completedByUid,completedAtMs,...scheduled}=fixture;
  const dayId=fixture.matchDayId;
@@ -31,20 +31,24 @@ function reverseResult(season,fixtureId){
  return {season:next,result,fixture};
 }
 exports.reverseResult=reverseResult;
-exports.reverseFieldRecordedMatch=onRequest({region:'us-central1',invoker:'public',cors:true},async(req,res)=>{
+exports.reversalHandler=async(req,res,dependencies={})=>{
  if(req.method!=='POST')return res.status(405).json({error:'Use POST.'});
  try{
-  const token=String(req.headers.authorization||'').match(/^Bearer (.+)$/)?.[1];if(!token)throw Error('Sign in first.');const user=await getAuth().verifyIdToken(token,true);if(!user.email_verified||user.cameraSession)throw Error('Use your verified manager account.');
+  const token=String(req.headers.authorization||'').match(/^Bearer (.+)$/)?.[1];if(!token)throw Error('Sign in first.');const user=await (dependencies.verifyToken||((value,revoked)=>getAuth().verifyIdToken(value,revoked)))(token,true);if(!user.email_verified||user.cameraSession)throw Error('Use your verified manager account.');
   const {venueId,seasonId,fixtureId}=req.body||{},reason=String(req.body?.reason||'').trim();if(![venueId,seasonId,fixtureId].every(valid)||reason.length<5||reason.length>300)throw Error('Choose a match and give a short reason.');
-  const db=getFirestore(),venueRef=db.doc(`leagueVenues/${venueId}`),id=randomUUID();
+  const db=dependencies.db||getFirestore(),venueRef=db.doc(`leagueVenues/${venueId}`),id=randomUUID();
   await db.runTransaction(async tx=>{
    const v=await tx.get(venueRef);if(!v.exists)throw Error('Field no longer exists.');const venue=v.data();if(venue.ownerUid!==user.uid)throw Error('Only the Field Manager can reverse an official result.');const season=venue.league?.activeSeason;if(season?.id!==seasonId)throw Error('The season changed. Reopen the result.');
-   const currentRef=venueRef.collection('seasons').doc(seasonId).collection('matches').doc(require('./fieldMatchDocuments.cjs').fieldMatchDocumentId(season,fixtureId)),current=await tx.get(currentRef);
+   // An archived result may no longer have a liveMatches entry. Read both
+   // storage generations and clear only documents belonging to this fixture.
+   const matchesRef=venueRef.collection('seasons').doc(seasonId).collection('matches');
+   const saved=await Promise.all([fixtureId,'current'].map(key=>tx.get(matchesRef.doc(key))));
    const reversed=reverseResult(season,fixtureId);
-   tx.create(venueRef.collection('matchReversals').doc(id),{seasonId,fixtureId,reason,actorUid:user.uid,at:FieldValue.serverTimestamp(),result:reversed.result,fixture:reversed.fixture,events:(season.allEvents||[]).filter(e=>e.fixtureId===fixtureId||Number(e.matchNo)===Number(reversed.result.matchNo)),previousMatchDays:season.matchDays||[],previousHistory:(season.matchDayHistory||[]).filter(d=>(d.results||[]).some(r=>String(r.fixtureId||r.id||'')===fixtureId))});
+   tx.create(venueRef.collection('matchReversals').doc(id),{venueId,seasonId,fixtureId,reason,actorUid:user.uid,at:FieldValue.serverTimestamp(),previousMatches:saved.filter(s=>s.exists&&s.data().fixtureId===fixtureId).map(s=>({documentId:s.id,match:s.data()})),result:reversed.result,fixture:reversed.fixture,events:(season.allEvents||[]).filter(e=>e.fixtureId===fixtureId||(!e.fixtureId&&reversed.result.matchNo!=null&&Number(e.matchNo)===Number(reversed.result.matchNo))),previousMatchDays:season.matchDays||[],previousHistory:(season.matchDayHistory||[]).filter(d=>(d.results||[]).some(r=>String(r.fixtureId||r.id||'')===fixtureId))});
    tx.update(venueRef,{'league.activeSeason':reversed.season,updatedAt:FieldValue.serverTimestamp()});
-   if(current.exists&&current.data().fixtureId===fixtureId)tx.delete(currentRef);
+   for(const snapshot of saved)if(snapshot.exists&&snapshot.data().fixtureId===fixtureId)tx.delete(snapshot.ref);
    tx.create(venueRef.collection('actionLog').doc(id),{venueId,seasonId,fixtureId,action:'match_reversed',label:'Official match reversed',details:`${reversed.result.teamAName||reversed.fixture.clubAName} vs ${reversed.result.teamBName||reversed.fixture.clubBName}: ${reason}`,actorUid:user.uid,actorEmail:user.email||'',actorName:user.name||user.email||user.uid,at:FieldValue.serverTimestamp()});
   });return res.json({reversed:true});
  }catch(e){return res.status(400).json({error:e.message||'Could not reverse this match.'});}
-});
+};
+exports.reverseFieldRecordedMatch=onRequest({region:'us-central1',invoker:'public',cors:true},(req,res)=>exports.reversalHandler(req,res));

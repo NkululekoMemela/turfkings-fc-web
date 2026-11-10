@@ -21422,3 +21422,19 @@ footer.club-marketing-footer > section {
     margin: 0;
   }
 }
+.club-match-mode-toggle {
+  display: inline-grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px;
+  padding: 5px; margin-bottom: 14px; max-width: 100%; border: 1px solid #7da0b54d;
+  border-radius: 16px; background: linear-gradient(135deg,#1b2c42,#101a2d);
+  box-shadow: inset 0 1px 0 #ffffff13, 0 5px 15px #02061725;
+}
+.club-match-mode-toggle > button {
+  display: flex; align-items: center; justify-content: center; gap: .45rem;
+  min-height: 43px; padding: .55rem .9rem; border: 1px solid transparent;
+  border-radius: 12px; background: transparent; color: #c9d6e7; font: inherit; font-size: .86rem; cursor: pointer;
+}
+.club-match-mode-toggle > button[aria-pressed=true] {
+  color: #fff; font-weight: 750; border-color: #9be9ff80;
+  background: linear-gradient(135deg,#08a8c5,#2867cd); box-shadow: inset 0 1px 0 #fff4,0 3px 11px #08b5d633;
+}
+.club-match-mode-toggle > button:focus-visible { outline: 2px solid #a7ebff; outline-offset: 2px; }

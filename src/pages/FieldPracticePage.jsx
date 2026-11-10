@@ -287,6 +287,7 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
       matchMode={season?.matchMode || "fixtured"}
       currentMatchNo={Number(season?.currentMatchNo) || 1}
       currentMatch={currentMatch}
+      previewFixture={nextFixture || (liveMatch ? {...season?.fixtures?.find(fixture => fixture.id === liveMatch.fixtureId), ...liveMatch} : null)}
       pairingRequiresCode={false}
       results={season?.results || []}
       streaks={season?.streaks || {}}

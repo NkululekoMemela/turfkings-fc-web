@@ -1,0 +1,30 @@
+.field-season-celebration {
+  box-sizing:border-box;width:min(440px,92vw);max-height:88dvh;overflow:auto;padding:1.5rem 1.2rem;
+  border:1px solid #d6b35b99;border-radius:24px;color:#f8f5e8;text-align:center;
+  background:radial-gradient(ellipse at 50% 0,#c99b2044,transparent 48%),linear-gradient(145deg,#142b3c,#071123);
+  box-shadow:0 20px 100px #0008,inset 0 1px 0 #fff2;
+}
+.field-season-celebration::backdrop {background:#020716c9;backdrop-filter:blur(6px);}
+.field-finale-art {position:relative;height:105px;overflow:hidden;}
+.field-finale-cup {display:block;position:relative;font-size:4.6rem;filter:drop-shadow(0 0 15px #f2bc4377);}
+.field-finale-art > i {position:absolute;left:calc(var(--i)*4.1%);top:-12px;width:6px;height:12px;background:#f7cf60;
+  transform:rotate(calc(var(--i)*29deg));animation:field-finale-confetti 3.2s calc(var(--i)*-.17s) ease-in infinite;}
+.field-finale-art > i:nth-child(3n) {background:#47d8ef;}
+.field-finale-art > i:nth-child(3n+1) {background:#d18cff;}
+.field-finale-balloon {position:absolute;top:10px;width:26px;height:34px;border-radius:50%;
+  background:radial-gradient(circle at 30% 25%,#fff8,transparent 32%),linear-gradient(135deg,#1682b9,#45d3e7);
+  animation:field-finale-float 3s ease-in-out infinite alternate;}
+.field-finale-balloon::after {content:"";position:absolute;left:50%;top:100%;width:1px;height:52px;background:#cdd9ee88;}
+.field-finale-balloon.is-left {left:12%;}
+.field-finale-balloon.is-right {right:12%;background:radial-gradient(circle at 30% 25%,#fff9,transparent 30%),linear-gradient(135deg,#b8761c,#eed979);animation-delay:-1s;}
+.field-finale-eyebrow {font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:#d9c797;}
+.field-season-celebration h2 {margin:.45rem 0;color:#ffe39b;font-size:1.6rem;}
+.field-season-celebration h3 {margin:.5rem 0;font-size:1.5rem;}
+.field-finale-podium {display:grid;gap:.45rem;margin:1rem 0;}
+.field-finale-podium article {display:grid;grid-template-columns:auto 1fr auto;align-items:center;text-align:left;gap:.5rem;padding:.65rem;border:1px solid #c1a65c44;border-radius:11px;background:#ffffff08;}
+.field-finale-podium small {font-size:.68rem;color:#c5d3e3;}
+.field-finale-footnote {font-size:.75rem;color:#c2d0e0;}
+.field-season-celebration > button {width:100%;min-height:46px;border:1px solid #f7d78d;border-radius:12px;padding:.65rem;font:inherit;font-weight:800;color:#2a210d;background:linear-gradient(135deg,#f6d677,#d3a948);cursor:pointer;}
+@keyframes field-finale-confetti {to{transform:translateY(130px) rotate(260deg);}}
+@keyframes field-finale-float {to{transform:translateY(7px) rotate(8deg);}}
+@media(prefers-reduced-motion:reduce){.field-finale-art > i,.field-finale-balloon{animation:none;}.field-finale-art > i{top:calc(10px + var(--i)*3px);}}

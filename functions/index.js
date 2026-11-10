@@ -6000,3 +6000,8 @@ exports.expireClubChallengeCancellations = clubChallengeLifecycle.expireClubChal
 exports.notifyClubChallengeLifecycle = clubChallengeLifecycle.notifyClubChallengeLifecycle;
 
 exports.notifyClubChallengeInvitation = clubChallengeLifecycle.notifyClubChallengeInvitation;
+
+// Share the archived tournament finale with Field staff and participating Clubs.
+exports.onFieldSeasonCelebration = require("./fieldSeasonCelebration.cjs").buildHandler({
+  db, region: REGION, auth: admin.auth(), messaging: admin.messaging(),
+});

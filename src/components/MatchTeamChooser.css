@@ -599,3 +599,12 @@ summary.match-team-chooser__card:focus-visible,
   color: #213451;
 }
 .match-team-chooser--round .match-team-chooser__badge > img { border-radius: 50%; object-fit: contain; }
+
+.field-landing-pair .match-team-chooser--round .match-team-chooser__card > .match-team-chooser__badge {
+  border-color: var(--fixture-kit-ring, #d1dfed);
+}
+.field-landing-pair .match-team-chooser--compact-fixture .match-team-chooser__card {
+  display: grid; justify-items: center; gap: .5rem; min-height: 0; text-align: center;
+  padding: .4rem .2rem;
+}
+.field-landing-kickoff { margin: .35rem 0 .85rem; text-align: center; font-size: .8rem; }

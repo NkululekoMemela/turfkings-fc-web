@@ -64,8 +64,8 @@ function setup() {
   return {
     records, db,
     send: (user = home, data = terms) => sendClubChallenge({db, user, data, now}),
-    respond: (user, fixtureId, decision, responseTime = now, clubId = "away", revision = 1) =>
-      respondToClubChallenge({db, user, data: {fixtureId, decision, clubId, revision}, now: responseTime}),
+    respond: (user, fixtureId, decision, responseTime = now, clubId = "away", revision = 1, colour = clubId === "home" ? terms.homeColour : terms.awayColour) =>
+      respondToClubChallenge({db, user, data: {fixtureId, decision, clubId, revision, colour}, now: responseTime}),
   };
 }
 
@@ -213,8 +213,8 @@ test("the FANM Club picker exposes active community Clubs only to the verified s
   await assert.rejects(listChallengeClubs({db, user: {...admin, email_verified: false}}), {code: "permission-denied"});
   assert.equal(reads, 0);
   assert.deepEqual(await listChallengeClubs({db, user: admin}), {clubs: [
-    {id: "alpha", name: "Alpha FC", logoUrl: "/alpha.png"},
-    {id: "zulu", name: "Zulu FC", logoUrl: "/zulu.png"},
+    {id: "alpha", name: "Alpha FC", logoUrl: "/alpha.png", coordinates: null},
+    {id: "zulu", name: "Zulu FC", logoUrl: "/zulu.png", coordinates: null},
   ]});
 });
 
@@ -224,7 +224,9 @@ test("only the verified superuser can instigate and both captains must accept", 
   const instigate = (user) => instigateClubChallenge({db, user, data: terms, now});
   await assert.rejects(instigate(home), {code: "permission-denied"});
   await assert.rejects(instigate({...admin, email_verified: false}), {code: "permission-denied"});
-  const {fixtureId} = await instigate(admin);
+  const {fixtureId} = await instigate({...admin, email: "5asidesnearme@gmail.com"});
+  assert.equal(records.get(`${COLLECTION}/${fixtureId}`).homeColour, null);
+  assert.equal(records.get(`${COLLECTION}/${fixtureId}`).awayColour, null);
   await assert.rejects(respond(away, fixtureId, "accepted", now, "home"), {code: "permission-denied"});
   assert.equal((await respond(home, fixtureId, "accepted", now, "home")).status, "pending");
   assert.equal((await respond(home, fixtureId, "accepted", now, "home")).status, "pending");
@@ -535,4 +537,21 @@ test("only the active exhibition referee can override the match kit, without cha
  assert.equal(match().homeColour,terms.homeColour);
  await act("matchColour",{reset:true});
  assert.deepEqual(match().live.matchColours,{});
+});
+
+test("a distant challenge requires acknowledgement and neither captain can declare the other kit", async () => {
+  const {db, records, send, respond} = setup();
+  records.set("clubs/home", {...records.get("clubs/home"), coordinates: {lat: -33.92, lng: 18.42}});
+  records.set("clubs/away", {...records.get("clubs/away"), coordinates: {lat: -33.96, lng: 25.60}});
+  await assert.rejects(send(home, terms), /km apart/);
+  const {fixtureId} = await send(home, {...terms, distanceAcknowledged: true});
+  const match = () => records.get(`${COLLECTION}/${fixtureId}`);
+  assert.equal(match().homeColour, terms.homeColour);
+  assert.equal(match().awayColour, null);
+  await assert.rejects(respond(away, fixtureId, "accepted", now, "away", 1, terms.homeColour), /too similar/);
+  await respond(away, fixtureId, "accepted", now, "away", 1, "");
+  assert.equal(match().homeColour, terms.homeColour);
+  assert.equal(match().awayColour, null);
+  await changeExhibitionKit({db,user:away,data:{clubId:"away",fixtureId,colour:"#dc2626"},now});
+  assert.equal(match().awayColour,"#dc2626");
 });

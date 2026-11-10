@@ -5,6 +5,13 @@ import React, {useCallback, useEffect, useRef, useState} from "react";
 import {clubChallengeRequest} from "../storage/clubChallengeGateway.js";
 import "./ClubChallengeInbox.css";
 
+const matchDate = value => {
+  const date = new Date(`${value}T12:00:00Z`);
+  return Number.isFinite(+date) ? new Intl.DateTimeFormat("en-ZA", {
+    weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+  }).format(date) : value;
+};
+
 const formatName = (format) => `${String(format).split("v")[0]}-a-side`;
 const canRespond = (match, clubId) => match.status === "pending" && match.kickoffMs > Date.now() &&
   !(match.acceptances || {home: !match.instigated, away: false})[match.home.id === clubId ? "home" : "away"];
@@ -114,6 +121,7 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
   const pendingInvitations = canAccept ? matches.filter(match => canRespond(match,clubId)) : [];
   const pendingIndex = pendingInvitations.findIndex(match => match.fixtureId === openId);
   const selected = matches.find((match) => match.fixtureId === openId);
+  const messageClub = selected?.revisedBy === selected?.away.id ? selected?.away : selected?.home;
   const request = selected?.cancellation;
   const pendingCancellation = selected?.status === "accepted" && request?.outcome === "pending";
   const archive = selected?.status === "withdrawn";
@@ -224,27 +232,30 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
         <div className="tk-admin-notification-title-wrap">
           <div className="tk-admin-notification-title" id="club-challenge-title">
             {archive ? "Archived cancellation" : reviewingPostponement ? "Postpone exhibition" : withdraw ? "Withdraw challenge?" : pendingCancellation
-              ? "Cancellation requested" : selected.revisedBy ? "Updated fixture proposal" : "Your Club is invited"}
+              ? "Cancellation requested" : selected.revisedBy ? "Challenge counterproposal" : "You’ve been challenged"}
           </div>
-          <span className="tk-admin-notification-tag">{selected.instigated ? "FANM exhibition" : "Club challenge invitation"}</span>
+          <span className="tk-admin-notification-tag">{selected.instigated ? "FANM Exhibition Challenge" : "Club vs Club Challenge"}</span>
         </div>
       </div>
       <div className="tk-admin-notification-body">
         <div className="field-invite-intro"><span>Club exhibition</span><ChallengePair match={selected}/></div>
         <div className="field-invite-facts">
-          <div><span>Match day</span><strong>{selected.proposedDate}</strong><small>{selected.proposedKickoff} SAST</small></div>
+          <div><span>Match day</span><strong>{matchDate(selected.proposedDate)}</strong><small>{selected.proposedKickoff} SAST</small></div>
           <div><span>Venue</span><strong>{selected.venue}</strong></div>
           <div><span>Format</span><strong>{formatName(selected.format)}</strong></div>
           <div><span>Entry per Club</span><strong>{selected.clubTotalCents > 0 ? `R${(selected.clubTotalCents / 100).toFixed(2)}` : "Free to play"}</strong></div>
         </div>
-        {selected.homeColour && selected.awayColour && <p className="challenge-kit-pair">
-          <span><i style={{background: selected.homeColour}} />{selected.home.name} kit</span>
-          <span><i style={{background: selected.awayColour}} />{selected.away.name} kit</span>
-        </p>}
         {selected.hostedPackage && <p className="exhibition-hosted-package">
           <strong>FANM package:</strong> {selected.hostedPackage.rosterPerClub} players and {selected.hostedPackage.waterPerClub} × {selected.hostedPackage.waterMl} mL waters per Club. Field booking, referee and camera operator included.
         </p>}
-        {selected.message && <p>{selected.message}</p>}
+        {selected.message && <blockquote className="challenge-captain-note">
+          <strong>{selected.revisedBy || !selected.instigated ? `From the ${messageClub?.name} captain` : "A note from FANM"}</strong>
+          <p>{selected.message}</p>
+        </blockquote>}
+        {!selected.instigated && selected.status === "pending" && !withdraw && <details className="challenge-payment-note">
+          <summary>Pay the Field directly</summary>
+          <p>If there is a pitch fee, both Clubs should bring cash to pay the Field on the day or transfer directly to the Field’s verified account. Avoid sending money to an opponent captain you haven’t met.</p>
+        </details>}
         {reviewingPostponement && <section className="exhibition-postpone-details">
           <p>The existing kickoff stays in place until both captains agree. All bookings and squads carry over.</p>
           {postpone ? <div className="exhibition-postpone-fields">
@@ -276,7 +287,6 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
         {proposal && <form className="challenge-counter-form" onSubmit={(event) => {event.preventDefault(); revise();}}>
           {[
             ["venue", "Venue", "text"], ["proposedDate", "Date", "date"], ["proposedKickoff", "Kickoff (SAST)", "time"],
-            ["homeColour", `${selected.home.name} kit`, "color"], ["awayColour", `${selected.away.name} kit`, "color"],
             ["message", "Message (optional)", "text"],
           ].map(([key,label,type]) => <label key={key}>{label}
             <input type={type} required={key !== "message"} value={proposal[key]} maxLength={key === "venue" ? 140 : 600}
@@ -290,7 +300,7 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
           <span>{pendingIndex + 1} of {pendingInvitations.length}</span>
           <button type="button" disabled={busy} onClick={() => openReview(pendingInvitations[(pendingIndex + 1) % pendingInvitations.length])}>Next</button>
         </nav>}
-        <div className="tk-admin-notification-actions">
+        <div className="tk-admin-notification-actions challenge-dialog-actions">
           {withdraw && !archive && !pendingCancellation && <button type="button" className="tk-admin-notification-primary" disabled={busy || !cancellationText.trim()}
             onClick={() => revise(closeToKickoff && selected.status === "accepted" ? "force" : "request")}>
             {selected.status === "pending" ? "Withdraw invitation" : closeToKickoff ? "Cancel now" : "Request cancellation"}
@@ -308,10 +318,10 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
             {request.restoreBy === clubId ? "Waiting for opponent" : request.restoreBy ? "Agree to restore" : "Request restore"}
           </button>}
           {!withdraw && !proposal && canAccept && canRespond(selected, clubId) && <>
-            <button type="button" className="tk-admin-notification-primary" disabled={busy || !selected.homeColour || !selected.awayColour} onClick={() => respond("accepted")}>Accept fixture</button>
+            <button type="button" className="tk-admin-notification-primary" disabled={busy} onClick={() => respond("accepted")}>Accept challenge</button>
             <button type="button" className="tk-admin-notification-secondary" disabled={busy} onClick={() => setProposal({
               venue: selected.venue, proposedDate: selected.proposedDate, proposedKickoff: selected.proposedKickoff,
-              homeColour: selected.homeColour || "#1d4ed8", awayColour: selected.awayColour || "#f59e0b", message: "",
+              message: "",
               revision: selected.revision || 0,
             })}>Propose changes</button>
             <button type="button" className="tk-admin-notification-secondary" disabled={busy} onClick={() => respond("declined")}>Decline</button>

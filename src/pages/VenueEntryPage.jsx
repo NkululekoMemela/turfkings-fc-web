@@ -1,3 +1,4 @@
+import FieldSeasonCelebration from "../components/FieldSeasonCelebration.jsx";
 import VenuePlayerCardsPage from './VenuePlayerCardsPage.jsx';
 import {FIELD_BOOTH_RETURN_MS} from "../core/fieldBoothRecovery.mjs";
 import PremiumSelect from "../components/PremiumSelect.jsx";
@@ -5766,6 +5767,9 @@ export default function VenueEntryPage({
       );
     }
 
+    const previewFixture = nextFixture || (liveMatch
+      ? {...venueSeason?.fixtures?.find(fixture => fixture.id === liveMatch.fixtureId), ...liveMatch}
+      : null);
     const archivedFixtureIds = new Set(
       (venueSeason?.matchDayHistory || []).flatMap((day) =>
         (day.results || []).map((result) =>
@@ -5783,6 +5787,8 @@ export default function VenueEntryPage({
 
     return (
       <>
+      <FieldSeasonCelebration celebration={venueSeason?.previousSeasonCelebration} venueId={venue?.id}
+        userId={currentUser?.uid} enabled={venuePage==="landing"} />
       <FieldAcceptedTeams venueId={venue?.id} season={venueSeason} clubs={fieldClubProfiles} userId={currentUser?.uid} enabled={Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||authenticatedFieldStaff?.status==="active"))}/>
       {canUseFieldPractice && venuePage==="landing" && <FieldPracticeEntry
         key={`${venue.id}:${currentUser?.uid}`}
@@ -5898,9 +5904,10 @@ export default function VenueEntryPage({
           "Only an authorized Field official or referee can start this match."
         }
         nextFixtureLabel={fieldMatchLabel(nextFixture)}
-        startKitSeasonId={canOperateFieldMatch ? venueSeason?.id : ""}
-        startKitMatchDayId={nextFixture?.matchDayId}
-        startKitFixtureId={nextFixture?.id}
+        previewFixture={previewFixture}
+        startKitSeasonId={currentUser?.uid ? venueSeason?.id : ""}
+        startKitMatchDayId={previewFixture?.matchDayId}
+        startKitFixtureId={previewFixture?.id || previewFixture?.fixtureId}
         startTeamIds={nextFixture?.clubAId && nextFixture?.clubBId
           ? [nextFixture.clubAId, nextFixture.clubBId] : []}
         takeoverTeamIds={liveMatch ? [

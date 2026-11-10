@@ -1,3 +1,4 @@
+import {challengeDistanceKm, FANM_CHALLENGE_ORGANISERS} from "../../functions/clubChallengeLocation.mjs";
 import {clubChallengeRequest, clubChallengesEnabled} from "../storage/clubChallengeGateway.js";
 import OrganizationArchiveControls, {canManageOrganizationArchive, confirmOrganizationArchive} from "../components/OrganizationArchiveControls.jsx";
 import { clubFounderName } from "../core/clubFounderCredit.mjs";
@@ -528,17 +529,25 @@ export default function HomePage_HUB({
   const [challengeTotal, setChallengeTotal] = useState("");
   const [environmentToolsOpen, setEnvironmentToolsOpen] = useState(false);
   const [homeColour, setHomeColour] = useState("#1d4ed8");
-  const [awayColour, setAwayColour] = useState("#f59e0b");
+  const [distanceAcknowledged, setDistanceAcknowledged] = useState(false);
+  const [serverDistanceWarning, setServerDistanceWarning] = useState("");
   const [instigateHome, setInstigateHome] = useState("");
   const [instigateAway, setInstigateAway] = useState("");
   const [instigateClubs, setInstigateClubs] = useState([]);
   const [instigateLoading, setInstigateLoading] = useState(false);
   const [instigateLoadError, setInstigateLoadError] = useState("");
   const isPlatformAdmin = isSuperAdmin(currentUser);
-  const canInstigate = clubChallengesEnabled && !isPracticeMode && currentUser?.emailVerified && isPlatformAdmin;
+  const isChallengeOrganiser = FANM_CHALLENGE_ORGANISERS.includes(normalizeEmail(currentUser?.email));
+  const canInstigate = clubChallengesEnabled && !isPracticeMode && currentUser?.emailVerified && isChallengeOrganiser;
+  const challengeDistance = challengeClub?.instigate
+    ? challengeDistanceKm(instigateClubs.find(club => club.id === instigateHome), instigateClubs.find(club => club.id === instigateAway))
+    : challengeDistanceKm(clubs.find(club => club.id === identity?.clubId), challengeClub);
+  const distanceWarning = challengeDistance > 20
+    ? `These Clubs are about ${Math.round(challengeDistance)} km apart (straight line). Check that you’ve selected the right Clubs and city.`
+    : serverDistanceWarning;
   const instigationBlock = !currentUser?.emailVerified ? "Verify your FANM Google account to continue."
     : isPracticeMode ? "Switch to Official to create a FANM Challenge."
-    : !clubChallengesEnabled ? (isStagingFirebase ? "Club challenges are disabled in this build." : "Switch to Staging under Database environment. This Production build has challenges turned off.") : "";
+    : !clubChallengesEnabled ? (isStagingFirebase ? "Club challenges are disabled in this build." : "Open a Staging build to organise a FANM exhibition.") : "";
   const challengeScope = `${currentUser?.uid || ""}:${identity?.clubId || ""}`;
   useEffect(() => {
     if (!clubChallengesEnabled || isPracticeMode || !currentUser?.emailVerified || !identity?.clubId) return;
@@ -1046,7 +1055,8 @@ export default function HomePage_HUB({
     setChallengeClub({instigate: true});
     void loadInstigateClubs();
     setHomeColour("#1d4ed8");
-    setAwayColour("#f59e0b");
+    setDistanceAcknowledged(false);
+    setServerDistanceWarning("");
     setChallengeFormat("11v11");
     setChallengeDate("");
     setChallengeKickoff("19:00");
@@ -1061,8 +1071,10 @@ export default function HomePage_HUB({
     if (!canCurrentUserSendChallenge() || isUsersOwnClub(club)) return;
     setChallengeVenue("");
     setChallengeTotal("0");
-    setHomeColour("#1d4ed8");
-    setAwayColour("#f59e0b");
+    const homeKit = clubs.find(item => item.id === identity?.clubId)?.homeColor;
+    setHomeColour(/^#[0-9a-f]{6}$/i.test(homeKit || "") ? homeKit : "#1d4ed8");
+    setDistanceAcknowledged(false);
+    setServerDistanceWarning("");
     setActiveClub(null);
     setActiveMapClub(null);
     setChallengeClub(club);
@@ -1147,7 +1159,7 @@ export default function HomePage_HUB({
         proposedDate: challengeDate,
         proposedKickoff: challengeKickoff,
         venue: challengeVenue,
-        clubTotalCents, homeColour, awayColour,
+        clubTotalCents, ...(instigated ? {} : {homeColour}), distanceAcknowledged,
         message: challengeMessage,
       });
       setChallengeStatus(instigated
@@ -1156,7 +1168,8 @@ export default function HomePage_HUB({
       setChallengeMessage("");
     } catch (error) {
       console.error("[HomePage_HUB] Challenge request failed:", error);
-      setChallengeError(error.message || "Could not send the challenge.");
+      if (/km apart/i.test(error.message || "")) setServerDistanceWarning(error.message);
+      else setChallengeError(error.message || "Could not send the challenge.");
     } finally {
       setIsSubmittingChallenge(false);
     }
@@ -1431,12 +1444,7 @@ export default function HomePage_HUB({
           </div>
         </div>
 
-        {isPlatformAdmin && <section className="hub-fanm-challenge-shortcut" aria-label="FANM super-admin actions">
-          <button type="button" className="hub-nav__primary" disabled={!canInstigate} onClick={openInstigateMatch}>Create FANM Challenge</button>
-          {instigationBlock && <p role="status">{instigationBlock}</p>}
-          {!clubChallengesEnabled && !isStagingFirebase && <button type="button" className="hub-platform-view-button"
-            onClick={()=>{setEnvironmentToolsOpen(true);setShowTour(true);}}>Database environment</button>}
-        </section>}
+
 
         <p className="club-category-heading" aria-live="polite"><strong>{clubCategoryView==="company"?"Company clubs":"Community clubs"}</strong><span>{clubCategoryView==="company"?"Company-funded football":"Community-organised football"}</span></p>
         <div className="hub-club-filter-ribbon">
@@ -1582,6 +1590,11 @@ export default function HomePage_HUB({
 
 
       <HubMarketingAdvert audience="club"/>
+      {isChallengeOrganiser && <section className="hub-fanm-challenge-shortcut" aria-label="FANM exhibition organiser">
+        <div><strong>FANM Club vs Club Exhibition</strong><p>Invite two Clubs to a FANM-hosted match.</p></div>
+        <button type="button" className="hub-fanm-create-button" disabled={!canInstigate} onClick={openInstigateMatch}><span aria-hidden="true">⚔</span> Create FANM Challenge</button>
+        {instigationBlock && <p role="status">{instigationBlock}</p>}
+      </section>}
       <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer fanm-marketing-split">
         <div className="hub-footer-logo-stage">
           {footerLogoRotation.map((logo, index) => (
@@ -1912,7 +1925,7 @@ export default function HomePage_HUB({
               {challengeClub.instigate && [["Home Club", instigateHome, setInstigateHome, instigateAway],
                 ["Away Club", instigateAway, setInstigateAway, instigateHome]].map(([label, value, setValue, otherId]) => (
                 <label key={label}><span>{label}</span>
-                  <select value={value} disabled={instigateLoading || instigateClubs.length < 2} onChange={(event) => setValue(event.target.value)}>
+                  <select value={value} disabled={instigateLoading || instigateClubs.length < 2} onChange={(event) => {setValue(event.target.value); setDistanceAcknowledged(false); setServerDistanceWarning("");}}>
                     <option value="">Select Club</option>
                     {instigateClubs.map((club) => <option key={club.id} value={club.id} disabled={club.id === otherId}>{club.name}</option>)}
                   </select>
@@ -1954,8 +1967,12 @@ export default function HomePage_HUB({
                   Quote the Club’s share of field hire and the agreed FANM service charge before sending. Explain what the quote includes in the message.
                 </small>}
               </label>
-              <label><span>Home kit colour</span><input type="color" value={homeColour} onChange={(event) => setHomeColour(event.target.value)} /></label>
-              <label><span>Away kit colour</span><input type="color" value={awayColour} onChange={(event) => setAwayColour(event.target.value)} /></label>
+              {!challengeClub.instigate && <label><span>Your home kit colour</span><input type="color" value={homeColour} onChange={(event) => setHomeColour(event.target.value)} />
+                <small>The other captain declares their own kit.</small></label>}
+              {distanceWarning && <label className="hub-challenge-distance" role="group" aria-label="Club distance warning">
+                <strong>{distanceWarning}</strong>
+                <span><input type="checkbox" checked={distanceAcknowledged} onChange={event => setDistanceAcknowledged(event.target.checked)} /> I’ve checked both Clubs</span>
+              </label>}
               <label className="hub-challenge-form-grid__wide">
                 <span>Message (optional)</span>
                 <textarea
@@ -1979,6 +1996,7 @@ export default function HomePage_HUB({
                 type="button"
                 onClick={submitChallengeRequest}
                 disabled={isSubmittingChallenge || Boolean(challengeStatus) || !challengeVenue.trim() || !challengeTotal.trim() ||
+                  (Boolean(distanceWarning) && !distanceAcknowledged) ||
                   (challengeClub.instigate && (instigateLoading || !instigateHome || !instigateAway || instigateHome === instigateAway))}
               >
                 {isSubmittingChallenge ? "Sending…" : challengeClub.instigate ? "Invite both Clubs" : "Send challenge"}
@@ -2019,11 +2037,6 @@ export default function HomePage_HUB({
             <h2>Start with the right tour</h2>
             {isPlatformAdmin && <section className="hub-superuser-tools hub-tour-fanm" aria-label="FANM superuser tools">
               <p className="hub-tour-modal-kicker">FANM · Superuser</p>
-              <h3>Organise a Club vs Club exhibition</h3>
-              <p>Choose two Clubs and send the same offer to both captains. Signups open only after both agree.</p>
-              <button type="button" className="hub-nav__primary" disabled={!canInstigate}
-                onClick={() => {setShowTour(false); openInstigateMatch();}}>Create FANM Challenge</button>
-              {instigationBlock && <p role="status">{instigationBlock}</p>}
               <button type="button" className="hub-platform-view-button" aria-expanded={environmentToolsOpen}
                 onClick={() => setEnvironmentToolsOpen((value) => !value)}>Database environment</button>
               {environmentToolsOpen && <FirebaseEnvironmentControl user={currentUser} />}

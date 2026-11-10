@@ -1,5 +1,5 @@
 async function loadFieldMatchRoster({
-  transaction, db, venueId, season, fixture, requireMinimum = true,
+  transaction, db, venueId, season, fixture, requireMinimum = true, supersededUnstartedFixtureId = "",
 }) {
   const {assertLeagueBibs} = await import("./leagueBibPolicy.mjs");
   const minimum = {
@@ -18,7 +18,7 @@ async function loadFieldMatchRoster({
     const scope = {venueId, seasonId: season.id, clubId};
     const {loadDay} = require("./fieldMatchDaySquad");
     const data = await loadDay({
-      tx: transaction, db, scope, matchDayId: fixture.matchDayId,
+      tx: transaction, db, scope, matchDayId: fixture.matchDayId, supersededUnstartedFixtureId,
     });
     if (requireMinimum && !data.submission.ready) {
       if (data.submission.players.length >= minimum) {

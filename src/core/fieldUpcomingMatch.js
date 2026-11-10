@@ -19,7 +19,7 @@ export function resolveFieldUpcomingMatch({season, teams = []}) {
     );
 
     const startableFixtures = scheduledFixtures.filter(fixture =>
-      !venueSeason?.liveMatches?.[fixture.id] &&
+      !venueSeason?.liveMatches?.[fixture.id] && !archivedDays.has(fixture.matchDayId) &&
       (!openDay || fixture.matchDayId === openDay.id) &&
       !busyClubs.has(fixture.clubAId) && !busyClubs.has(fixture.clubBId) &&
       canStartBesideLiveFixtures(venueSeason, fixture));
@@ -48,4 +48,13 @@ export function resolveFieldUpcomingMatch({season, teams = []}) {
         };
 
   return {liveMatch, liveMatches, scheduledFixtures, startableFixtures, nextFixture, confirmedTeams, currentMatch};
+}
+
+export function fieldFixturePreview({season, fixture, today}) {
+  if (season?.status !== "active" || !season.schedulePublishedAtMs ||
+      !fixture?.clubAId || !fixture?.clubBId) return null;
+  const day = season.matchDays?.find(item => item.id === fixture.matchDayId);
+  const date = fixture.scheduledLocal?.slice(0, 10) || day?.dateLocal || "";
+  const time = fixture.scheduledLocal?.slice(11, 16) || "";
+  return {date, time, isMatchDay: Boolean(date && date === today)};
 }
