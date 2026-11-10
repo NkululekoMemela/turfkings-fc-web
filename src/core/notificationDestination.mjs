@@ -4,6 +4,9 @@ export function notificationDestination(data={}){
   const id=data.storyId||data.pollId;
   return valid(data.clubId)&&valid(id)?{kind:'news',clubId:data.clubId,storyId:data.storyId||'',pollId:data.pollId||''}:null;
  }
+ if(['club_exhibition_accepted','club_exhibition_cancelled','club_exhibition_restored','club_exhibition_postponed'].includes(data.type)){
+  return valid(data.clubId)&&/^[a-f0-9]{64}$/.test(data.fixtureId||'')?{kind:'exhibition',clubId:data.clubId,fixtureId:data.fixtureId}:null;
+ }
  if(['match_day_cancelled','match_ticket_available'].includes(data.type))return valid(data.clubId)?{kind:'ticket',clubId:data.clubId,creditId:valid(data.creditId)?data.creditId:'',matchDayId:valid(data.matchDayId)?data.matchDayId:''}:null;
  return null;
 }

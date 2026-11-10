@@ -5463,8 +5463,11 @@
   inset: 0;
   z-index: 10020;
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
-  padding: 18px;
+  box-sizing: border-box;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
   background: rgba(2, 6, 23, 0.68);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -5473,6 +5476,12 @@
 .hub-challenge-modal {
   position: relative;
   width: min(680px, 100%);
+  min-height: 0;
+  max-height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 12px;
   border-radius: 32px;
   padding: 26px;
   background:
@@ -5638,9 +5647,12 @@
     padding: 20px;
   }
 
-  .hub-challenge-format-grid,
+  .hub-challenge-format-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .hub-challenge-form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .hub-challenge-actions {
@@ -8880,3 +8892,18 @@
 
 /* FANM legible light card labels and visible logo loading */
 .hub-club-card .hub-club-card__face--logo>small{color:#334155!important;opacity:1!important}.hub-club-card__logo-ring{position:relative}.hub-club-card__logo-ring .hub-logo-fallback{position:absolute;inset:0;display:grid;place-items:center;color:#14532d;font-size:1.8rem;font-weight:850}.hub-club-card__logo-ring .hub-logo-image{position:relative;z-index:1;object-fit:contain;transition:opacity .15s}.hub-club-card__logo-ring .hub-logo-status{position:absolute;z-index:2;bottom:1px;left:0;right:0;text-align:center;color:#334155;font-size:.58rem;line-height:1.2;background:rgba(255,255,255,.92);border-radius:5px;padding:2px}.field-staff-picker__trigger.is-selected strong,.field-staff-picker__trigger.is-selected small{color:#ecfdf5!important}
+
+.hub-tour-modal { box-sizing: border-box; max-height: calc(100dvh - 44px); overflow-y: auto; }
+.hub-tour-modal .hub-tour-fanm {
+  margin: 0 0 1rem; padding: .95rem; border: 1px solid #7ee78766; border-radius: 1rem;
+  background: linear-gradient(135deg,#193343,#102635); color: #fff;
+}
+.hub-tour-fanm h3 { margin: 0 0 .45rem; font-size: 1.1rem; }
+.hub-tour-fanm > p:not(.hub-tour-modal-kicker) { margin: .45rem 0 .8rem; color: #d5e8f6; }
+.hub-tour-fanm > .hub-nav__primary { width: 100%; min-height: 44px; }
+.hub-tour-fanm > .hub-platform-view-button { margin-top: .55rem; }
+.hub-challenge-form-grid .hub-fanm-package {
+  margin-top: .35rem; padding: .65rem; border: 1px solid #166c584d;
+  border-radius: .65rem; background: #e2f4ed; color: #154f42; line-height: 1.45;
+}
+.hub-challenge-form-grid select { width: 100%; min-height: 44px; padding: .6rem; border: 1px solid #d6e3e7; border-radius: .7rem; background: #fff; color: #132c3d; }

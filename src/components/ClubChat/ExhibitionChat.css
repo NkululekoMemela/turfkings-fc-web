@@ -1,0 +1,36 @@
+.fanm-club-chat-card.is-exhibition-chat.is-open .fanm-challenger-chat-messages {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding: .7rem !important;
+}
+.fanm-club-chat-card.is-exhibition-chat.is-open:not(.is-modal-open) {
+  display: flex; flex-direction: column; min-height: min(78dvh, 740px);
+}
+.fanm-club-chat-card.is-exhibition-chat.is-open:not(.is-modal-open) .fanm-challenger-chat-messages {
+  min-height: 36dvh !important;
+}
+.fanm-club-chat-card.is-exhibition-chat .fanm-challenger-chat-compose {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; flex: 0 0 auto;
+  padding-bottom: max(.45rem, env(safe-area-inset-bottom));
+}
+.is-exhibition-chat .fanm-challenger-chat-input-wrap,
+.is-exhibition-chat .fanm-challenger-chat-compose > :is(.fanm-chat-replying-box,.exhibition-chat-clip-picker,[role="alert"]) { flex: 1 0 100%; min-width: 0; }
+.is-exhibition-chat .fanm-challenger-chat-input-wrap textarea.text-input {
+  width: 100% !important; box-sizing: border-box; min-height: 56px !important; max-height: 132px !important;
+  resize: none; font-size: 16px;
+}
+.is-exhibition-chat .fanm-challenger-chat-compose > .primary-btn { margin-inline-start: auto; }
+.is-exhibition-chat .exhibition-chat-attach { min-height: 42px; }
+.is-exhibition-chat .fanm-challenger-chat-message { max-width: min(90%, 560px); }
+.is-exhibition-chat .fanm-challenger-chat-message p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.is-exhibition-chat .fanm-chat-message-actions { align-items: center; flex-wrap: wrap; gap: .45rem; }
+.is-exhibition-chat .fanm-chat-message-actions button { min-height: 32px; padding-inline: .42rem; }
+.exhibition-chat-clip-picker { max-height: 25dvh; overflow: auto; }
+.exhibition-chat-clip-picker header, .exhibition-chat-video-overlay header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.exhibition-chat-video-overlay { position: fixed; z-index: 32000; inset: 0; display: grid; place-items: center; padding: 16px; background: #020617cf; }
+.exhibition-chat-video-overlay section { width: min(95vw, 680px); padding: 1rem; border-radius: 1rem; background: #102438; color: #f4f8ff; }
+.exhibition-chat-video-overlay video { display: block; width: 100%; max-height: 65dvh; margin-top: .6rem; }

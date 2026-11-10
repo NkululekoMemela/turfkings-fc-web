@@ -2092,6 +2092,9 @@ service cloud.firestore {
 
     match /fieldRefereeInvites/{document=**} { allow read, write: if false; }
 
+    // Challenge fixtures are served through authorised server operations.
+    match /clubChallengeMatches/{document=**} { allow read, write: if false; }
+
     match /{topLevel}/{document=**} {
       allow read, write: if isSignedIn()
                          && !isCameraSession()
@@ -2110,6 +2113,7 @@ service cloud.firestore {
                          && topLevel != "leagueVenues"
                          && topLevel != "legalAcceptances"
                          && topLevel != "clubs"
+                         && topLevel != "clubChallengeMatches"
                          && topLevel != "facebookPublicationLocks"
                          && topLevel != "facebookHighlightQueue"
                          && topLevel != "companyApplications"

@@ -1,3 +1,5 @@
+import "./ExhibitionChat.css";
+import {clubChallengeRequest} from "../../storage/clubChallengeGateway.js";
 import VideoFramePreview from "../VideoFramePreview.jsx";
 import TeamChatBadge from "../TeamChatBadge.jsx";
 import TeamChatLauncher from "../TeamChatLauncher.jsx";
@@ -48,6 +50,7 @@ function isChallengerChatActive(fixture = {}) {
 export function ClubChatWidget({
   activeClubId,
   activeClubName,
+  exhibitionRoom,
   privateRoom = null,
   currentUser,
   selectedMember,
@@ -107,7 +110,19 @@ export function ClubChatWidget({
   const [challengerChatMessages, setChallengerChatMessages] = useState([]);
   const [challengerChatDraft, setChallengerChatDraft] = useState("");
   const [challengerChatEmojiOpen, setChallengerChatEmojiOpen] = useState(false);
-  const challengerChatEndRef = useRef(null);
+  const challengerScroll = useRef(null);
+  const challengerFollow = useRef(true);
+  const challengerInput = useRef(null);
+  const [challengerReply,setChallengerReply] = useState(null);
+  const [challengerReaction,setChallengerReaction] = useState(null);
+  const [challengerAttachment,setChallengerAttachment] = useState(null);
+  const [challengerClips,setChallengerClips] = useState(null);
+  const [challengerClipsLoading,setChallengerClipsLoading] = useState(false);
+  const [challengerVideo,setChallengerVideo] = useState(null);
+  const [challengerError,setChallengerError] = useState("");
+  const [challengerSending,setChallengerSending] = useState(false);
+  const challengerActionPending = useRef(false);
+  const challengerScope = useRef("");
 
   const [clubChatMessages, setClubChatMessages] = useState([]);
   const [clubChatDraft, setClubChatDraft] = useState("");
@@ -826,6 +841,16 @@ export function ClubChatWidget({
       return;
     }
 
+    if (exhibitionRoom?.fixtureId) {
+      setChallengerChatFixture({
+        fixtureId: exhibitionRoom.fixtureId, exhibition: true,
+        homeClubId: exhibitionRoom.home.id, homeClubName: exhibitionRoom.home.name,
+        awayClubId: exhibitionRoom.away.id, awayClubName: exhibitionRoom.away.name,
+        homeClubLogo: exhibitionRoom.home.logoUrl, awayClubLogo: exhibitionRoom.away.logoUrl,
+        proposedDate: exhibitionRoom.proposedDate, proposedKickoff: exhibitionRoom.proposedKickoff,
+      });
+      return;
+    }
     const q = query(
       collection(db, "clubs", activeClubId, "fixtures"),
       orderBy("createdAtMs", "desc"),
@@ -859,7 +884,29 @@ export function ClubChatWidget({
     });
 
     return () => unsub();
-  }, [activeClubId]);
+  }, [activeClubId, privateRoom, exhibitionRoom?.fixtureId, exhibitionRoom?.proposedDate, exhibitionRoom?.proposedKickoff]);
+
+  const challengerRoomId = challengerChatFixture?.fixtureId || "";
+  challengerScope.current = `${activeClubId}:${challengerRoomId}`;
+  useEffect(() => {
+    setChallengerReply(null);
+    setChallengerReaction(null);
+    setChallengerAttachment(null);
+    setChallengerClips(null);
+    setChallengerClipsLoading(false);
+    setChallengerVideo(null);
+    setChallengerChatDraft("");
+    setChallengerError("");
+    challengerFollow.current=true;
+  },[activeClubId,challengerRoomId]);
+
+  const refreshExhibitionChat = async (signal) => {
+    const scope = challengerScope.current;
+    const result = await clubChallengeRequest("chat", {clubId: activeClubId, fixtureId: challengerRoomId}, signal);
+    if (!signal?.aborted && scope === challengerScope.current) setChallengerChatMessages((result.messages || []).map((item) => ({
+      ...item, text: item.body, fromClubId: item.clubId, fromClubName: item.clubName,
+    })));
+  };
 
   useEffect(() => {
     if (!challengerChatFixture?.fixtureId) {
@@ -879,6 +926,15 @@ export function ClubChatWidget({
       setChallengerChatLastSeenMs(0);
     }
 
+    if (challengerChatFixture.exhibition) {
+      setChallengerChatMessages([]);
+      if (!clubChatOpen) return;
+      const controller = new AbortController();
+      const read = () => refreshExhibitionChat(controller.signal).catch(error => {if(!controller.signal.aborted)setChallengerError(error.message);});
+      void read();
+      const timer = window.setInterval(read, 4000);
+      return () => {controller.abort(); window.clearInterval(timer);};
+    }
     const q = query(
       collection(db, "clubChallengeFixtures", challengerChatFixture.fixtureId, "messages"),
       orderBy("createdAtMs", "asc"),
@@ -895,7 +951,7 @@ export function ClubChatWidget({
     });
 
     return () => unsub();
-  }, [challengerChatFixture?.fixtureId]);
+  }, [challengerChatFixture?.fixtureId, challengerChatFixture?.exhibition, activeClubId, clubChatOpen]);
 
   useEffect(() => {
     if(privateRoom){setClubChatMessages(privateRoom.messages);return;}
@@ -928,9 +984,21 @@ export function ClubChatWidget({
   }, [clubChatMessages.length]);
 
   useEffect(() => {
-    if (activeChatRoom !== "challenger") return;
-    challengerChatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [challengerChatMessages.length, activeChatRoom]);
+    if (activeChatRoom === "challenger") challengerFollow.current = true;
+  }, [activeChatRoom,clubChatOpen,challengerRoomId]);
+
+  useEffect(() => {
+    const node = challengerScroll.current;
+    if (activeChatRoom !== "challenger" || !clubChatOpen || !node || !challengerFollow.current) return;
+    node.scrollTop = node.scrollHeight;
+  }, [challengerChatMessages,activeChatRoom,clubChatOpen]);
+
+  useEffect(() => {
+    const node = challengerInput.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight,132)}px`;
+  }, [challengerChatDraft,activeChatRoom,clubChatOpen]);
 
   const challengerChatOpponentName =
     challengerChatFixture &&
@@ -939,9 +1007,8 @@ export function ClubChatWidget({
       : challengerChatFixture?.homeClubName || "Opponent Club";
 
   const canSendChallengerChat =
-    Boolean(currentUser) &&
-    Boolean(challengerChatFixture?.fixtureId) &&
-    (Boolean(selectedMember?.id) || Boolean(isAdminViewer));
+    Boolean(challengerChatFixture?.fixtureId) && (challengerChatFixture.exhibition ||
+      (Boolean(currentUser) && (Boolean(selectedMember?.id) || Boolean(isAdminViewer))));
 
   const canSendClubChat = privateRoom ? privateRoom.canSend&&!privateRoom.busy :
     Boolean(currentUser) &&
@@ -1023,10 +1090,52 @@ export function ClubChatWidget({
     setClubChatEmojiOpen(false);
   };
 
+  const exhibitionChatActive = activeChatRoom === "challenger" && Boolean(challengerChatFixture?.exhibition);
+  const runChallengerAction = async (data) => {
+    if (challengerActionPending.current || !canSendChallengerChat || !challengerRoomId) return false;
+    challengerActionPending.current=true;
+    const scope=challengerScope.current;
+    try {
+      setChallengerError("");
+      await clubChallengeRequest("chat",{clubId:activeClubId,fixtureId:challengerRoomId,...data});
+      if (scope !== challengerScope.current) return false;
+      void refreshExhibitionChat().catch(()=>{});
+      return true;
+    } catch(error) {
+      if (scope === challengerScope.current) setChallengerError(error.message);
+      return false;
+    } finally {challengerActionPending.current=false;}
+  };
+  const openChallengerClips = async () => {
+    if (challengerClipsLoading) return;
+    const scope=challengerScope.current;
+    setChallengerClips([]);
+    setChallengerClipsLoading(true);
+    setChallengerError("");
+    try {
+      const result=await clubChallengeRequest("clips",{clubId:activeClubId,fixtureId:challengerRoomId,chat:true});
+      if (scope===challengerScope.current) setChallengerClips(current => current === null ? null : result.clips || []);
+    } catch(error) {
+      if (scope===challengerScope.current) setChallengerError(error.message);
+    } finally {if(scope===challengerScope.current)setChallengerClipsLoading(false);}
+  };
+
   const handleSendChallengerChatMessage = async () => {
     const text = String(challengerChatDraft || "").trim();
 
-    if (!text || !canSendChallengerChat || !challengerChatFixture?.fixtureId) return;
+    if ((!text && !challengerAttachment) || !canSendChallengerChat || !challengerChatFixture?.fixtureId || challengerSending) return;
+    if (challengerChatFixture.exhibition) {
+      challengerFollow.current=true;
+      setChallengerSending(true);
+      try {
+        const attachment = challengerAttachment && {sourceClubId:challengerAttachment.sourceClubId,
+          bucket:challengerAttachment.bucket,clipId:challengerAttachment.clipId};
+        if (await runChallengerAction({chatAction:"send",message:text,replyToId:challengerReply?.id,attachment})) {
+          setChallengerChatDraft(""); setChallengerReply(null); setChallengerAttachment(null); setChallengerChatEmojiOpen(false);
+        }
+      } finally {setChallengerSending(false);}
+      return;
+    }
 
     const senderName =
       selectedMember?.fullName ||
@@ -1340,7 +1449,7 @@ export function ClubChatWidget({
       )}
 
       <section
-      className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"} ${isLauncherOnly && clubChatOpen ? "is-modal-open" : ""} ${isLauncherOnly && !clubChatOpen && launcherIsIdle ? "is-idle" : ""} ${isLauncherOnly && launcherIsDragging ? "is-dragging" : ""} ${
+      className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"} ${exhibitionChatActive && clubChatOpen ? "is-exhibition-chat" : ""} ${isLauncherOnly && clubChatOpen ? "is-modal-open" : ""} ${isLauncherOnly && !clubChatOpen && launcherIsIdle ? "is-idle" : ""} ${isLauncherOnly && launcherIsDragging ? "is-dragging" : ""} ${
         !clubChatOpen && clubChatTeaseOpen ? "is-teasing" : ""
       }`}
       style={{
@@ -1403,7 +1512,7 @@ export function ClubChatWidget({
             <div>
               <h2>
                 {activeChatRoom === "challenger"
-                  ? "Challenger Chat"
+                  ? (exhibitionChatActive ? "Club-to-club chat" : "Challenger Chat")
                   : `${activeClubName} Chat`}
               </h2>
               <p className="muted small">
@@ -1422,9 +1531,11 @@ export function ClubChatWidget({
                   className="fanm-chat-room-tab fanm-chat-room-tab--challenger"
                   onClick={() => setActiveChatRoom("challenger")}
                 >
-                  <span>💬</span>
+                  {(challengerChatFixture.homeClubId === activeClubId ? challengerChatFixture.awayClubLogo : challengerChatFixture.homeClubLogo)
+                    ? <img className="exhibition-chat-crest" alt="" src={challengerChatFixture.homeClubId === activeClubId ? challengerChatFixture.awayClubLogo : challengerChatFixture.homeClubLogo} />
+                    : <span>💬</span>}
                   <div>
-                    <strong>Challenger Chat</strong>
+                    <strong>{challengerChatFixture.exhibition ? "Club-to-club chat" : "Challenger Chat"}</strong>
                     <small>
                       vs {challengerChatOpponentName} · {challengerChatFixture.proposedDate || "Date TBC"}{" "}
                       {challengerChatFixture.proposedKickoff || ""}
@@ -1705,13 +1816,16 @@ export function ClubChatWidget({
               <div ref={clubChatEndRef} />
             </div>
           ) : (
-            <div className="fanm-challenger-chat-messages fanm-chat-room-content">
+            <div className="fanm-challenger-chat-messages fanm-chat-room-content" ref={challengerScroll}
+              role="log" aria-label="Club-to-club messages" onScroll={event=>{
+                const node=event.currentTarget;
+                challengerFollow.current=node.scrollHeight-node.scrollTop-node.clientHeight<80;
+              }}>
               {challengerChatMessages.length ? (
                 challengerChatMessages.map((message) => {
-                  const mine =
-                    currentUser?.uid &&
-                    message.senderUid &&
-                    String(currentUser.uid) === String(message.senderUid);
+                  const mine = exhibitionChatActive ? message.mine : Boolean(
+                    currentUser?.uid && message.senderUid && String(currentUser.uid) === String(message.senderUid)
+                  );
 
                   return (
                     <div
@@ -1722,7 +1836,26 @@ export function ClubChatWidget({
                         <strong>{message.fromClubName || "Club"}</strong>
                         {message.senderName ? <span>{message.senderName}</span> : null}
                       </div>
-                      <p>{message.text || message.message || ""}</p>
+                      {message.reply && <div className="fanm-chat-reply-quote"><strong>{message.reply.senderName}</strong><small>{message.reply.text}</small></div>}
+                      {message.attachment && <button className="fanm-chat-highlight-card" type="button" onClick={()=>setChallengerVideo(message.attachment)}>
+                        <span aria-hidden="true">▶</span><strong>{message.attachment.title}</strong>
+                      </button>}
+                      {message.deleted ? <p className="muted"><em>Message deleted</em></p> : <p>{message.text || message.message || ""}</p>}
+                      {exhibitionChatActive && !message.deleted && <>
+                        <div className="fanm-chat-reaction-row">
+                          {Object.entries(message.reactionCounts || {}).map(([emoji,count])=><button type="button" key={emoji}
+                            aria-pressed={message.myReaction===emoji} onClick={()=>runChallengerAction({chatAction:"react",messageId:message.id,emoji})}>{emoji} {count}</button>)}
+                        </div>
+                        <div className="fanm-chat-message-actions">
+                          <button type="button" onClick={()=>{setChallengerReply(message);challengerInput.current?.focus();}}>Reply</button>
+                          <button type="button" aria-expanded={challengerReaction===message.id}
+                            onClick={()=>setChallengerReaction(challengerReaction===message.id?null:message.id)}>React</button>
+                          {mine && <button type="button" onClick={()=>{if(window.confirm("Delete this message?"))void runChallengerAction({chatAction:"delete",messageId:message.id});}}>Delete</button>}
+                          <small className="fanm-club-chat-time">{getChatTimeLabel(message.createdAtMs)}</small>
+                        </div>
+                        {challengerReaction===message.id && <div className="fanm-chat-reaction-picker">{chatReactionOptions.map(emoji=><button type="button"
+                          key={emoji} aria-pressed={message.myReaction===emoji} onClick={()=>{setChallengerReaction(null);void runChallengerAction({chatAction:"react",messageId:message.id,emoji});}}>{emoji}</button>)}</div>}
+                      </>}
                     </div>
                   );
                 })
@@ -1732,7 +1865,6 @@ export function ClubChatWidget({
                 </div>
               )}
 
-              <div ref={challengerChatEndRef} />
             </div>
           )}
 
@@ -1894,10 +2026,29 @@ export function ClubChatWidget({
             </div>
           ) : (
             <div className="fanm-challenger-chat-compose">
+              {exhibitionChatActive && challengerError && <small role="alert">{challengerError}</small>}
+              {exhibitionChatActive && challengerReply && <div className="fanm-chat-replying-box">
+                <div><strong>Replying to {challengerReply.senderName}</strong><small>{challengerReply.text || "Video highlight"}</small></div>
+                <button type="button" onClick={()=>setChallengerReply(null)}>Cancel</button>
+              </div>}
+              {exhibitionChatActive && challengerAttachment && <div className="fanm-chat-replying-box">
+                <div><strong>Video attached</strong><small>{challengerAttachment.title || "Match highlight"}</small></div>
+                <button type="button" onClick={()=>setChallengerAttachment(null)}>Remove</button>
+              </div>}
+              {exhibitionChatActive && challengerClips !== null && <div className="fanm-chat-highlight-picker exhibition-chat-clip-picker">
+                <header><strong>Attach a match highlight</strong><button type="button" aria-label="Close video picker" onClick={()=>setChallengerClips(null)}>×</button></header>
+                {challengerClipsLoading ? <p>Loading videos…</p> : challengerClips.length ? challengerClips.map(clip=>
+                  <button type="button" key={`${clip.sourceClubId}:${clip.bucket}:${clip.clipId}`} onClick={()=>{setChallengerAttachment(clip);setChallengerClips(null);}}>
+                    <span aria-hidden="true">▶</span> {clip.title || "Match highlight"}
+                  </button>) : <p>No videos have been recorded for this exhibition yet.</p>}
+              </div>}
               <div className="fanm-challenger-chat-input-wrap">
                 <textarea
                   className="text-input"
-                  rows={3}
+                  ref={challengerInput}
+                  rows={exhibitionChatActive ? 2 : 3}
+                  maxLength={exhibitionChatActive ? 600 : undefined}
+                  aria-label="Message the other Club"
                   value={challengerChatDraft}
                   onChange={(event) => setChallengerChatDraft(event.target.value)}
                   placeholder={
@@ -1919,6 +2070,9 @@ export function ClubChatWidget({
                 </button>
               </div>
 
+              {exhibitionChatActive && <button type="button" className="secondary-btn exhibition-chat-attach"
+                disabled={!canSendChallengerChat} onClick={openChallengerClips}>📎 Attach video</button>}
+
               {challengerChatEmojiOpen && (
                 <div className="fanm-challenger-chat-emoji-tray">
                   {["😀", "😂", "🤣", "😎", "😭", "😡", "❤️", "🔥", "⚽", "🥅", "🏆", "💪", "👏", "🙌", "👌", "👀"].map((emoji) => (
@@ -1936,7 +2090,7 @@ export function ClubChatWidget({
               <button
                 type="button"
                 className="primary-btn"
-                disabled={!canSendChallengerChat || !String(challengerChatDraft || "").trim()}
+                disabled={!canSendChallengerChat || challengerSending || (!String(challengerChatDraft || "").trim() && !(exhibitionChatActive && challengerAttachment))}
                 onClick={handleSendChallengerChatMessage}
               >
                 Send
@@ -1946,6 +2100,13 @@ export function ClubChatWidget({
         </>
       )}
       </section>
+
+      {exhibitionChatActive && challengerVideo && <div className="exhibition-chat-video-overlay" onClick={event=>{if(event.target===event.currentTarget)setChallengerVideo(null);}}>
+        <section role="dialog" aria-modal="true" aria-label={challengerVideo.title}>
+          <header><strong>{challengerVideo.title}</strong><button type="button" autoFocus onClick={()=>setChallengerVideo(null)} aria-label="Close video">×</button></header>
+          <video controls playsInline preload="metadata" src={challengerVideo.url}/>
+        </section>
+      </div>}
 
       <ReactionUsersSheet
         open={Boolean(reactionUsersViewer)}

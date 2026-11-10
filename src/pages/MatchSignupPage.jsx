@@ -1,3 +1,4 @@
+import {ExhibitionColumnHead, ExhibitionBookingCell, ExhibitionDetailsBubble} from "../components/ExhibitionBookingColumn.jsx";
 import {getPlayersPerSide} from "../core/matchConfig.js";
 import FieldPageFrame from "../components/FieldPageFrame.jsx";
 import PremiumSelect from "../components/PremiumSelect.jsx";
@@ -707,6 +708,7 @@ function statusFromWeekState(selectedWeeks, paidWeeks) {
 }
 
 export default function MatchSignupPage({
+  exhibition,
   clubModeLabel = "Friendly",
   gameFormat,
   identity,
@@ -724,6 +726,7 @@ export default function MatchSignupPage({
   practiceCompanyFunding = false,
   initialTicketOpen=null,
 }) {
+  const exhibitionFixtures = isPracticeMode ? [] : exhibition?.fixtures || [];
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
 
   const clubWeeklyScheduleText = String(
@@ -6853,6 +6856,9 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
           </div>
         </div>
 
+        {exhibitionFixtures.map((fixture) => <ExhibitionDetailsBubble key={fixture.fixtureId}
+          fixture={fixture} canManage={exhibition.canManage} clubId={activeClubId} refresh={exhibition.refresh} />)}
+
         <div
           ref={matrixScrollRef}
           className="signup-matrix-wrap"
@@ -6873,14 +6879,17 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
             }`}
 
             style={{
-              gridTemplateColumns: isMobile
-                ? `${firstColWidth}px repeat(${weekMeta.length}, ${weekColWidth}px)`
-                : `${firstColWidth}px repeat(${weekMeta.length}, minmax(140px, 1fr))`,
+              gridTemplateColumns: [
+                `${firstColWidth}px`,
+                weekMeta.length + exhibitionFixtures.length
+                  ? `repeat(${weekMeta.length + exhibitionFixtures.length}, ${isMobile ? `${weekColWidth}px` : "minmax(140px, 1fr)"})` : "",
+              ].filter(Boolean).join(" "),
               width: "100%",
               borderCollapse: "collapse",
             }}
           >
             <div className="matrix-corner-cell">Players</div>
+            {exhibitionFixtures.map((fixture) => <ExhibitionColumnHead key={fixture.fixtureId} fixture={fixture} />)}
 
             {weekMeta.map((week) => (
               <div
@@ -6985,6 +6994,10 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
                     )}
                   </div>
 
+                  {exhibitionFixtures.map((fixture) => <ExhibitionBookingCell
+                    key={fixture.fixtureId} fixture={fixture} player={player}
+                    ownRow={player.isCurrent && !player.isEmpty && signupForMode === "self"}
+                    clubId={activeClubId} refresh={exhibition.refresh} />)}
                   {weekMeta.map((week) => {
                     const signed = weekSelections[week.id]?.has(player.id);
                     const isPaid = player.isCurrent

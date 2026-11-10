@@ -36,7 +36,7 @@ export default function FieldPageFrame({
   const logo = venue?.branding?.logoUrl || venue?.logoUrl ||
     "/favicon_nobackground.png";
   const modeLipLabel = modeLabel;
-  const modeLipDotColor = "#facc15";
+  const modeLipDotColor = /^friendly$/i.test(String(modeLabel).trim()) ? "#38bdf8" : "#facc15";
   useLayoutEffect(()=>{
     const frame=frameRef.current,root=frame?.closest('.app-root');if(!root)return;
     const measure=()=>{const css=getComputedStyle(root);frame.style.setProperty('--ribbon-left-gutter',css.paddingLeft);frame.style.setProperty('--ribbon-right-gutter',css.paddingRight);frame.style.setProperty('--ribbon-top-gutter',css.paddingTop);};

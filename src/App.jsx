@@ -1,3 +1,8 @@
+import ExhibitionPlayerNotice, {markExhibitionPushOpened} from "./components/ExhibitionPlayerNotice.jsx";
+import {useClubExhibition} from "./storage/useClubExhibition.js";
+import ClubChallengeInbox from "./components/ClubChallengeInbox.jsx";
+import ExhibitionMatchRuntime from "./components/ExhibitionMatchRuntime.jsx";
+import {clubChallengesEnabled, clubChallengeRequest} from "./storage/clubChallengeGateway.js";
 import { clubHighlightResults } from "./core/highlightFixtures.mjs";
 import PracticeHighlights from "./components/PracticeHighlights.jsx";
 import ClubPracticeLeague from "./components/ClubPracticeLeague.jsx";
@@ -5,7 +10,7 @@ import PracticeGuide from "./components/PracticeGuide.jsx";
 import {clubGuideSteps} from "./components/practiceGuideSteps.js";
 import {ClubRibbonProvider} from "./components/ClubPageRibbon.jsx";
 import FieldRecoveryGate from "./components/FieldRecoveryGate.jsx";
-import {clubBrowseMode} from "./core/clubBrowseMode.mjs";
+import {clubBrowseMode, exhibitionInClubBrowse} from "./core/clubBrowseMode.mjs";
 import PremiumSelect from "./components/PremiumSelect.jsx";
 import {emptyClubState} from "./core/clubStateBoundary.mjs";
 import FieldRouteBoundary from "./components/FieldRouteBoundary.jsx";
@@ -2556,6 +2561,17 @@ function parseClubWeeklyWindow(text) {
   };
 }
 
+function nextClubKickoff(weeklyPlayTime, now = Date.now()) {
+  const schedule = parseClubWeeklyWindow(weeklyPlayTime);
+  if (!schedule) return Infinity;
+  const sast = 2 * 60 * 60 * 1000;
+  const today = Math.floor((now + sast) / 86400000) * 86400000;
+  const days = (schedule.day - new Date(today).getUTCDay() + 7) % 7;
+  const kickoff = today + days * 86400000 + schedule.startMinutes * 60000 - sast;
+  const windowEnd = today + days * 86400000 + (schedule.endMinutes + 30) * 60000 - sast;
+  return windowEnd < now ? kickoff + 7 * 86400000 : kickoff;
+}
+
 function isInsideClubWeeklyWindow(weeklyPlayTime, now = new Date()) {
   const windowInfo = parseClubWeeklyWindow(weeklyPlayTime);
   if (!windowInfo) return false;
@@ -2884,6 +2900,8 @@ function MainApp() {
         }
         const directDestination=notificationDestination(data);
         if(directDestination){
+          if(data.recipientUid && data.recipientUid !== auth.currentUser?.uid)return;
+          if(directDestination.kind === "exhibition") markExhibitionPushOpened(auth.currentUser?.uid, data);
           // A notification is an explicit Official destination, including on cold launch.
           nativeStartupRoutedRef.current=true;
           setNativeStartupReady(true);
@@ -2895,7 +2913,7 @@ function MainApp() {
             setNativePollOpenRequest({...directDestination,openedAt:Date.now()});setPage(PAGE_NEWS);
           }else{
             setNativePollOpenRequest(null);
-            setNativeTicketOpenRequest({...directDestination,openedAt:Date.now()});setPage(PAGE_MATCH_SIGNUP);
+            setNativeTicketOpenRequest(directDestination.kind === "ticket" ? {...directDestination,openedAt:Date.now()} : null);setPage(PAGE_MATCH_SIGNUP);
           }
           return;
         }
@@ -4369,9 +4387,13 @@ function MainApp() {
   const canChooseSessionMode = isAdmin || isCaptain;
   const publishedMatchType=matchType;
   const browseMatchType=clubBrowseMode({published:publishedMatchType,choice:clubBrowseChoice,clubId:activeClubId,uid:authUser?.uid,canManage:isAdmin||isCaptain});
+  useEffect(() => {
+    setClubBrowseChoice(choice => choice && (choice.clubId !== activeClubId ||
+      choice.uid !== (authUser?.uid ?? null) || choice.published !== publishedMatchType) ? null : choice);
+  }, [activeClubId, authUser?.uid, publishedMatchType]);
   matchType=browseMatchType;
   if(!isAdmin&&!isCaptain&&browseMatchType!==publishedMatchType&&browseMatchType===MATCH_TYPE.FRIENDLY){matchMode='round_robin';scheduledTarget=null;scheduledFixtures=[];}
-  const browseClubMode=value=>{if(isAdmin||isCaptain||![MATCH_TYPE.LEAGUE,MATCH_TYPE.FRIENDLY].includes(value))return;setClubBrowseChoice({clubId:activeClubId,uid:authUser?.uid,value});};
+  const browseClubMode=value=>{if(isAdmin||isCaptain||![MATCH_TYPE.LEAGUE,MATCH_TYPE.FRIENDLY].includes(value))return;setClubBrowseChoice({clubId:activeClubId,uid:authUser?.uid ?? null,published:publishedMatchType,value});};
 
   const practiceCreditRecipients = useMemo(() => {
     if (!canChooseSessionMode) return [];
@@ -5417,6 +5439,40 @@ function MainApp() {
   ]);
 
   const canAccessMatchSignup = isAdmin || isCaptain || isPlayer;
+  const exhibition = useClubExhibition({
+    enabled: clubChallengesEnabled && !isPracticeMode && !isCompanyClub && Boolean(auth.currentUser?.emailVerified),
+    clubId: activeClubId, userId: authUser?.uid,
+  });
+  const [exhibitionDesk, setExhibitionDesk] = useState(null);
+  const showExhibitionDesk = exhibitionDesk?.clubId === activeClubId && exhibitionDesk?.userId === authUser?.uid;
+  const [sharedExhibitionVideos, setSharedExhibitionVideos] = useState(null);
+  const exhibitionVideoIds = (exhibition.mediaFixtures || []).map((fixture) => fixture.fixtureId || fixture.id).join(",");
+  const exhibitionVideoScope = `${activeClubId}:${authUser?.uid || ""}:${exhibitionVideoIds}`;
+  useEffect(() => {
+    if (page !== PAGE_VIEW_HIGHLIGHTS || !exhibitionVideoIds || isPracticeMode) return;
+    const controller = new AbortController();
+    const read = async () => {
+      const results = await Promise.allSettled(exhibitionVideoIds.split(",").map((fixtureId) =>
+        clubChallengeRequest("clips", {clubId: activeClubId, fixtureId}, controller.signal)));
+      if (!controller.signal.aborted) setSharedExhibitionVideos({scope: exhibitionVideoScope,
+        clips: results.flatMap((result) => result.status === "fulfilled" ? result.value.clips : [])});
+    };
+    void read();
+    const timer = window.setInterval(read, 30000);
+    return () => {controller.abort(); window.clearInterval(timer);};
+  }, [page, isPracticeMode, activeClubId, exhibitionVideoIds, exhibitionVideoScope]);
+
+  const nextExhibition = !hasLiveMatch && !running && exhibition.nextMatch &&
+    (exhibition.nextMatch.status === "live" || exhibition.nextMatch.kickoffMs <= nextClubKickoff(activeClubIdentity?.weeklyPlayTime))
+    ? exhibition.nextMatch : null;
+  const isBrowsingPublishedMode = browseMatchType === publishedMatchType;
+  const browsedExhibition = exhibitionInClubBrowse({exhibition:nextExhibition,published:publishedMatchType,browsing:browseMatchType});
+  const exhibitionSignupHint = exhibition.fixtures.some((fixture) => fixture.canBook) ? "Exhibition signups open" : "";
+  const exhibitionPrep = exhibition.canManage && exhibition.fixtures
+    .filter((fixture) => !fixture.squadPublished).sort((a, b) => b.count - a.count)[0];
+  const exhibitionSquadsHint = exhibitionPrep
+    ? `${exhibitionPrep.count}/${exhibitionPrep.capacity} signed${exhibitionPrep.count >= exhibitionPrep.readyCount ? " · Make squads" : ""}` : "";
+
 
   const handleGoToMatchSignup = () => {
     // Practice deliberately uses the same Match Signup -> Payment UI.
@@ -6036,12 +6092,23 @@ function MainApp() {
     setPage(PAGE_LANDING);
   };
 
-  const handleGoToLiveAsSpectator = () => {
-    if (canStartMatch) {
-      setPage(PAGE_LIVE);
+  const handleGoToLiveAsSpectator = async () => {
+    if (browsedExhibition && (!canStartMatch || browsedExhibition.status === "live")) {
+      setExhibitionDesk({fixtureId:browsedExhibition.fixtureId,clubId:activeClubId,userId:authUser?.uid,viewerOnly:!canStartMatch});
+      setPage(PAGE_LANDING);
       return;
     }
-    setPage(PAGE_SPECTATOR);
+    if (!canStartMatch && isBrowsingPublishedMode && clubChallengesEnabled && !isPracticeMode && !hasLiveMatch && !running) {
+      try {
+        const live = await clubChallengeRequest("watch",{clubId:activeClubId});
+        if (live?.fixtureId) {
+          setExhibitionDesk({fixtureId:live.fixtureId,clubId:activeClubId,userId:authUser?.uid,viewerOnly:true,publicViewer:true});
+          setPage(PAGE_LANDING);
+          return;
+        }
+      } catch {}
+    }
+    setPage(canStartMatch ? PAGE_LIVE : PAGE_SPECTATOR);
   };
 
   const handleGoToSquads = () => {
@@ -8634,6 +8701,10 @@ function MainApp() {
         page === PAGE_LANDING ? "app-root--landing" : ""
       } ${page === PAGE_VENUE_ENTRY ? "app-root--field" : ""}`}
     >
+      {[PAGE_LANDING, PAGE_MATCH_SIGNUP, PAGE_SQUADS, PAGE_FORMATIONS].includes(page) &&
+        !isPracticeMode && canAccessMatchSignup && authUser?.uid && !showExhibitionDesk &&
+        <ExhibitionPlayerNotice clubId={activeClubId} userId={authUser.uid}
+          notices={exhibition.playerNotices} onSignup={handleGoToMatchSignup} />}
       {Capacitor.isNativePlatform() &&
         (
           !nativeStartupReady ||
@@ -9837,6 +9908,7 @@ function MainApp() {
 
       {page === PAGE_HOME && (
         <HomePage_HUB
+          isPracticeMode={isPracticeMode}
           onBackToWelcome={() => setPage(PAGE_WELCOME)}
           identity={identity}
           onRegisterClub={() => {
@@ -9866,6 +9938,7 @@ function MainApp() {
 
       {page === PAGE_CLUB_CHAT && (
         <ClubChatPage
+          exhibitionRoom={exhibition.nextMatch}
           onBack={() => setPage(PAGE_ENTRY)}
           activeClubId={activeClubId}
           activeClubName={activeClub?.name || activeClubIdentity?.name || "Club"}
@@ -9878,6 +9951,7 @@ function MainApp() {
 
       {page === PAGE_ENTRY && (
         <EntryPage
+          isPracticeMode={isPracticeMode}
           identity={identity}
           members={members}
           activeClub={activeClub}
@@ -10042,14 +10116,25 @@ function MainApp() {
         />
       )}
 
-      {page === PAGE_LANDING && (
-        <LandingPage
+      {page === PAGE_LANDING && (<>
+        {clubChallengesEnabled && !isPracticeMode && authUser?.uid && auth.currentUser?.emailVerified &&
+          <ClubChallengeInbox key={`challenge:${activeClubId}:${authUser.uid}`} clubId={activeClubId}
+            userId={authUser.uid} promptOnly onChange={exhibition.refresh} />}
+        {showExhibitionDesk &&
+          <ExhibitionMatchRuntime key={exhibitionDesk.fixtureId} clubId={activeClubId} fixtureId={exhibitionDesk.fixtureId}
+            identity={pageIdentity} viewerOnly={exhibitionDesk.viewerOnly} publicViewer={exhibitionDesk.publicViewer} onClose={() => setExhibitionDesk(null)}
+            onGoToStats={() => {setExhibitionDesk(null); handleGoToStats(PAGE_LANDING);}} onChange={exhibition.refresh} />}
+        {!showExhibitionDesk && <LandingPage
+          nextExhibition={browsedExhibition}
+          onOpenExhibition={(fixtureId, viewerOnly = false) => setExhibitionDesk({fixtureId, clubId: activeClubId, userId: authUser?.uid, viewerOnly})}
           leagueSeasonEntry={!isPracticeMode ? (
-            <ClubLeagueSeasonEntry
-              key={activeClubId}
-              clubId={activeClubId}
-              onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}
-            />
+            <>
+              <ClubLeagueSeasonEntry
+                key={activeClubId}
+                clubId={activeClubId}
+                onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}
+              />
+            </>
           ) : canManageSquads && (
             <section className="card" aria-label="Practice paths">
               <h3>Choose a Practice path</h3>
@@ -10077,12 +10162,12 @@ function MainApp() {
             setPortalOriginClubId("");
             setPage(PAGE_LEAGUE_VENUES);
           }}
-          teams={teams}
+          teams={!canManageSquads && browseMatchType === MATCH_TYPE.FRIENDLY ? getActiveFriendlyTeams(fiveVFiveTeams) : teams}
           currentMatchNo={activeMatchNo}
           currentMatch={effectiveLiveMatch}
           results={fullResults}
           streaks={streaks}
-          hasLiveMatch={hasLiveMatch}
+          hasLiveMatch={isBrowsingPublishedMode && hasLiveMatch}
           matchType={browseMatchType}
           onBrowseMatchType={browseClubMode}
           gameFormat={gameFormat}
@@ -10125,8 +10210,8 @@ function MainApp() {
           canStartMatch={canStartMatch}
           hasRecordedMatchDayState={hasRecordedMatchDayState}
           onReady={() => setLandingVisualReady(true)}
-        />
-      )}
+        />}
+      </>)}
 
       {page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode && (
         <ClubLeagueSeasonPage
@@ -10147,6 +10232,7 @@ function MainApp() {
       {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (!isCompanyClub || isPracticeMode) && (
         <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
+          exhibition={exhibition}
           clubModeLabel={matchType===MATCH_TYPE.LEAGUE?"Mini-league":"Friendly"}
           gameFormat={gameFormat}
           identity={pageIdentity}
@@ -10170,6 +10256,7 @@ function MainApp() {
 
       {page === PAGE_MATCH_SIGNUP && !canAccessMatchSignup && (
         <EntryPage
+          isPracticeMode={isPracticeMode}
           identity={identity}
           members={members}
           selectedClub={activeClubIdentity}
@@ -10334,6 +10421,7 @@ function MainApp() {
 
       {page === PAGE_STATS && (
         <StatsPage
+          exhibitionResults={(exhibition.mediaFixtures || []).filter((fixture) => fixture.status === "completed")}
           teams={teams}
           friendlyTeams={
             isPracticeMode ? teams : getActiveFriendlyTeams(fiveVFiveTeams)
@@ -10413,7 +10501,8 @@ function MainApp() {
 
       {page === PAGE_VIEW_HIGHLIGHTS && !isPracticeMode && (
         <VideoHighlightsPage
-          fixtureResults={clubHighlightResults(safeV2ForStats?.seasons || [])}
+          fixtureResults={[...clubHighlightResults(safeV2ForStats?.seasons || []), ...(exhibition.mediaFixtures || [])]}
+          sharedExhibitionClips={sharedExhibitionVideos?.scope === exhibitionVideoScope ? sharedExhibitionVideos.clips : []}
           matchId={liveMatchDraft?.videoHighlightsMatchId || currentVideoHighlightsMatchId}
           activeClubId={activeClubId}
           identity={pageIdentity}
@@ -10591,6 +10680,9 @@ function MainApp() {
 
       {page === PAGE_SQUADS && (
         <SquadsPage
+          exhibition={exhibition}
+          exhibitionCandidate={browsedExhibition}
+          exhibitionUserId={authUser?.uid}
           key={`squads-${activeSeasonId || "no-season"}-${
             practiceScopedSeasonReady ? "ready" : "loading"
           }`}
@@ -10639,6 +10731,9 @@ function MainApp() {
 
       {page === PAGE_FORMATIONS && (
         <FormationsPage
+          exhibitionCandidate={browsedExhibition}
+          exhibitionCalendarLoading={!canManageSquads && exhibition.loading}
+          canManageExhibition={canManageSquads}
           canEditNumbers={canManageSquads}
           onNumberChange={saveConfirmedPlayerNumber}
           teams={formationTeams}
@@ -10655,7 +10750,6 @@ function MainApp() {
           isPracticeMode={isPracticeMode}
           practiceSessionId={practiceRuntime?.practiceSessionId || null}
           onBack={handleBackToLanding}
-          onGoToSquads={handleGoToSquads}
           matchType={browseMatchType}
           gameFormat={gameFormat}
           activeTeamIds={normalizedActiveTeamIds}
@@ -11711,6 +11805,7 @@ function MainApp() {
         PAGE_FORMATIONS,
       ].includes(page) ? (
         <ClubChatWidget
+          exhibitionRoom={exhibition.nextMatch}
           activeClubId={activeClubId}
           activeClubName={activeClubName}
           currentUser={{
@@ -11782,6 +11877,8 @@ function MainApp() {
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
+          exhibitionSignupHint={exhibitionSignupHint}
+          exhibitionSquadsHint={exhibitionSquadsHint}
           ticketClubId={activeClubId}
           ticketMemberId={identity?.memberId||""}
           ticketEnabled={canAccessPlayerFeatures&&!isPracticeMode}

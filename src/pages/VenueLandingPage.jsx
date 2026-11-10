@@ -1,3 +1,4 @@
+import FixtureCrests from "../components/FixtureCrests.jsx";
 import {getFieldMatchDaySquads} from "../storage/fieldSeasonSquadRepository.js";
 import {fieldOperatingHoursLine} from "../core/fieldOperatingHours.mjs";
 import "../components/LandingDesktopLayout.css";
@@ -112,19 +113,11 @@ function getLandingTeamBadge(team = {}) {
 }
 
 function FieldTileCrests({ids, teams, colours = {}}) {
-  return <span className="field-tile-crests" aria-hidden="true">
-    {ids.map((id, index) => {
-      const team = teams.find(item => item.id === id);
-      const badge = getLandingTeamBadge(team);
-      const colour = String(colours[id] || "").trim().replace(/\s+/g, "");
-      return <React.Fragment key={index}>
-        {index > 0 && <small>vs</small>}
-        <span className="field-tile-crest" style={colour ? {borderColor:colour} : undefined}>
-          {badge ? <img src={badge} alt="" /> : getLandingTeamAbbreviation(team)}
-        </span>
-      </React.Fragment>;
-    })}
-  </span>;
+  return <FixtureCrests teams={ids.map((id) => {
+    const team = teams.find((item) => item.id === id);
+    return {id, badge: getLandingTeamBadge(team), abbreviation: getLandingTeamAbbreviation(team),
+      colour: String(colours[id] || "").trim().replace(/\s+/g, "")};
+  })} />;
 }
 
 const activePrimaryStyle = {
@@ -1691,6 +1684,7 @@ export default function VenueLandingPage({
           >
             <MatchTeamChooser
               label="On-field Team 1"
+              roundCrest
               value={teamAId || ""}
               teams={optionsForTeamA}
               renderLabel={renderOptionLabel}
@@ -1703,6 +1697,7 @@ export default function VenueLandingPage({
 
             <MatchTeamChooser
               label="On-field Team 2"
+              roundCrest
               value={teamBId || ""}
               teams={optionsForTeamB}
               renderLabel={renderOptionLabel}

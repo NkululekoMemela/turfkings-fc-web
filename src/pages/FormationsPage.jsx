@@ -1,3 +1,6 @@
+import FormationTeamSelector from "../components/FormationTeamSelector.jsx";
+import {useExhibitionMatchday} from "../storage/useExhibitionMatchday.js";
+import {clubChallengeRequest} from "../storage/clubChallengeGateway.js";
 import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
@@ -888,6 +891,9 @@ const LONG_PRESS_MS = 650;
 const MAX_SUBS = 6;
 
 export function FormationsPage({
+  exhibitionCandidate,
+  exhibitionCalendarLoading = false,
+  canManageExhibition = false,
   canEditNumbers=false,onNumberChange,
   activeClubId = "turf-kings",
   isPracticeMode = false,
@@ -904,11 +910,16 @@ export function FormationsPage({
   identity = null,
   authUser = null,
   onBack,
-  onGoToSquads,
   matchType = "FRIENDLY",
   gameFormat = "5_V_5",
 }) {
-  const canEditLineups = true;
+  const exhibitionScope = Boolean(exhibitionCandidate?.fixtureId && !isPracticeMode);
+  const matchday = useExhibitionMatchday(activeClubId, exhibitionScope ? exhibitionCandidate.fixtureId : null);
+  const exhibitionMatch = matchday.match;
+  const [exhibitionSaveError, setExhibitionSaveError] = useState("");
+  const [exhibitionSaving, setExhibitionSaving] = useState(false);
+  const exhibitionSaveRef = useRef(false);
+  useEffect(() => {setExhibitionSaveError("");}, [activeClubId, exhibitionCandidate?.fixtureId]);
   const activeClubName = String(
     activeClub?.shortName ||
     activeClub?.name ||
@@ -957,18 +968,26 @@ export function FormationsPage({
   }, [activeClubId, isPracticeMode]);
 
   const sourceTeams = useMemo(() => {
+    if (exhibitionScope) {
+      if (!exhibitionMatch) return [];
+      return ["home", "away"].map((side) => ({
+        id: exhibitionMatch[side].id, label: exhibitionMatch[side].name, logoUrl: exhibitionMatch[side].logoUrl,
+        teamColorHex: side === "home" ? exhibitionMatch.homeColour : exhibitionMatch.awayColour,
+        players: [...(exhibitionMatch.teams?.[side]?.starters || []), ...(exhibitionMatch.teams?.[side]?.substitutes || [])],
+      }));
+    }
     if (!isFriendlyMatch) return teams || [];
     return Array.isArray(fiveVFiveTeams) && fiveVFiveTeams.length
       ? fiveVFiveTeams
       : [];
-  }, [isFriendlyMatch, teams, fiveVFiveTeams]);
+  }, [isFriendlyMatch, teams, fiveVFiveTeams, exhibitionScope, exhibitionMatch]);
 
   const initialTeamId =
     currentMatch?.teamAId || (sourceTeams[0] ? sourceTeams[0].id : null);
 
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
 
-  const gameType = gameFormatToFormationGameType(gameFormat);
+  const gameType = gameFormatToFormationGameType(exhibitionScope ? exhibitionCandidate.format : gameFormat);
   const usesTeamLineups = true;
 
   const [players, setPlayers] = useState([]);
@@ -1146,7 +1165,7 @@ export function FormationsPage({
     return { resolve };
   }, [players]);
 
-  const canonicalName = (raw) => playerResolver.resolve(raw).display;
+  const canonicalName = (raw) => exhibitionScope ? String(raw || "").trim() : playerResolver.resolve(raw).display;
 
   const displayCompactName = (raw) => {
     if (!raw) return "";
@@ -1302,6 +1321,7 @@ export function FormationsPage({
 
   const selectedTeamCanonical =
     canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+  const canEditLineups = !exhibitionScope || Boolean(canManageExhibition && exhibitionMatch?.canEdit && selectedTeamCanonical?.id === activeClubId && !exhibitionSaving);
 
   const isTemporaryOpponentTeam = useMemo(() => {
     return Boolean(
@@ -1378,7 +1398,7 @@ export function FormationsPage({
     normKey(loggedInCanonicalName) ===
       normKey(selectedTeamCanonical?.captain || "");
 
-  const canManageHandInjury =
+  const canManageHandInjury = !exhibitionScope &&
     !isPracticeMode &&
     gameType !== GAME_TYPE_11 &&
     Boolean(selectedTeamCanonical?.id) &&
@@ -1485,7 +1505,10 @@ export function FormationsPage({
     const targetPlayerPool =
       targetTeam?.players || [];
 
-    const next = resolveLatestPreferredTeamLineup(
+    const side = exhibitionMatch?.home.id === targetTeam?.id ? "home" : "away";
+    const next = exhibitionScope
+      ? (exhibitionMatch?.lineups?.[side] || buildDefaultLineupLocal(targetPlayerPool, targetDefaultFormationId, targetFormationsMap))
+      : resolveLatestPreferredTeamLineup(
       targetTeam,
       targetGameType,
       lineupsByTeam,
@@ -1700,6 +1723,18 @@ export function FormationsPage({
 
   const saveTeamLineup = (teamId, updatedLineup) => {
     if (!teamId) return;
+    if (exhibitionScope) {
+      if (!canManageExhibition || !exhibitionMatch?.canEdit || teamId !== activeClubId || exhibitionSaveRef.current) return;
+      exhibitionSaveRef.current = true;
+      setExhibitionSaving(true);
+      setExhibitionSaveError("");
+      clubChallengeRequest("saveLineup", {clubId: activeClubId, fixtureId: exhibitionMatch.fixtureId,
+        teamId, formationId: updatedLineup.formationId, positions: updatedLineup.positions})
+        .then(() => matchday.refresh()).catch((error) => {
+          setExhibitionSaveError(error.message); setLineup(buildResolvedLineup(teamId, gameType));
+        }).finally(() => {exhibitionSaveRef.current = false; setExhibitionSaving(false);});
+      return;
+    }
 
     const previewLineup = makeSavedLineup(
       {
@@ -2029,26 +2064,15 @@ export function FormationsPage({
   const renderTopHeader = (isEmpty = false) => (
     <>
       <ClubPageRibbon title={<>Lineups &amp; Formations</>} onHome={onBack} showLogo/>
+      {exhibitionScope && <p role="status">{exhibitionSaveError || matchday.error ||
+        (!exhibitionMatch ? "Loading exhibition formations…" : exhibitionSaving ? "Saving formation…" :
+        !canManageExhibition ? "Exhibition formation · read only" :
+        selectedTeamCanonical?.id !== activeClubId ? "Opponent formation · read only" : "Exhibition formation")}</p>}
+
 
       <header className="header" style={{ marginBottom: isEmpty ? undefined : "0.35rem" }}>
-        <div className="header-top-row">
-          <button
-            className="secondary-btn"
-            type="button"
-            onClick={onGoToSquads}
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(20, 35, 63, 0.98), rgba(11, 23, 48, 0.98))",
-              color: "#f8fafc",
-              border: "1px solid rgba(148, 163, 184, 0.28)",
-              boxShadow: "0 10px 24px rgba(2, 6, 23, 0.35)",
-            }}
-          >
-            Manage Squads
-          </button>
-        </div>
         <p className="muted small" style={{ marginTop: "0.65rem" }}>
-          Match day format: <strong>{isFriendlyMatch ? `Friendly ${getGameTypeLabel(gameType)}` : `League ${getGameTypeLabel(gameType)}`}</strong>
+          Match day format: <strong>{exhibitionScope ? `Exhibition ${getGameTypeLabel(gameType)}` : isFriendlyMatch ? `Friendly ${getGameTypeLabel(gameType)}` : `League ${getGameTypeLabel(gameType)}`}</strong>
         </p>
       </header>
     </>
@@ -2079,7 +2103,9 @@ export function FormationsPage({
 
     return (
       <span className="fanm-inline-team-identity">
-        {identity?.type === "national" && identity.flag ? (
+        {exhibitionScope && team?.logoUrl ? (
+          <img src={team.logoUrl} alt="" className="fanm-inline-team-logo exhibition-formation-crest" />
+        ) : identity?.type === "national" && identity.flag ? (
           <span className="fanm-inline-team-flag">
             {identity.flag}
           </span>
@@ -2094,6 +2120,13 @@ export function FormationsPage({
       </span>
     );
   };
+
+  if (exhibitionCalendarLoading) {
+    return <div className="page lineups-page">
+      <ClubPageRibbon title={<>Lineups &amp; Formations</>} onHome={onBack} showLogo/>
+      <p role="status">Checking the Club match calendar…</p>
+    </div>;
+  }
 
   if (!selectedTeamCanonical) {
     return (
@@ -2135,18 +2168,8 @@ export function FormationsPage({
           {usesTeamLineups ? (
             <div className="field-row inline-field">
               <label>Team ({getGameTypeLabel(gameType)})</label>
-              <div className="team-pill-row">
-                {canonicalTeams.map((t) => (
-                  <button
-                    key={`team-pill-${gameFormat}-${t.id}`}
-                    type="button"
-                    className={`team-pill-btn ${t.id === selectedTeamCanonical.id ? "active" : ""}`}
-                    onClick={() => handleTeamClick(t.id)}
-                  >
-                    {renderTeamIdentityLabel(t, t.label)}
-                  </button>
-                ))}
-              </div>
+              <FormationTeamSelector teams={canonicalTeams} selectedId={selectedTeamCanonical.id}
+                onSelect={handleTeamClick} renderLabel={team => renderTeamIdentityLabel(team, team.label)} />
             </div>
           ) : (
             <div className="field-row inline-field">

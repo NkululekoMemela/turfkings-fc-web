@@ -1895,7 +1895,7 @@ function TopShelfAwardsWatch({
 }
 
 export function VideoHighlightsPage({
-  matchId, initialMatchFilter="", fixtureOptions=[], fixtureResults=[],
+  matchId, initialMatchFilter="", fixtureOptions=[], fixtureResults=[], sharedExhibitionClips=[],
   activeClubId = "turf-kings",
   activeSeasonId = null,
   currentMatchNo = 1,
@@ -2378,6 +2378,7 @@ export function VideoHighlightsPage({
       ...(Array.isArray(firebaseHighlights) ? firebaseHighlights : []),
       ...(Array.isArray(currentMatchDayHighlights) ? currentMatchDayHighlights : []),
       ...(Array.isArray(localHighlights) ? localHighlights : []),
+      ...(Array.isArray(sharedExhibitionClips) ? sharedExhibitionClips : []),
     ];
 
     const seen = new Set();
@@ -2392,7 +2393,7 @@ export function VideoHighlightsPage({
         return true;
       })
       .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [currentMatchDayHighlights, firebaseHighlights, localHighlights,matchType]);
+  }, [currentMatchDayHighlights, firebaseHighlights, localHighlights, sharedExhibitionClips, matchType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3232,6 +3233,7 @@ export function VideoHighlightsPage({
   };
 
   const handleApprove = async (highlight) => {
+    if (highlight?.source === "exhibition_shared") return;
     try {
       const updated = await persistStatus(highlight, "approved");
       await onApproveHighlight?.(updated);
@@ -3243,6 +3245,7 @@ export function VideoHighlightsPage({
   };
 
   const handleReject = async (highlight) => {
+    if (highlight?.source === "exhibition_shared") return;
     try {
       const updated = await persistStatus(highlight, "rejected");
       await onRejectHighlight?.(updated);
@@ -3253,6 +3256,7 @@ export function VideoHighlightsPage({
   };
 
   const handleDelete = async (highlight) => {
+    if (highlight?.source === "exhibition_shared") return;
     const confirmed = window.confirm("Permanently delete this video and its stored file? This cannot be undone.");
     if (!confirmed) return;
 

@@ -32,4 +32,12 @@ function transfer(live, controller, now = Date.now()) {
     liveMatchController: {...controller, acquiredAtISO: new Date(now).toISOString()},
     liveMatchTakeoverRequest: null, boothGuest: null, boothInvite: null, boothInviteId: null, takeoverAtISO: new Date(now).toISOString()};
 }
-module.exports = {isOperator, holdsBooth, validGrant, checkedPatch, transfer};
+const TAKEOVER_WAIT_MS = 15000;
+function takeoverWindow(now) {
+  return {requestedAtISO: new Date(now).toISOString(), expiresAtISO: new Date(now + TAKEOVER_WAIT_MS).toISOString()};
+}
+function takeoverReady(request, now) {
+  const expiry = Date.parse(request?.expiresAtISO);
+  return request?.status === "pending" && Number.isFinite(expiry) && now >= expiry;
+}
+module.exports = {isOperator, holdsBooth, validGrant, checkedPatch, transfer, takeoverWindow, takeoverReady};

@@ -548,6 +548,7 @@ function filterStatsRecordsForView(items = [], showFriendlyStats = false) {
 
 // ---------------- PAGE ----------------
 export function StatsPage({
+  exhibitionResults = [],
   teams = [],
   friendlyTeams = [],
   friendlyTeamsByFormat = null,
@@ -3023,6 +3024,19 @@ export function StatsPage({
   return (
     <div className="page stats-page">
       <ClubPageRibbon title={<>Stats &amp; Leaderboards</>} onHome={onBack}/>
+      {exhibitionResults.length > 0 && <section className="card" aria-label="Exhibition results">
+        <h2>Exhibition results</h2>
+        <div className="table-wrapper tk-scroll-table-wrapper">
+          <table className="stats-table">
+            <thead><tr><th>Date</th><th>Home</th><th>Score</th><th>Away</th></tr></thead>
+            <tbody>{exhibitionResults.map((result) => <tr key={result.id}>
+              <td>{new Intl.DateTimeFormat("en-ZA",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"}).format(new Date(`${result.date}T12:00:00Z`))}</td>
+              <td>{result.homeName}</td><td><strong>{result.homeScore} : {result.awayScore}</strong></td><td>{result.awayName}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </section>}
+
 
       <div style={topActionRowStyle}>
         <div style={rightButtonsStyle}>

@@ -70,9 +70,9 @@ export async function captureTeamsheetCard(source,{start=0,count=Infinity,logoCa
   return canvas;
  }finally{shell.remove();}
 }
-export async function downloadFieldTeamsheet({element,dayId,format}){
+export async function downloadFieldTeamsheet({element,dayId,format,filenamePrefix="field-teamsheet"}){
  const total=element?.querySelectorAll('.teamsheet-card-team').length||0;if(!total)throw Error('No teamsheet is available yet.');
- const {saveFieldExport}=await import('./saveFieldExport.js');const filename=`field-teamsheet-${String(dayId||'upcoming').replace(/[^a-z0-9_-]/gi,'-')}`;
+ const {saveFieldExport}=await import('./saveFieldExport.js');const filename=`${filenamePrefix}-${String(dayId||'upcoming').replace(/[^a-z0-9_-]/gi,'-')}`;
  if(format==='pdf'){
   const pages=[],logoCache=new Map();for(let start=0;start<total;start+=4){const canvas=await captureTeamsheetCard(element,{start,count:4,logoCache});const data=canvas.toDataURL('image/jpeg',.94).split(',')[1];pages.push({width:canvas.width,height:canvas.height,bytes:Uint8Array.from(atob(data),v=>v.charCodeAt(0))});}
   return saveFieldExport(jpegPagesToPdf(pages),filename+'.pdf');
