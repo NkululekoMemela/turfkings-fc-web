@@ -130,7 +130,7 @@ beforeEach(async () => {
   for (const clubId of clubs) await confirmFormation(clubId);
 });
 
-async function request(uid = "referee", headers = {authorization: "Bearer test"}, confirmed = true) {
+async function request(uid = "referee", headers = {authorization: "Bearer test"}, confirmed = true, extra = {}) {
   let status = 200;
   let body;
   const res = {
@@ -139,7 +139,7 @@ async function request(uid = "referee", headers = {authorization: "Bearer test"}
   };
   await approvalHandler({
     method: "POST", headers,
-    body: {venueId: "field-one", seasonId: "season-one", fixtureId: "fixture-one", earlyStartConfirmed: confirmed, earlyStartReason:confirmed?"Manager moved kickoff for pitch availability":""},
+    body: {venueId: "field-one", seasonId: "season-one", fixtureId: "fixture-one", earlyStartConfirmed: confirmed, earlyStartReason:confirmed?"Manager moved kickoff for pitch availability":"",...extra},
   }, res, {
     db,
     verifyToken: async (token, revoked) => {
@@ -311,4 +311,180 @@ for (const role of ["club_rep", "spectator", "club_member"]) {
 test("Pending Field staff cannot request match start", async () => {
   await db.doc(`${venuePath}/staff/standin`).set({role: "field_assistant", status: "pending", isAdministrator: false});
   assert.equal((await request("standin")).status, 400);
+});
+
+
+test("the approved endpoint creates the shared referee booth atomically without client writes", async () => {
+  await db.doc(venuePath).update({"league.activeSeason.clubIds":[...clubs,"club-c"]});
+  const extra={startRequested:true,deviceId:"referee-phone-one",requestId:"start-request-one"};
+  const result=await request("referee",{authorization:"Bearer test"},true,extra);
+  assert.equal(result.status,200,result.body?.error);
+  assert.equal(result.body.match.liveDocumentId,"fixture-one");
+  const live=(await db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`).get()).data();
+  assert.equal(live.awaitingKitVerification,true);
+  assert.equal(live.running,false);
+  assert.equal(live.liveMatchController.uid,"referee");
+  assert.equal(live.liveMatchController.deviceId,extra.deviceId);
+  assert.equal(Object.keys(live.paidSquads).length,2);
+  assert.equal(Object.keys(live.confirmedLineupSnapshot).length,2);
+  assert.equal((await db.doc(`${venuePath}/seasons/season-one/startApprovals/${result.body.approvalId}`).get()).data().used,true);
+  const retry=await request("referee",{authorization:"Bearer test"},true,extra);
+  assert.equal(retry.status,200,retry.body?.error);
+  assert.equal((await db.collection(`${venuePath}/actionLog`).get()).size,1);
+  assert.equal((await db.collection(`${venuePath}/seasons/season-one/matches`).get()).size,1);
+});
+
+test("the server start rejects a spectator and never writes an unapproved booth", async () => {
+  const result=await request("visitor",{authorization:"Bearer test"},true,{
+    startRequested:true,deviceId:"spectator-phone",requestId:"forged-start-one"});
+  assert.equal(result.status,400);
+  assert.equal((await db.collection(`${venuePath}/seasons/season-one/matches`).get()).size,0);
+});
+
+const kickoffRequest = suffix => ({startRequested:true,deviceId:"retry-phone-one",requestId:`retry-request-${suffix}`});
+async function permitThreeClubs() {
+  await db.doc(venuePath).update({"league.activeSeason.clubIds":[...clubs,"club-c"]});
+}
+function orphanedLineup() {
+  return {venueId:"field-one",seasonId:"season-one",fixtureId:"fixture-one",
+    teamAId:"club-a",teamBId:"club-b",standbyId:"club-c",status:"live",
+    gameFormat:"5_V_5",currentMatchNo:1,awaitingKitVerification:true,running:false,
+    isFinished:false,timeUp:false,clockPhase:"first_half",goalsA:0,goalsB:0,
+    events:[],currentEvents:[],secondsLeft:2400,startedByUid:"referee"};
+}
+test("an existing unstarted fixture document no longer causes ALREADY_EXISTS at early kickoff",async()=>{
+  await permitThreeClubs();
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`);
+  const previous=orphanedLineup();
+  await ref.set(previous);
+  await db.doc(venuePath).update({
+    "league.activeSeason.matchDays":[{
+      id:"day-one",dateLocal:"2099-01-01",opensAtMs:Date.parse("2099-01-01T00:00:00+02:00"),
+      status:"scheduled",fixtureIds:["fixture-one"]}],
+    "league.activeSeason.fixtures":[{
+      id:"fixture-one",status:"scheduled",matchDayId:"day-one",clubAId:"club-a",clubBId:"club-b",
+      scheduledLocal:"2099-01-01T18:00"}],
+  });
+  const result=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("draft"));
+  assert.equal(result.status,200,result.body?.error);
+  assert.equal(result.body.match.status,"live");
+  const live=(await ref.get()).data();
+  assert.equal(live.awaitingKitVerification,true);
+  assert.equal(live.liveMatchController.uid,"referee");
+  const history=await ref.collection("startRecoveryHistory").get();
+  assert.equal(history.size,1);
+  assert.deepEqual(history.docs[0].data().previousMatch,previous);
+});
+test("the same unstarted recovery still requires an explicit outside-schedule confirmation",async()=>{
+  await permitThreeClubs();
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`);
+  await ref.set(orphanedLineup());
+  const result=await request("referee",{authorization:"Bearer test"},false,kickoffRequest("no-confirm"));
+  assert.equal(result.status,400);
+  assert.match(result.body.error,/Confirm Official/);
+  assert.deepEqual((await ref.get()).data(),orphanedLineup());
+});
+test("an orphaned running match resumes without erasing a goal or taking the referee’s device",async()=>{
+  await permitThreeClubs();
+  const first=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("played"));
+  assert.equal(first.status,200,first.body?.error);
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`);
+  await ref.update({awaitingKitVerification:false,running:true,secondsLeft:381,goalsA:2,
+    currentEvents:[{id:"goal-one",type:"goal"}]});
+  const before=(await ref.get()).data();
+  await db.doc(venuePath).update({"league.activeSeason.liveMatches":{}});
+  const result=await request("creator",{authorization:"Bearer test"},false,{
+    ...kickoffRequest("reopen"),deviceId:"different-phone-two"});
+  assert.equal(result.status,200,result.body?.error);
+  assert.equal(result.body.match.scoreA,2);
+  assert.deepEqual((await ref.get()).data(),before);
+  assert.equal((await db.doc(venuePath).get()).data().league.activeSeason.liveMatches["fixture-one"].status,"live");
+});
+test("a completed nil-nil orphan cannot be overwritten by a fresh kickoff",async()=>{
+  await permitThreeClubs();
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`);
+  const completed={...orphanedLineup(),status:"completed",isFinished:true};
+  await ref.set(completed);
+  const result=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("finished"));
+  assert.equal(result.status,400);
+  assert.match(result.body.error,/saved result/);
+  assert.deepEqual((await ref.get()).data(),completed);
+});
+test("an unstarted legacy singleton can be refreshed without the old availability lock",async()=>{
+  await permitThreeClubs();
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/current`);
+  await ref.set(orphanedLineup());
+  await db.doc(venuePath).update({"league.activeSeason.liveMatches":{
+    "fixture-one":{fixtureId:"fixture-one",liveDocumentId:"current",status:"live",clubAId:"club-a",clubBId:"club-b"}}});
+  const result=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("legacy"));
+  assert.equal(result.status,200,result.body?.error);
+  assert.equal(result.body.match.liveDocumentId,"current");
+  assert.equal((await ref.get()).data().awaitingKitVerification,true);
+  assert.equal((await ref.collection("startRecoveryHistory").get()).size,1);
+});
+test("simultaneous starts open one fixture and do not replace the first referee",async()=>{
+  await permitThreeClubs();
+  const replies=await Promise.all([
+    request("referee",{authorization:"Bearer test"},true,kickoffRequest("race-one")),
+    request("creator",{authorization:"Bearer test"},true,{...kickoffRequest("race-two"),deviceId:"race-phone-two"}),
+  ]);
+  for(const result of replies)assert.equal(result.status,200,result.body?.error);
+  const matches=await db.collection(`${venuePath}/seasons/season-one/matches`).get();
+  assert.equal(matches.size,1);
+  assert.equal((await db.collection(`${venuePath}/actionLog`).get()).size,1);
+  assert.equal((await matches.docs[0].ref.collection("startRecoveryHistory").get()).size,0);
+});
+
+test("a manager-deleted return leg launches again without deleting the first leg result",async()=>{
+  await permitThreeClubs();
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`);
+  const previous={...orphanedLineup(),status:"completed",isFinished:true,completedAtMs:1000,goalsA:3,goalsB:2};
+  await ref.set(previous);
+  const fixture=(await db.doc(venuePath).get()).data().league.activeSeason.fixtures[0];
+  const firstLeg={fixtureId:"first-leg",status:"completed",teamAId:"club-b",teamBId:"club-a",goalsA:1,goalsB:0};
+  await db.doc(venuePath).update({"league.activeSeason.results":[firstLeg]});
+  await db.doc(`${venuePath}/matchReversals/old-manager-deletion`).set({seasonId:"season-one",fixtureId:"fixture-one",
+    actorUid:"creator",reason:"Replay this incorrect result",at:admin.firestore.Timestamp.fromMillis(2000),
+    result:{fixtureId:"fixture-one",goalsA:3,goalsB:2},fixture:{...fixture,status:"completed"}});
+  const result=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("return-leg"));
+  assert.equal(result.status,200,result.body?.error);
+  const live=(await ref.get()).data();
+  assert.equal(live.status,"live");assert.equal(live.goalsA,0);assert.equal(live.goalsB,0);
+  assert.equal(live.awaitingKitVerification,true);
+  const history=await ref.collection("startRecoveryHistory").get();
+  assert.equal(history.size,1);assert.deepEqual(history.docs[0].data().previousMatch,previous);
+  assert.deepEqual((await db.doc(venuePath).get()).data().league.activeSeason.results,[firstLeg]);
+});
+
+test("deleting an archived result clears and archives its canonical document and preserves other fixtures",async()=>{
+  await permitThreeClubs();
+  const fixture=(await db.doc(venuePath).get()).data().league.activeSeason.fixtures[0];
+  const recorded={fixtureId:"fixture-one",status:"completed",matchNo:2,teamAId:"club-a",teamBId:"club-b",goalsA:3,goalsB:2};
+  const firstLeg={fixtureId:"first-leg",status:"completed",matchNo:1,teamAId:"club-b",teamBId:"club-a",goalsA:1,goalsB:0};
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`);
+  const previous={...orphanedLineup(),status:"completed",completedAtMs:1000,goalsA:3,goalsB:2};
+  await ref.set(previous);
+  const otherRef=db.doc(`${venuePath}/seasons/season-one/matches/current`);
+  const other={fixtureId:"first-leg",status:"completed",goalsA:1,goalsB:0};
+  await otherRef.set(other);
+  const firstEvent={id:"first-goal",fixtureId:"first-leg",matchNo:2};
+  await db.doc(venuePath).update({"league.activeSeason.fixtures":[{...fixture,status:"completed"}],
+    "league.activeSeason.results":[firstLeg,recorded],"league.activeSeason.liveMatches":{},
+    "league.activeSeason.allEvents":[firstEvent,{id:"return-goal",fixtureId:"fixture-one",matchNo:2}]});
+  let status=200,body;
+  await require("../functions/fieldResultReversal.cjs").reversalHandler({method:"POST",headers:{authorization:"Bearer test"},
+    body:{venueId:"field-one",seasonId:"season-one",fixtureId:"fixture-one",reason:"Replay incorrect return leg"}},
+    {status(code){status=code;return this;},json(value){body=value;return this;}},
+    {db,verifyToken:async()=>({uid:"creator",email_verified:true})});
+  assert.equal(status,200,body?.error);
+  assert.equal((await ref.get()).exists,false);
+  assert.deepEqual((await otherRef.get()).data(),other);
+  const season=(await db.doc(venuePath).get()).data().league.activeSeason;
+  assert.deepEqual(season.results,[firstLeg]);assert.deepEqual(season.allEvents,[firstEvent]);
+  assert.equal(season.fixtures[0].status,"scheduled");
+  const audits=await db.collection(`${venuePath}/matchReversals`).get();
+  assert.equal(audits.size,1);
+  assert.deepEqual(audits.docs[0].data().previousMatches,[{documentId:"fixture-one",match:previous}]);
+  const result=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("deleted-canonical"));
+  assert.equal(result.status,200,result.body?.error);
 });

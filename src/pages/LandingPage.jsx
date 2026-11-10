@@ -1634,7 +1634,13 @@ export function LandingPage({
       </header>
 
       <section className="card landing-first-card">
-        {!canSeeCaptainStyleControls&&onBrowseMatchType&&<nav aria-label="Match type" style={{display:'inline-flex',alignItems:'center',padding:4,borderRadius:999,background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.10)',gap:4,marginBottom:14}}>{MATCH_MODE_OPTIONS.map(option=><button key={option.value} type="button" className="secondary-btn" aria-pressed={resolvedMatchType===option.value} onClick={()=>onBrowseMatchType(option.value)} style={{borderRadius:999,padding:'.45rem .9rem',color:'#fff',border:resolvedMatchType===option.value?'1px solid rgba(34,211,238,.55)':'1px solid transparent',background:resolvedMatchType===option.value?'linear-gradient(180deg,rgba(8,145,178,.98),rgba(37,99,235,.96))':'transparent',boxShadow:resolvedMatchType===option.value?'0 0 18px rgba(34,211,238,.28)':'none'}}>{option.value==="LEAGUE"?"Mini-league":option.label}</button>)}</nav>}
+        {!canSeeCaptainStyleControls && onBrowseMatchType && <nav className="club-match-mode-toggle" aria-label="Match type">
+          {MATCH_MODE_OPTIONS.map(option => <button key={option.value} type="button"
+            aria-pressed={resolvedMatchType === option.value} onClick={() => onBrowseMatchType(option.value)}>
+            <span aria-hidden="true">{option.value === "LEAGUE" ? "🏆" : "⚽"}</span>
+            {option.value === "LEAGUE" ? "Mini-league" : option.label}
+          </button>)}
+        </nav>}
         {canSeeCaptainStyleControls && (
           <div style={{ marginBottom: "0.9rem" }}>
             <button
@@ -1840,7 +1846,7 @@ export function LandingPage({
                 className="muted small"
                 style={{ marginBottom: "0.35rem", fontWeight: 700 }}
               >
-                Game Format
+                Regular Club game format
               </div>
               <div
                 style={{

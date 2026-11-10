@@ -74,7 +74,7 @@ import {
   GAME_FORMAT,
   normalizeMatchMode,
   normalizeGameFormat,
-  resolveGameFormat,
+  resolveGameFormat, regularClubGameFormat, clubGameFormatsAfterModeSwitch,
 } from "./core/matchConfig.js";
 
 
@@ -4172,6 +4172,7 @@ function MainApp() {
   let activeSeasonId = null;
   let matchType = MATCH_TYPE.FRIENDLY;
   let gameFormat = GAME_FORMAT.FIVE_V_FIVE;
+  let regularFormatState = null;
   let activeTeamIds = [];
   let fiveVFiveTeams = buildDefaultFiveVFiveTeams();
   let matchMode = "round_robin";
@@ -4216,7 +4217,8 @@ function MainApp() {
         : s?.friendlyMatchDayHistory || [];
     activeSeasonNo = Number(s?.seasonNo || 1);
     matchType = normalizeMatchMode(s?.matchType || s?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = resolveGameFormat(s?.gameFormat, s?.cameraGameFormat);
+    regularFormatState = s;
+    gameFormat = regularClubGameFormat(s, matchType);
     activeTeamIds = Array.isArray(s?.activeTeamIds) ? s.activeTeamIds : [];
     fiveVFiveTeams =
       isPracticeMode || s?.isPracticeSeason || String(s?.seasonId || "").startsWith("practice")
@@ -4253,7 +4255,8 @@ function MainApp() {
     } = legacy || createDefaultState());
 
     matchType = normalizeMatchMode(legacy?.matchType || legacy?.cameraGameFormat || GAME_FORMAT.FIVE_V_FIVE);
-    gameFormat = resolveGameFormat(legacy?.gameFormat, legacy?.cameraGameFormat);
+    regularFormatState = legacy;
+    gameFormat = regularClubGameFormat(legacy, matchType);
     activeTeamIds = Array.isArray(legacy?.activeTeamIds)
       ? legacy.activeTeamIds
       : [];
@@ -4397,6 +4400,7 @@ function MainApp() {
       choice.uid !== (authUser?.uid ?? null) || choice.published !== publishedMatchType) ? null : choice);
   }, [activeClubId, authUser?.uid, publishedMatchType]);
   matchType=browseMatchType;
+  gameFormat=regularClubGameFormat(regularFormatState,browseMatchType);
   if(!isAdmin&&!isCaptain&&browseMatchType!==publishedMatchType&&browseMatchType===MATCH_TYPE.FRIENDLY){matchMode='round_robin';scheduledTarget=null;scheduledFixtures=[];}
   const browseClubMode=value=>{if(isAdmin||isCaptain||![MATCH_TYPE.LEAGUE,MATCH_TYPE.FRIENDLY].includes(value))return;setClubBrowseChoice({clubId:activeClubId,uid:authUser?.uid ?? null,published:publishedMatchType,value});};
 
@@ -5562,9 +5566,8 @@ function MainApp() {
         const nextSeason = {
           ...prevSeason,
           matchType: safeMatchType,
-          gameFormat: normalizeGameFormat(
-            prevSeason?.gameFormat || gameFormat || GAME_FORMAT.FIVE_V_FIVE
-          ),
+          gameFormat: regularClubGameFormat(prevSeason, safeMatchType),
+          gameFormatsByMode: clubGameFormatsAfterModeSwitch(prevSeason, safeMatchType),
           activeTeamIds:
             Array.isArray(prevSeason?.activeTeamIds) &&
             prevSeason.activeTeamIds.length >= 2
@@ -5598,9 +5601,8 @@ function MainApp() {
       const nextState = {
         ...prev,
         matchType: safeMatchType,
-        gameFormat: normalizeGameFormat(
-          prev?.gameFormat || gameFormat || GAME_FORMAT.FIVE_V_FIVE
-        ),
+        gameFormat: regularClubGameFormat(prev, safeMatchType),
+        gameFormatsByMode: clubGameFormatsAfterModeSwitch(prev, safeMatchType),
         activeTeamIds:
           Array.isArray(prev?.activeTeamIds) && prev.activeTeamIds.length >= 2
             ? prev.activeTeamIds
@@ -5631,6 +5633,7 @@ function MainApp() {
       updateActiveSeason((prevSeason) => ({
         ...prevSeason,
         gameFormat: safeFormat,
+        gameFormatsByMode: {...prevSeason?.gameFormatsByMode, [normalizeMatchMode(prevSeason?.matchType || matchType)]: safeFormat},
         matchType: normalizeMatchMode(prevSeason?.matchType || matchType),
         activeTeamIds:
           Array.isArray(prevSeason?.activeTeamIds) &&
@@ -5648,6 +5651,7 @@ function MainApp() {
     updateState((prev) => ({
       ...prev,
       gameFormat: safeFormat,
+      gameFormatsByMode: {...prev?.gameFormatsByMode, [normalizeMatchMode(prev?.matchType || matchType)]: safeFormat},
       matchType: normalizeMatchMode(prev?.matchType || matchType),
       activeTeamIds:
         Array.isArray(prev?.activeTeamIds) && prev.activeTeamIds.length >= 2

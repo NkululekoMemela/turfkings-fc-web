@@ -1,4 +1,5 @@
 import React, {useState} from "react";
+import {fieldMatchDayClosureSummary} from "../core/fieldMatchDayArchive.js";
 import {
   archiveVenueMatchDay, discardVenueMatchDay,
 } from "../storage/leagueSeasonRepository.js";
@@ -11,8 +12,14 @@ export default function FieldEndMatchDay({
     throw new Error("End Match Day requires the current Field season scope.");
   }
   const canEndFieldMatchDay = true;
+  const summary = fieldMatchDayClosureSummary({season: venueSeason});
+  const outstanding = summary?.outstanding.length || 0;
+  const fixtureName = (fixture, side) => fixture.result?.[`team${side}Name`] ||
+    fixture.result?.[`team${side}Label`] || fixture[`club${side}Name`] ||
+    venueSeason?.invitations?.[fixture[`club${side}Id`]]?.clubName || fixture[`club${side}Id`] || `Club ${side}`;
   const [showEndMatchDayModal, setVisible] = useState(true);
-  const [confirmEndMatchDay, setConfirmEndMatchDay] = useState(false);
+  const [confirmedDayId, setConfirmedDayId] = useState("");
+  const confirmEndMatchDay = Boolean(summary && confirmedDayId === summary.day.id);
   const [endingMatchDay, setEndingMatchDay] = useState(false);
   const [endMatchDayError, setEndMatchDayError] = useState("");
   const [showDiscardFieldDayConfirm, setShowDiscardFieldDayConfirm] = useState(false);
@@ -35,50 +42,21 @@ export default function FieldEndMatchDay({
               server and clear the finished live board. Season standings
               and results remain available.
             </p>
-            <p className="muted">
-              Completed matches not yet archived: {
-                (venueSeason?.results || []).filter((result) =>
-                  result?.status === "completed" &&
-                  !(venueSeason?.matchDayHistory || []).some((day) =>
-                    (day.results || []).some((saved) =>
-                      saved.fixtureId === result.fixtureId
-                    )
-                  )
-                ).length
-              }
-            </p>
-            {confirmEndMatchDay && (
-              <>
-                <p role="status">
-                  Confirm saving these matches and clearing the finished
-                  live board. This cannot be undone from here.
-                </p>
-                <ul>
-                  {(venueSeason?.results || [])
-                    .filter((result) =>
-                      result?.status === "completed" &&
-                      !(venueSeason?.matchDayHistory || []).some((day) =>
-                        (day.results || []).some((saved) =>
-                          saved.fixtureId === result.fixtureId
-                        )
-                      )
-                    )
-                    .map((result) => (
-                      <li key={result.fixtureId || result.id}>
-                        {result.teamAName || result.teamALabel ||
-                          result.teamAId || "Team A"}
-                        {" "}
-                        {result.goalsA ?? result.scoreA ?? 0}
-                        {"–"}
-                        {result.goalsB ?? result.scoreB ?? 0}
-                        {" "}
-                        {result.teamBName || result.teamBLabel ||
-                          result.teamBId || "Team B"}
-                      </li>
-                    ))}
-                </ul>
-              </>
-            )}
+            {summary ? <>
+              <p><strong>{summary.day.dateLocal || "Current match day"}</strong></p>
+              <ul className="field-day-summary">
+                {summary.fixtures.map(fixture => <li key={fixture.id}>
+                  <span>{fixtureName(fixture, "A")} vs {fixtureName(fixture, "B")}</span>
+                  <strong>{fixture.result ? `${fixture.result.goalsA ?? fixture.result.scoreA ?? 0}–${fixture.result.goalsB ?? fixture.result.scoreB ?? 0}`
+                    : fixture.live ? "Live" : fixture.invalidResult ? "Check result" : "Outstanding"}</strong>
+                </li>)}
+              </ul>
+            </> : <p className="muted">There is no scheduled match day ready to close.</p>}
+            {confirmEndMatchDay && <p role="status" className={outstanding ? "field-day-outstanding" : undefined}>
+              {outstanding
+                ? `End the day with ${outstanding} outstanding ${outstanding === 1 ? "match" : "matches"}? Completed results will be saved. Unplayed fixtures will remain on the record without a result.`
+                : "Save these matches and clear the finished live board?"}
+            </p>}
             {endMatchDayError && (
               <p className="error-text" role="alert">{endMatchDayError}</p>
             )}
@@ -99,7 +77,7 @@ export default function FieldEndMatchDay({
               <button type="button" className="secondary-btn"
                 disabled={endingMatchDay}
                 onClick={() => {
-                  if (confirmEndMatchDay) setConfirmEndMatchDay(false);
+                  if (confirmEndMatchDay) setConfirmedDayId("");
                   else setShowEndMatchDayModal(false);
                 }}>
                 {confirmEndMatchDay ? "Back" : "Cancel"}
@@ -112,11 +90,11 @@ export default function FieldEndMatchDay({
                   whiteSpace: "normal",
                   overflowWrap: "anywhere",
                 }}
-                disabled={endingMatchDay}
+                disabled={endingMatchDay || !summary}
                 onClick={async () => {
                   if (endingMatchDay) return;
                   if (!confirmEndMatchDay) {
-                    setConfirmEndMatchDay(true);
+                    setConfirmedDayId(summary.day.id);
                     return;
                   }
                   setEndingMatchDay(true);
@@ -126,6 +104,8 @@ export default function FieldEndMatchDay({
                       scope,
                       venueId: venue?.id,
                       seasonId: venueSeason?.id,
+                      matchDayId: summary.day.id,
+                      allowOutstanding: outstanding > 0,
                     });
                     setShowEndMatchDayModal(false);
                   } catch (error) {
@@ -139,7 +119,7 @@ export default function FieldEndMatchDay({
                 {endingMatchDay
                   ? "Saving…"
                   : confirmEndMatchDay
-                    ? "Confirm & Save to server"
+                    ? outstanding ? "End day anyway" : "Confirm & Save to server"
                     : "Review & Continue"}
               </button>
             </div>

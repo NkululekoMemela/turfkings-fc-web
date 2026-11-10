@@ -1,3 +1,4 @@
+import {fieldSeasonClosureSummary} from "../../functions/fieldSeasonClosure.mjs";
 import PremiumSelect from "./PremiumSelect.jsx";
 import {fieldConfirm,fieldAlert,fieldPrompt} from './FieldDialog.jsx';
 import { createPortal } from "react-dom";
@@ -399,6 +400,10 @@ export function FieldSeasonEndModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const action = cancelling ? "Cancel Season" : "End Season";
+  const closure = fieldSeasonClosureSummary(season);
+  const premature = !cancelling && closure.premature;
+  const confirmWord = premature ? "premature-ending" : venue.name?.trim();
+  const fixtureName = (fixture,side) => fixture[`club${side}Name`] || season.invitations?.[fixture[`club${side}Id`]]?.clubName || fixture[`club${side}Id`];
 
   return (
     <SeasonDialog title={action} busy={busy} onClose={onClose}>
@@ -412,6 +417,7 @@ export function FieldSeasonEndModal({
             venueId: venue.id, seasonId: season.id,
             mode: cancelling ? "cancel" : "complete",
             cancellationReason: reason,
+            prematureConfirmation: confirmation.trim(),
           });
           onClose();
         } catch (failure) {
@@ -422,6 +428,21 @@ export function FieldSeasonEndModal({
           ? practice ? "Discard this unplayed Practice season and start fresh." : "No play is recorded. Cancel this season with an explanation, such as insufficient Club signups."
           : "Archive the completed season. End every completed Match Day first."
         }</p>
+        {!cancelling && <section className="field-season-closure-review">
+          <div className="field-season-closure-count"><span aria-hidden="true">🏆</span><div>
+            <strong>{closure.completed} of {closure.total} fixtures completed</strong>
+            <small>{premature ? "This tournament still has outstanding fixtures." : "All season fixtures are accounted for."}</small>
+          </div></div>
+          {closure.winner ? <p className="field-season-winner"><strong>{closure.winner.name}</strong> · Champions · {closure.winner.points} points</p>
+            : closure.leader && <p><strong>{closure.leader.name}</strong> currently leads the table{closure.tied.length>1 ? " (tied)" : ""}.</p>}
+          {closure.outstanding.length>0 && <details open><summary>{closure.outstanding.length} outstanding fixtures</summary>
+            <ul>{closure.outstanding.map(fixture=><li key={fixture.id}>
+              <strong>{fixtureName(fixture,"A")} vs {fixtureName(fixture,"B")}</strong>
+              <small>{fixture.scheduledLocal?.replace("T"," · ")||"Date to be arranged"} · {fixture.status==="completed" ? "Result missing" : fixture.status||"Unplayed"}</small>
+            </li>)}</ul>
+          </details>}
+          {premature && <p role="status" className="field-season-premature-warning">You are ending this tournament early. Unplayed fixtures stay in the archive. A table leader will not be announced as champion.</p>}
+        </section>}
         <p>{practice && cancelling ? "No season archive is kept. A new draft is created." : "An audit record is kept and a new draft season is created."}</p>
         {cancelling && !practice && (
           <label style={{ display: "grid", gap: ".4rem", margin: "1rem 0" }}>
@@ -433,7 +454,7 @@ export function FieldSeasonEndModal({
           </label>
         )}
         <label style={{ display: "grid", gap: ".4rem", margin: "1rem 0" }}>
-          Type {venue.name} to confirm
+          Type {confirmWord} to confirm
           <input className="text-input" value={confirmation}
             disabled={busy} autoComplete="off"
             onChange={event => setConfirmation(event.target.value)} />
@@ -443,7 +464,7 @@ export function FieldSeasonEndModal({
           <button type="button" className="secondary-btn"
             disabled={busy} onClick={onClose}>Go back</button>
           <button type="submit" className="primary-btn" data-practice-guide="field-season-end-confirm" disabled={
-            busy || confirmation.trim() !== venue.name?.trim()
+            busy || confirmation.trim() !== confirmWord
             || (cancelling && !practice && reason.trim().length < 10)
           }>{busy ? "Saving…" : action}</button>
         </div>

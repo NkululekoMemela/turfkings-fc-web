@@ -371,3 +371,10 @@
   3% {transform:translateY(-6px);}
   9% {transform:translateY(-4px);}
 }
+
+.field-day-summary { list-style: none; padding: 0; display: grid; gap: .45rem; }
+.field-day-summary li {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: .7rem;
+  padding: .55rem .65rem; border-radius: .55rem; background: #182339; color: #eff5ff;
+}
+.field-day-outstanding { padding: .65rem; border: 1px solid #a87a3a; border-radius: .6rem; background: #342919; color: #ffe3ad; }

@@ -1,3 +1,4 @@
+import {fieldSeasonClosureSummary, fieldSeasonCelebration} from "../../functions/fieldSeasonClosure.mjs";
 import {fieldMatchStatEvents} from "../core/fieldDefensiveStats.mjs";
 import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
 import {canStartBesideLiveFixtures} from "../../functions/fieldParallelKickoffs.mjs";
@@ -662,257 +663,24 @@ export async function scheduleVenueFixture({
 }
 
 export async function startVenueFixture({
-  venueId, fixtureId, seasonId = "", teams = [], matchSeconds = 3600,
-  currentMatchNo = 1, controller = null, earlyStartConfirmed = false, earlyStartReason = "",
+  venueId, fixtureId, seasonId = "", controller = null, earlyStartConfirmed = false, earlyStartReason = "",
 }) {
   const user = auth.currentUser;
-  if (!user?.uid) throw new Error("Sign in as the field manager.");
+  if (!user?.uid) throw new Error("Sign in as the Field official.");
   if (!venueId || !fixtureId) throw new Error("Select a scheduled fixture.");
-  const ref = doc(db, "leagueVenues", venueId);
-  const approvalSeasonId = seasonId || (await startGetDoc(ref)).data()?.league?.activeSeason?.id;
-  if (!approvalSeasonId) throw new Error("The active season is missing.");
-  const token = await user.getIdToken();
-  const response = await fetch(
-    `${startFunctionsUrl().replace(/\/$/, "")}/approveFieldMatchStart`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({venueId, seasonId: approvalSeasonId, fixtureId, earlyStartConfirmed: earlyStartConfirmed === true, earlyStartReason}),
-      signal: AbortSignal.timeout(20000),
-    }
-  );
-  const approvalResponse = await response.json();
-  if (!response.ok || !approvalResponse.approvalId) {
-    throw new Error(approvalResponse.error || "Server match approval failed.");
-  }
-  const approvalRef = doc(db, "leagueVenues", venueId, "seasons",
-    approvalSeasonId, "startApprovals", approvalResponse.approvalId);
-
-  return runTransaction(db, async (transaction) => {
-    const approvalSnapshot = await transaction.get(approvalRef);
-    const approval = approvalSnapshot.data();
-    if (!approvalSnapshot.exists() || approval.used ||
-        approval.actorUid !== user.uid ||
-        approval.expiresAt?.toMillis() <= Date.now()) {
-      throw new Error("Match approval expired. Please try again.");
-    }
-    const snapshot = await transaction.get(ref);
-    if (!snapshot.exists()) throw new Error("Venue no longer exists.");
-    const venue = snapshot.data();
-
-    const staffRef = doc(
-      db,
-      "leagueVenues",
-      venueId,
-      "staff",
-      user.uid
-    );
-    const staffSnapshot = await transaction.get(staffRef);
-    const staff = staffSnapshot.exists()
-      ? staffSnapshot.data()
-      : null;
-
-    const isActiveFieldOperator =
-      venue.ownerUid === user.uid ||
-      (
-        staff?.status === "active" &&
-        (
-          ["field_manager", "assistant_manager", "field_assistant", "other_staff", "referee"].includes(staff.role)
-        )
-      );
-
-    if (!isActiveFieldOperator) {
-      throw new Error(
-        "Only an approved Field official or referee can start this match."
-      );
-    }
-
-    const season = venue.league?.activeSeason;
-    if (season?.id !== approvalSeasonId) {
-      throw new Error("The season changed. Please reopen the fixture.");
-    }
-    const minimum = Number(season?.minimumClubs) || 3;
-    if ((season?.clubIds || []).length < minimum) {
-      throw new Error(`At least ${minimum} registered Clubs are required before play.`);
-    }
-    const registeredClubs = new Map(
-      (season.clubIds || []).map(clubId => [
-        clubId, season.invitations?.[clubId]?.clubName || clubId,
-      ])
-    );
-    const reconciledFixtures = reconcileFieldSeasonFixtures({
-      season,
-      clubs: registeredClubs,
-      actorUid: user.uid,
-    });
-    const fixture = reconciledFixtures.find((item) =>
-      item.id === fixtureId && item.status === "scheduled");
-    if (!fixture || season.liveMatches?.[fixtureId]) {
-      throw new Error("This fixture is unavailable or already started.");
-    }
-    const matches = Object.values(season.liveMatches || {});
-    const clubs = new Set([fixture.clubAId, fixture.clubBId]);
-    if (matches.some(match => match.status === "live" &&
-        (clubs.has(match.clubAId) || clubs.has(match.clubBId)))) {
-      throw new Error("A club in this fixture is already playing.");
-    }
-    if (!canStartBesideLiveFixtures(season, fixture)) {
-      throw new Error("Finish the live match before starting this fixture.");
-    }
-    const approvedMatches = approval.liveMatchesAtApproval;
-    if (!approvedMatches || Object.keys(approvedMatches).length !== matches.length ||
-        Object.entries(season.liveMatches || {}).some(([id, match]) => {
-          const approved = approvedMatches[id];
-          return !approved || approved.status !== match.status ||
-            approved.startedAt?.toMillis?.() !== match.startedAt?.toMillis?.();
-        })) {
-      throw new Error("The live fixture list changed. Tap Start Match again.");
-    }
-    const matchNo = Math.max(Number(season.currentMatchNo) || currentMatchNo,
-      ...matches.filter(match => match.status === "live")
-        .map(match => (Number(match.matchNo) || Number(season.currentMatchNo) || currentMatchNo) + 1));
-
-    if (season.scheduleVersion === 1) {
-      const day = (season.matchDays || []).find(item =>
-        item.id === fixture.matchDayId);
-      if (!day || day.status !== "scheduled") {
-        throw new Error("This fixture needs an available scheduled match day.");
-      }
-      assertFieldMatchDayProgression({season, matchDayId: day.id});
-      const opensAtMs = Date.parse(`${day.dateLocal}T00:00:00+02:00`);
-      if (!Number.isFinite(opensAtMs)) {
-        throw new Error("This match day has an invalid date.");
-      }
-      if (approval.earlyStartConfirmed !== true && Date.now() < opensAtMs) {
-        throw new Error(`This match day opens on ${day.dateLocal}.`);
-      }
-    }
-
-    if (season.scheduleVersion !== 1 || !fixture.matchDayId) {
-      throw new Error("Publish dated league fixtures before starting this match.");
-    }
-
-    const requiredPlayers = {
-      "5_V_5": 5, "6_V_6": 6, "7_V_7": 7, "11_V_11": 11,
-    }[season.gameFormat];
-    if (!requiredPlayers) {
-      throw new Error("Choose a supported league game format.");
-    }
-
-    const paidSquadsForStart = approval.squads || {};
-    if ([fixture.clubAId, fixture.clubBId].some(clubId =>
-          !approval.startingLineups?.[clubId])) {
-      throw new Error("The approved starting lineup is missing. Try again.");
-    }
-    for (const clubId of [fixture.clubAId, fixture.clubBId]) {
-      const players = paidSquadsForStart[clubId];
-      if (!Array.isArray(players) || players.length < requiredPlayers ||
-          players.some(player => player.clubId !== clubId ||
-            !player.playerId || !player.sourcePlayerId || !player.fullName)) {
-        throw new Error("The approved league lineup is incomplete. Try again.");
-      }
-    }
-
-    const confirmedTeams = teams.filter((team) =>
-      (season.clubIds || []).includes(team?.id)
-    );
-    const selected = buildCurrentMatchFromFixture({
-      teamAId: fixture.clubAId,
-      teamBId: fixture.clubBId,
-    }, confirmedTeams);
-
-    if (!selected?.standbyId) {
-      throw new Error("Three confirmed clubs are required to start a League match.");
-    }
-
-    const match = {
-      fixtureId,
-      gameFormat: approval.gameFormat,
-      liveDocumentId: fixtureId,
-      matchNo,
-      ...(fixture.pitchNumber ? {pitchNumber:fixture.pitchNumber, scheduledLocal:fixture.scheduledLocal} : {}),
-      standbyId: selected.standbyId,
-      clubAId: fixture.clubAId,
-      clubBId: fixture.clubBId,
-      clubAName: fixture.clubAName,
-      clubBName: fixture.clubBName,
-      scoreA: 0,
-      scoreB: 0,
-      status: "live",
-      startedByUid: user.uid,
-      startedAt: serverTimestamp(),
-    };
-    if (reconciledFixtures.length !== (season.fixtures || []).length) {
-      transaction.update(ref, {
-        "league.activeSeason.fixtures": reconciledFixtures,
-      });
-    }
-    transaction.update(
-      ref,
-      new FieldPath("league", "activeSeason", "liveMatches", fixtureId),
-      match,
-      "updatedAt",
-      serverTimestamp()
-    );
-    if (!controller?.deviceId || controller.uid !== user.uid) {
-      throw new Error("The referee device identity is missing.");
-    }
-
-    const scope = {
-      kind: "venueLeague",
-      environment: "official",
-      venueId,
-      seasonId: season.id,
-    };
-    const { data } = buildVenueLiveMatchDocument({
-      scope,
-      match,
-      teams,
-      matchSeconds: Number(season.matchSeconds) || matchSeconds,
-      currentMatchNo: matchNo,
-      startedByUid: user.uid,
-      controller,
-    });
-    transaction.set(getVenueLiveMatchDoc(db, scope, fixtureId), {
-      ...data,
-      startApprovalId: approvalResponse.approvalId,
-      paidSquads: paidSquadsForStart,
-      confirmedLineupSnapshot: approval.startingLineups,
-      running: false,
-      awaitingKitVerification: true,
-      clockVersion: 1,
-      clockPhase: "first_half",
-      halftimeSeconds: Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60,
-      halftimeEndsAtMs: 0,
-      fixtureIndex: reconciledFixtures.findIndex(item => item.id === fixture.id),
-      matchDayIndex: (season.matchDays || []).findIndex(item =>
-        item.id === fixture.matchDayId),
-    });
-    transaction.update(approvalRef, {used: true});
-    recordVenueAction(transaction, {
-      venueId,
-      seasonId: season.id,
-      fixtureId,
-      action: "match_started",
-      label: "Match started",
-      details: `${fixture.clubAName || fixture.clubAId} vs ${fixture.clubBName || fixture.clubBId}; referee UID: ${user.uid}${approval.earlyStartConfirmed ? "; OUTSIDE SCHEDULE: "+approval.earlyStartReason : ""}`,
-    });
-    return match;
+  if (!controller?.deviceId || controller.uid !== user.uid) throw new Error("The referee device identity is missing.");
+  const selectedSeasonId = seasonId || (await startGetDoc(doc(db,"leagueVenues",venueId))).data()?.league?.activeSeason?.id;
+  if (!selectedSeasonId) throw new Error("The active season is missing.");
+  const response = await fetch(`${startFunctionsUrl().replace(/\/$/, "")}/approveFieldMatchStart`, {
+    method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${await user.getIdToken()}`},
+    body:JSON.stringify({venueId,seasonId:selectedSeasonId,fixtureId,startRequested:true,
+      deviceId:controller.deviceId,requestId:crypto.randomUUID(),earlyStartConfirmed:earlyStartConfirmed===true,earlyStartReason}),
+    signal:AbortSignal.timeout(30000),
   });
-}
-
-
-function normalizedEventList(events) {
-  return Array.isArray(events)
-    ? events.filter(
-        (event) =>
-          event &&
-          typeof event === "object"
-      )
-    : [];
+  const result=await response.json();
+  if(!response.ok)throw new Error(result.error||"The server could not start this fixture.");
+  if(!result.match)throw new Error("Update the Staging approveFieldMatchStart function before starting this fixture.");
+  return result.match;
 }
 
 export async function completeVenueFixture({
@@ -1272,7 +1040,7 @@ async function requireVenueStaffPower(transaction, venue, venueId, uid, power) {
   }
 }
 
-export async function archiveVenueMatchDay({ scope = null, venueId, seasonId, matchDayId = "" }) {
+export async function archiveVenueMatchDay({ scope = null, venueId, seasonId, matchDayId = "", allowOutstanding = false }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
 
@@ -1316,7 +1084,7 @@ export async function archiveVenueMatchDay({ scope = null, venueId, seasonId, ma
       ? season.matchDayHistory : [];
     const now = Date.now();
     const day = buildDatedMatchDayArchive({
-      season, matchDayId, actorUid: user.uid, now,
+      season, matchDayId, actorUid: user.uid, now, allowOutstanding: allowOutstanding === true,
     });
     const dayResults = day.results;
 
@@ -1452,7 +1220,7 @@ export async function discardVenueMatchDay({ scope = null, venueId, seasonId }) 
 }
 
 export async function endVenueSeason({
-  scope = null, venueId, seasonId, mode = "complete", cancellationReason = "",
+  scope = null, venueId, seasonId, mode = "complete", cancellationReason = "", prematureConfirmation = "",
 }) {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Sign in as the Field Manager.");
@@ -1527,13 +1295,19 @@ export async function endVenueSeason({
       throw new Error("End Match Day for all completed matches first.");
     }
 
+    const closure = fieldSeasonClosureSummary(season);
+    if (!cancelling && closure.premature && prematureConfirmation !== "premature-ending") {
+      throw new Error("There are outstanding fixtures. Type premature-ending to close this season early.");
+    }
     const now = Date.now();
+    const celebration = !cancelling ? fieldSeasonCelebration({season,venueName:venue.name,endedAtMs:now}) : null;
     const nextId = `season-${now}-${crypto.randomUUID().slice(0, 8)}`;
     const nextSeason = {
       id: nextId,
       name: "Field League Season",
       status: "active",
       previousSeasonId: season.id,
+      ...(celebration ? {previousSeasonCelebration: celebration} : {}),
       createdAtMs: now,
       startsOn: new Date(now).toISOString().slice(0, 10),
       clubIds: [],
@@ -1553,7 +1327,10 @@ export async function endVenueSeason({
       ...season,
       status: cancelling ? "cancelled" : "completed",
       registrationOpen: false,
-      ...(cancelling ? { cancellationReason: reason } : {}),
+      ...(cancelling ? { cancellationReason: reason } : {
+        prematurelyEnded:closure.premature,
+        outstandingFixtureIds:closure.outstanding.map(fixture=>fixture.id),
+      }),
       endedAtMs: now,
       endedByUid: user.uid,
     });

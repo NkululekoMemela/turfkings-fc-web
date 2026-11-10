@@ -1,4 +1,5 @@
 "use strict";
+const {challengeClubPoint, challengeDistanceKm, FANM_CHALLENGE_ORGANISERS} = require("./clubChallengeLocation.mjs");
 
 const {createHash} = require("node:crypto");
 const {checkedPatch, takeoverWindow, takeoverReady} = require("./fieldBoothPolicy.cjs");
@@ -110,6 +111,12 @@ function kitChannels(hex) {
   return {rgb, hue, lightness, saturation};
 }
 
+function declaredKit(value) {
+  const colour = text(value).toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(colour)) throw invalid("Choose your Club’s kit colour.");
+  return colour;
+}
+
 function kitColours(homeColour, awayColour) {
   const colours = [homeColour, awayColour].map((value) => text(value).toLowerCase());
   if (!colours.every((value) => /^#[0-9a-f]{6}$/.test(value))) throw invalid("Choose two kit colours.");
@@ -186,7 +193,7 @@ function isActiveClub(club) {
 
 function requireChallengeSuperAdmin(user) {
   requireVerifiedUser(user);
-  if (normaliseEmail(user.email) !== "nkululekolerato@gmail.com") {
+  if (!FANM_CHALLENGE_ORGANISERS.includes(normaliseEmail(user.email))) {
     throw forbidden("Use your verified platform administrator account.");
   }
 }
@@ -197,7 +204,7 @@ async function listChallengeClubs({db, user}) {
   const clubs = snapshot.docs.flatMap((doc) => {
     const club = doc.data();
     if (!ID_PATTERN.test(doc.id) || !isActiveClub(club) || club.clubType === "company") return [];
-    return [clubDisplay(doc.id, club)];
+    return [{...clubDisplay(doc.id, club), coordinates: challengeClubPoint(club)}];
   });
   return {clubs: clubs.sort((a, b) => a.name.localeCompare(b.name))};
 }
@@ -217,7 +224,7 @@ async function sendClubChallenge({db, user, data, now = Date.now()}, instigated 
     throw invalid("The FANM 11-a-side package is R2,200 per Club.");
   }
   if (instigated && terms.clubTotalCents <= 0) throw invalid("Enter a FANM package quote per Club.");
-  const colours = kitColours(data.homeColour, data.awayColour);
+  const colours = {homeColour: instigated ? null : declaredKit(data.homeColour), awayColour: null};
   const pair = [homeId, awayId].sort();
   const fixtureId = createHash("sha256").update(JSON.stringify([...pair, terms.kickoffMs])).digest("hex");
   const ref = db.doc(`${COLLECTION}/${fixtureId}`);
@@ -227,6 +234,10 @@ async function sendClubChallenge({db, user, data, now = Date.now()}, instigated 
     const away = await getClub(tx, db, awayId);
     if (instigated && [home, away].some((club) => club.clubType === "company")) {
       throw invalid("Choose two community Clubs for a FANM Challenge.");
+    }
+    const distanceKm = challengeDistanceKm(home, away);
+    if (distanceKm > 20 && data.distanceAcknowledged !== true) {
+      throw new ChallengeError("failed-precondition", `These Clubs are ${Math.round(distanceKm)} km apart. Confirm that you have the right Clubs before sending.`);
     }
     const existing = (await tx.get(ref)).data();
     if (existing) {
@@ -238,7 +249,7 @@ async function sendClubChallenge({db, user, data, now = Date.now()}, instigated 
     }
     tx.create(ref, {
       ...terms, ...colours, ...(hostedPackage ? {hostedPackage} : {}), fixtureId, source: "club_challenge", revision: 1,
-      status: "pending", instigated, acceptances: {home: !instigated, away: false}, home: clubDisplay(homeId, home), away: clubDisplay(awayId, away),
+      status: "pending", instigated, kitDeclarations: true, acceptances: {home: !instigated, away: false}, home: clubDisplay(homeId, home), away: clubDisplay(awayId, away),
       participatingClubIds: pair, createdAtMs: now, updatedAtMs: now,
     });
     return {fixtureId, status: "pending"};
@@ -269,16 +280,26 @@ async function respondToClubChallenge({db, user, data, now = Date.now()}) {
       throw new ChallengeError("failed-precondition", "This challenge can no longer be accepted or declined.");
     }
     if (data.revision !== (match.revision || 0)) throw new ChallengeError("failed-precondition", "The fixture terms have changed. Review them again.");
-    if (acceptances[side] && decision === "declined") throw forbidden("Use Withdraw challenge to pull out.");
+    if (acceptances[side]) {
+      if (decision === "declined") throw forbidden("Use Withdraw challenge to pull out.");
+      return {fixtureId, status: match.status, acceptances};
+    }
     let status = decision;
     const extra = {};
     if (decision === "accepted") {
-      kitColours(match.homeColour, match.awayColour);
+      const ownKey = `${side}Colour`;
+      const opponentKey = side === "home" ? "awayColour" : "homeColour";
+      // Kit agreement belongs to Squads; accepting an invitation never assigns the opponent’s kit.
+      if (data.colour) {
+        const colour = declaredKit(data.colour);
+        if (match[opponentKey]) kitColours(colour, match[opponentKey]);
+        extra[ownKey] = colour;
+      }
       extra.acceptances = {...acceptances, [side]: true};
       status = extra.acceptances.home && extra.acceptances.away ? "accepted" : "pending";
     }
     tx.update(ref, {...extra, status, ...(status === "accepted" ? {acceptedAtMs: now} : {}), respondedAtMs: now, updatedAtMs: now});
-    return {fixtureId, status, ...extra};
+    return {fixtureId, status, ...(extra.acceptances ? {acceptances: extra.acceptances} : {})};
   });
 }
 
@@ -332,12 +353,16 @@ async function reviseClubChallenge({db, user, data, now = Date.now()}) {
     if (match.status !== "pending" || data.revision !== (match.revision || 0)) {
       throw new ChallengeError("failed-precondition", "The proposal has changed. Review the latest terms.");
     }
-    const colours = kitColours(data.homeColour, data.awayColour);
     const terms = fixtureTerms({...match, venue: data.venue, proposedDate: data.proposedDate,
       proposedKickoff: data.proposedKickoff, message: data.message}, now);
     const side = match.home.id === id ? "home" : "away";
+    const ownKey = `${side}Colour`;
+    const opponentKey = side === "home" ? "awayColour" : "homeColour";
+    const ownColour = data.colour ?? data[ownKey] ?? match[ownKey];
+    const colour = ownColour ? declaredKit(ownColour) : null;
+    if (colour && match[opponentKey]) kitColours(colour, match[opponentKey]);
     const revision = (match.revision || 0) + 1;
-    tx.update(ref, {...terms, ...colours, acceptances: {home: side === "home", away: side === "away"},
+    tx.update(ref, {...terms, [ownKey]: colour, acceptances: {home: side === "home", away: side === "away"},
       revision, revisedBy: id, updatedAtMs: now});
     return {fixtureId, status: "pending", revision};
   });

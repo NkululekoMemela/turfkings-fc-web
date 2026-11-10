@@ -111,6 +111,21 @@ export function resolveGameFormat(...candidates) {
   return GAME_FORMAT.FIVE_V_FIVE;
 }
 
+// A regular Club mode must not inherit the format of a different match type.
+export function regularClubGameFormat(state, mode) {
+  const currentMode = normalizeMatchMode(state?.matchType || state?.cameraGameFormat);
+  const requested = normalizeMatchMode(mode || currentMode);
+  return resolveGameFormat(state?.gameFormatsByMode?.[requested],
+    ...(requested === currentMode ? [state?.gameFormat, state?.cameraGameFormat] : []));
+}
+
+export function clubGameFormatsAfterModeSwitch(state, mode) {
+  const current = normalizeMatchMode(state?.matchType || state?.cameraGameFormat);
+  return {...state?.gameFormatsByMode,
+    [current]: regularClubGameFormat(state, current),
+    [mode]: regularClubGameFormat(state, mode)};
+}
+
 export function getGameFormatConfig(rawFormat) {
   const gameFormat = normalizeGameFormat(rawFormat);
   return GAME_FORMAT_CONFIG[gameFormat] || GAME_FORMAT_CONFIG[GAME_FORMAT.FIVE_V_FIVE];

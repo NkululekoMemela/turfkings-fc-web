@@ -62,3 +62,27 @@ test("incomplete day fixture references block closure", () => {
   value.matchDays[0].fixtureIds = ["one"];
   assert.throws(() => archive(value), /incomplete/);
 });
+
+test("an official can close a day with an unplayed fixture without inventing a result", () => {
+  const value = season();
+  value.fixtures[1].status = "scheduled";
+  value.results = value.results.filter(result => result.fixtureId !== "two");
+  assert.throws(() => archive(value), /Finish every/);
+  const day = buildDatedMatchDayArchive({season:value,matchDayId:"day-one",actorUid:"manager",now:1000,allowOutstanding:true});
+  assert.deepEqual(day.results.map(result => result.fixtureId), ["one"]);
+  assert.deepEqual(day.outstandingFixtureIds, ["two"]);
+  assert.deepEqual(day.allEvents.map(event => event.matchNo), [1]);
+  value.liveMatches.two = {status:"live"};
+  assert.throws(() => buildDatedMatchDayArchive({season:value,matchDayId:"day-one",actorUid:"manager",allowOutstanding:true}), /Finish every/);
+});
+
+
+test("landing details require a published fixture and use the scheduled local date", async () => {
+  const {fieldFixturePreview} = await import("../src/core/fieldUpcomingMatch.js");
+  const fixture = {clubAId:"a",clubBId:"b",scheduledLocal:"2026-11-13T19:00"};
+  const active = {status:"active",schedulePublishedAtMs:1};
+  assert.equal(fieldFixturePreview({season:{status:"active"},fixture,today:"2026-11-13"}), null);
+  assert.equal(fieldFixturePreview({season:active,fixture:null,today:"2026-11-13"}), null);
+  assert.deepEqual(fieldFixturePreview({season:active,fixture,today:"2026-11-12"}), {date:"2026-11-13",time:"19:00",isMatchDay:false});
+  assert.equal(fieldFixturePreview({season:active,fixture,today:"2026-11-13"}).isMatchDay,true);
+});

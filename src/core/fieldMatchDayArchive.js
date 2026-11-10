@@ -1,1 +1,1 @@
-export { buildDatedMatchDayArchive } from "../../functions/fieldMatchDayArchive.mjs";
+export { buildDatedMatchDayArchive, fieldMatchDayClosureSummary } from "../../functions/fieldMatchDayArchive.mjs";
