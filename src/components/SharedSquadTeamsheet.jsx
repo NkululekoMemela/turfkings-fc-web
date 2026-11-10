@@ -1,4 +1,5 @@
 import React from "react";
+import {fieldTeamsheetColour} from "../core/fieldTeamsheetColour.mjs";
 export default function SharedSquadTeamsheet({
   matchTeams,
   isClubChallengeTeamsheet,
@@ -18,6 +19,7 @@ export default function SharedSquadTeamsheet({
   headerActions = null,
   downloadSibling = null,
   exportBusy = false,
+  challengeBrandLogo,
 }) {
     return (
       <div className="teamsheet-export-wrap">
@@ -49,7 +51,8 @@ export default function SharedSquadTeamsheet({
           <div className="teamsheet-card-head">
             <div className="teamsheet-card-club">
               <img
-                src={(isClubChallengeTeamsheet && !fieldTeamsheet) ? "/pwa/icon-192.png" : activeClubLogo || TURF_KINGS_LOGO_URL}
+                src={(isClubChallengeTeamsheet && !fieldTeamsheet) ? (challengeBrandLogo || "/pwa/icon-192.png") : activeClubLogo || TURF_KINGS_LOGO_URL}
+                className={challengeBrandLogo ? "exhibition-brand-round" : undefined}
                 alt=""
                 onError={(event) => {
                   event.currentTarget.style.display = "none";
@@ -74,6 +77,7 @@ export default function SharedSquadTeamsheet({
               const theme = getTeamTheme(team);
               const players = Array.isArray(team.players) ? team.players : [];
               const challengeLogo = getChallengeTeamLogo(team, index);
+              const fieldColour = fieldTeamsheet ? fieldTeamsheetColour(team) : "";
 
               return (
                 <div
@@ -106,7 +110,9 @@ export default function SharedSquadTeamsheet({
                             ) : null}
                           </span>
                         </h4>
-                        {!fieldTeamsheet && (
+                        {fieldTeamsheet ? (
+                          <p>{fieldColour ? <>Wear <strong>{fieldColour}</strong></> : "Kit colour pending"}</p>
+                        ) : (
                           <p>
                             Wear: <strong>{team.teamColorName || theme.colorName || "Team colour"}</strong>
                           </p>

@@ -4,7 +4,7 @@ const {getApps, getApp, initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 const {randomBytes, createHash} = require('node:crypto');
 const {fieldMatchDocumentId} = require('./fieldMatchDocuments.cjs');
-const {isOperator, holdsBooth, validGrant, checkedPatch, transfer} = require('./fieldBoothPolicy.cjs');
+const {isOperator, holdsBooth, validGrant, checkedPatch, transfer, takeoverWindow, takeoverReady} = require('./fieldBoothPolicy.cjs');
 const valid = s => typeof s === 'string' && /^[A-Za-z0-9_-]{1,150}$/.test(s);
 const hash = value => createHash('sha256').update(value).digest('hex');
 function denied(message) { const error = Error(message); error.status = 403; return error; }
@@ -114,7 +114,7 @@ async function operate({db, user, body, now = Date.now()}) {
       if (request?.status === 'pending' && request.requester?.deviceId !== deviceId &&
           Date.parse(request.expiresAtISO) + 60000 > now) throw denied('Another official is already requesting this match.');
       const next = {status: 'pending', requester: profile, currentController: live.liveMatchController || null,
-        requestedAtISO: new Date(now).toISOString(), expiresAtISO: new Date(now + 15000).toISOString()};
+        ...takeoverWindow(now)};
       write({liveMatchTakeoverRequest: next});
       log('referee_recovery_requested', `${profile.name} requested control of ${live.teamALabel || 'the home club'} vs ${live.teamBLabel || 'the away club'}.`);
       return {requested: true, takeoverRequest: next};
@@ -129,8 +129,7 @@ async function operate({db, user, body, now = Date.now()}) {
       if (request?.status !== 'pending') throw denied('Request recovery again.');
       const target = request.requester;
       if (op === 'acceptTakeover' ? !controls : !operator || target?.uid !== user.uid ||
-          target?.deviceId !== deviceId || !Number.isFinite(Date.parse(request.expiresAtISO)) ||
-          now < Date.parse(request.expiresAtISO)) throw denied('The recovery request is not ready.');
+          target?.deviceId !== deviceId || !takeoverReady(request, now)) throw denied('The recovery request is not ready.');
       const targetStaff = await tx.get(venueRef.collection('staff').doc(target.uid));
       if (!isOperator(venue, targetStaff.data(), target.uid)) throw denied('The replacement is no longer a Field official.');
       const next = transfer(live, target, now);

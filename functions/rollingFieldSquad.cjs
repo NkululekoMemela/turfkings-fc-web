@@ -1,9 +1,9 @@
 const array=value=>Array.isArray(value)?value:[];
-function carriedMemberIds({season,squad,day,clubId,candidates}) {
+function carriedMemberIds({season,squad,day,clubId,candidates,minimum=5,maximum=6}) {
  const resolve=ids=>{
-  if(ids.length<5||ids.length>6)return null;
+  if(ids.length<minimum||ids.length>maximum)return null;
   const mapped=ids.map(id=>candidates.find(p=>p.memberId===id)||candidates.find(p=>p.originalMemberId===id)).filter(Boolean);
-  return mapped.length>=5&&mapped.length<=6&&mapped.every(Boolean)&&new Set(mapped.map(p=>p.memberId)).size===mapped.length?mapped.map(p=>p.memberId):null;
+  return mapped.length>=minimum&&mapped.length<=maximum&&mapped.every(Boolean)&&new Set(mapped.map(p=>p.memberId)).size===mapped.length?mapped.map(p=>p.memberId):null;
  };
  const previous=array(season.matchDays).filter(d=>d.dateLocal<day.dateLocal).sort((a,b)=>b.dateLocal.localeCompare(a.dateLocal));
  const results=[...array(season.results),...array(season.matchDayHistory).flatMap(d=>array(d.results))];
@@ -15,7 +15,7 @@ function carriedMemberIds({season,squad,day,clubId,candidates}) {
   const selected=kit.map(row=>candidates.find(p=>[p.sourcePlayerId,`${clubId}::${p.sourcePlayerId}`].includes(row.key))?.memberId).filter(Boolean);
   const played=resolve(selected);if(played)return played;
  }
- return candidates.length<=6?candidates.map(p=>p.memberId):[];
+ return candidates.length<=maximum?candidates.map(p=>p.memberId):[];
 }
 function liveDayRoster({live,season,matchDayId,clubId}) {
  const fixture=array(season.fixtures).find(f=>f.id===live?.fixtureId&&f.matchDayId===matchDayId);

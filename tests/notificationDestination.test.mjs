@@ -19,3 +19,8 @@ test('ticket focus only selects a matching credit from the current player wallet
  assert.equal(selectNotificationCredit(credits,{creditId:'someone-elses-ticket',matchDayId:'week'}),null);
  assert.equal(selectNotificationCredit([], {creditId:'two'}),null);
 });
+test('exhibition notices keep the exact Club and fixture for Signup',()=>{
+ const fixtureId='b'.repeat(64);
+ assert.deepEqual(notificationDestination({type:'club_exhibition_accepted',clubId:'club',fixtureId}),{kind:'exhibition',clubId:'club',fixtureId});
+ assert.equal(notificationDestination({type:'club_exhibition_cancelled',clubId:'club',fixtureId:'not-a-fixture'}),null);
+});

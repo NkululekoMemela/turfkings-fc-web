@@ -60,3 +60,41 @@ test("match progress pauses at half-time and includes added playing time", () =>
   assert.equal(fieldMatchProgress({matchSeconds: 1200, secondsLeft: 0, additionalSeconds: 120, additionalSecondsLeft: 60}), 95.45454545454545);
   assert.equal(fieldMatchProgress({matchSeconds: 1200, secondsLeft: 0, additionalSeconds: 120}), 100);
 });
+
+test("Practice runs normally then skips one minute every ten ticks, in each half only", async () => {
+  const {tickPracticeFieldMatchClock, startFieldSecondHalf} = await import("../src/core/fieldMatchClock.js");
+  let state = {environment:"practice", status:"live", running:true, clockVersion:1,
+    clockPhase:"first_half", secondsLeft:2400, matchSeconds:2400, halftimeSeconds:20};
+  const ticks = n => {for (let i=0;i<n;i++) state = tickPracticeFieldMatchClock(state, 1000+i);};
+  ticks(29);
+  assert.equal(state.secondsLeft,2371);
+  ticks(1);
+  assert.equal(state.secondsLeft,2310);
+  ticks(9);
+  assert.equal(state.secondsLeft,2301);
+  ticks(1);
+  assert.equal(state.secondsLeft,2240);
+  ticks(160);
+  assert.equal(state.clockPhase,"halftime");
+  assert.equal(state.secondsLeft,1200);
+  state = {...state,...startFieldSecondHalf(state),practiceHalfTicks:0};
+  ticks(29);
+  assert.equal(state.secondsLeft,1171);
+  ticks(1);
+  assert.equal(state.secondsLeft,1110);
+  ticks(170);
+  assert.equal(state.clockPhase,"full_time");
+  assert.equal(state.running,false);
+  const official = {...state,environment:"official",clockPhase:"first_half",running:true,timeUp:false};
+  assert.equal(tickPracticeFieldMatchClock(official),official);
+});
+
+test("a delayed Practice snapshot cannot roll back a running half", async () => {
+  const {mergePracticeFieldClock} = await import("../src/core/fieldMatchClock.js");
+  const incoming={environment:"practice",practiceSessionId:"s",fixtureId:"f",running:true,
+    clockPhase:"first_half",secondsLeft:2400,clockObservedAtMs:1000};
+  const local={...incoming,secondsLeft:2310,practiceHalfTicks:30,clockObservedAtMs:31000};
+  assert.equal(mergePracticeFieldClock(local,incoming).secondsLeft,2310);
+  const halftime={...incoming,running:false,clockPhase:"halftime",secondsLeft:1200};
+  assert.equal(mergePracticeFieldClock(local,halftime),halftime);
+});

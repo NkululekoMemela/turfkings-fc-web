@@ -1,5 +1,3 @@
-const {loadSeasonStartSquad} = require("./fieldSeasonStartSquad.js");
-
 async function loadFieldMatchRoster({
   transaction, db, venueId, season, fixture, requireMinimum = true,
 }) {
@@ -18,70 +16,25 @@ async function loadFieldMatchRoster({
       throw new Error("Both Clubs must be registered for this season.");
     }
     const scope = {venueId, seasonId: season.id, clubId};
-    let seasonSquad;
-    if (season.gameFormat === "5_V_5") {
-      const {loadDay} = require("./fieldMatchDaySquad");
-      const data = await loadDay({
-        tx: transaction, db, scope, matchDayId: fixture.matchDayId,
-      });
-      if (requireMinimum && !data.submission.ready) {
-        if(data.submission.players.length>=5)throw new Error("Confirm enough Field bibs in two colours before starting.");
-        throw new Error(`${data.club?.name||"This club"} needs at least five available players.`);
+    const {loadDay} = require("./fieldMatchDaySquad");
+    const data = await loadDay({
+      tx: transaction, db, scope, matchDayId: fixture.matchDayId,
+    });
+    if (requireMinimum && !data.submission.ready) {
+      if (data.submission.players.length >= minimum) {
+        throw new Error("Confirm enough Field bibs in two colours before starting.");
       }
-      squadFingerprints[clubId] = data.submission.fingerprint;
-      seasonSquad = {
-        eligible: data.submission.players,
-        updatedAt: data.squad?.updatedAt,
-      };
-    } else {
-      seasonSquad = await loadSeasonStartSquad({transaction, db, scope});
+      throw new Error(`${data.club?.name || "This club"} needs at least ${minimum} available players.`);
     }
-    let eligible = [];
-    if (seasonSquad) {
-      eligible = seasonSquad.eligible.map(player => ({
-        ...player, playerId: `${clubId}::${player.sourcePlayerId}`,
-      }));
-      squadVersions[clubId] = seasonSquad.updatedAt;
-    } else {
-      const bookingScope = {...scope, matchDayId: fixture.matchDayId};
-      const id = [venueId, season.id, fixture.matchDayId, clubId].join("~");
-      const snapshot = await transaction.get(db.doc(`leagueClubBookings/${id}`));
-      const booking = snapshot.data();
-      if (!booking ||
-          Object.keys(bookingScope).some(key => booking[key] !== bookingScope[key]) ||
-          !booking.updatedAt) {
-        if (requireMinimum) {
-          throw new Error("Create and confirm each Club's season squad first.");
-        }
-        squads[clubId] = [];
-        return;
-      }
-      const entries = Object.values(booking.entries || {});
-      if (entries.length > 30) throw new Error("Invalid squad capacity.");
-      const seen = new Set();
-      for (const entry of entries) {
-        if (entry?.paymentStatus !== "paid" ||
-            typeof entry.sourcePlayerId !== "string" ||
-            !entry.sourcePlayerId || entry.sourcePlayerId.includes("/") ||
-            !entry.playerId || !entry.fullName ||
-            seen.has(entry.sourcePlayerId)) continue;
-        seen.add(entry.sourcePlayerId);
-        const profile = await transaction.get(
-          db.doc(`clubs/${clubId}/players/${entry.sourcePlayerId}`)
-        );
-        if (profile.exists &&
-            String(profile.data().status || "active").toLowerCase() === "active") {
-          eligible.push({
-            playerId: entry.playerId, sourcePlayerId: entry.sourcePlayerId,
-            fullName: entry.fullName, clubId,
-            jerseyNumber: profile.data().jerseyNumber ?? null,
-            ownsNumberedBib: profile.data().ownsNumberedBib === true,
-            bibColor: profile.data().bibColor || "",
-          });
-        }
-      }
-      bookingVersions[clubId] = booking.updatedAt;
-    }
+    squadFingerprints[clubId] = data.submission.fingerprint;
+    const seasonSquad = {
+      eligible: data.submission.players,
+      updatedAt: data.squad?.updatedAt,
+    };
+    const eligible = seasonSquad.eligible.map(player => ({
+      ...player, playerId: `${clubId}::${player.sourcePlayerId}`,
+    }));
+    squadVersions[clubId] = seasonSquad.updatedAt;
     if (requireMinimum && eligible.length < minimum) {
       throw new Error(
         `${clubId} needs ${minimum} active paid players; ${eligible.length} are eligible.`

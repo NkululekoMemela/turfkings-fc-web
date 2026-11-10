@@ -1,3 +1,4 @@
+import {fieldFormat} from "../../functions/fieldBoothShared/fieldFormat.mjs";
 import {doc, getDoc, runTransaction} from "firebase/firestore";
 import {auth, db} from "../firebaseConfig.js";
 import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
@@ -64,9 +65,7 @@ export async function startPracticeFixture({scope, fixtureId = "", teams, contro
     if (liveSnap.data()?.status === "live") {
       throw new Error("Finish the current Practice match first.");
     }
-    if (season.gameFormat !== "5_V_5") {
-      throw new Error("This Practice kickoff adapter currently supports five-a-side.");
-    }
+    const {minimum, maximum} = fieldFormat(season.gameFormat);
     const fixture = fixtureId
       ? season.fixtures?.find(item => item.id === fixtureId)
       : season.fixtures?.find(item => item.status === "scheduled");
@@ -92,6 +91,9 @@ export async function startPracticeFixture({scope, fixtureId = "", teams, contro
           manifest.matchDayId !== fixture.matchDayId) {
         throw new Error(`${clubId}: a confirmed sandbox squad is required.`);
       }
+      if (!Array.isArray(manifest.players) || manifest.players.length < minimum || manifest.players.length > maximum) {
+        throw Error(`This fixture needs ${minimum} starters per Club.`);
+      }
       squads[clubId] = manifest.players;
       squadFingerprints[clubId] = manifest.fingerprint;
     }
@@ -107,7 +109,7 @@ export async function startPracticeFixture({scope, fixtureId = "", teams, contro
     }
     const matchNo = Number(season.currentMatchNo) || 1;
     const match = {
-      ...fixture, fixtureId: fixture.id, standbyId,
+      ...fixture, fixtureId: fixture.id, standbyId, gameFormat: season.gameFormat,
       status: "live", startedByUid: auth.currentUser.uid,
       startedAtMs: Date.now(),
     };
@@ -124,8 +126,8 @@ export async function startPracticeFixture({scope, fixtureId = "", teams, contro
       confirmedLineupSnapshot: startingLineups,
       running: false,
       awaitingKitVerification: true,
-      clockVersion: 1, clockPhase: "first_half",
-      halftimeSeconds: Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60,
+      clockVersion: 1, clockPhase: "first_half", practiceHalfTicks: 0,
+      halftimeSeconds: Math.min(20, Number(season.scheduleSettings?.halftimeMinutes ?? 5) * 60),
       halftimeEndsAtMs: 0,
     });
     tx.update(rootRef, {

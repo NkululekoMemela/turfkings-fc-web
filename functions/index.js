@@ -5992,3 +5992,9 @@ exports.onClubPlayerDebut = onDocumentWritten({document:"clubs/{clubId}/state/ma
 exports.onFieldPlayerDebut = onDocumentWritten({document:"leagueVenues/{venueId}",region:REGION,retry:true},event=>event.data?.after.exists ? require("./playerDebutProjection.cjs").syncField(db,event.data.before.data()||{},event.data.after.data()) : null);
 exports.onArchivedFieldPlayerDebut = onDocumentWritten({document:"leagueVenues/{venueId}/seasons/{seasonId}",region:REGION,retry:true},event=>event.data?.after.exists ? require("./playerDebutProjection.cjs").syncField(db,event.data.before.data()||{},event.data.after.data()) : null);
 exports.preparePlayerDebuts = onSchedule({region:REGION,schedule:"every 5 minutes",timeoutSeconds:540},()=>require("./playerDebutProjection.cjs").backfill(db));
+
+exports.clubChallengeMatch = require("./clubChallengeHttp.cjs").clubChallengeMatch;
+
+const clubChallengeLifecycle = require("./clubChallengeLifecycle.cjs");
+exports.expireClubChallengeCancellations = clubChallengeLifecycle.expireClubChallengeCancellations;
+exports.notifyClubChallengeLifecycle = clubChallengeLifecycle.notifyClubChallengeLifecycle;

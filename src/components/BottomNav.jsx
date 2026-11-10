@@ -1,3 +1,4 @@
+import ClubNavPeek from "./ClubNavPeek.jsx";
 import ClubBaselinePeek, {useClubBaselineDue} from "./ClubBaselinePeek.jsx";
 import ClubTicketPeek from "./ClubTicketPeek.jsx";
 // src/components/BottomNav.jsx
@@ -23,6 +24,8 @@ const items = [
 
 export default function BottomNav({
   currentPage,
+  exhibitionSignupHint = "",
+  exhibitionSquadsHint = "",
   ticketClubId="", ticketMemberId="", ticketEnabled=false,
   baselineReminder,
   onNavigate,
@@ -39,6 +42,7 @@ export default function BottomNav({
   const [isHidden, setIsHidden] = useState(false);
   const navScroller = useRef(null);
   const payButtonRef=useRef(null);
+  const squadsButtonRef=useRef(null);
   const rateButtonRef = useRef(null);
   const due = useClubBaselineDue({clubId: ticketClubId, ...baselineReminder});
   useEffect(() => {
@@ -117,7 +121,7 @@ export default function BottomNav({
 
               return (
                 <button
-                  ref={item.key==="match-signup"?payButtonRef:item.key==="peer-review"?rateButtonRef:undefined}
+                  ref={item.key==="match-signup"?payButtonRef:item.key==="peer-review"?rateButtonRef:item.key==="squads"?squadsButtonRef:undefined}
                   aria-label={item.key === "peer-review" && due ? `Rate ${due} ${due === 1 ? "player" : "players"} after debut` : undefined}
                   key={item.key}
                   type="button"
@@ -154,6 +158,12 @@ export default function BottomNav({
           </div>
         </div>
       </nav>
+      <ClubNavPeek buttonRef={payButtonRef} kind="exhibition" enabled={Boolean(exhibitionSignupHint && canAccessPayments && !isHidden && !hidden && !locked && currentPage !== "match-signup")}>
+        {exhibitionSignupHint}
+      </ClubNavPeek>
+      <ClubNavPeek buttonRef={squadsButtonRef} kind="exhibition" enabled={Boolean(exhibitionSquadsHint && !isHidden && !hidden && !locked && currentPage !== "squads")}>
+        {exhibitionSquadsHint}
+      </ClubNavPeek>
       <ClubBaselinePeek buttonRef={rateButtonRef} count={due} enabled={!isHidden && !hidden && !locked && canAccessPeerReview && currentPage !== "peer-review"} />
       <ClubTicketPeek buttonRef={payButtonRef} clubId={ticketClubId} memberId={ticketMemberId} enabled={ticketEnabled&&canAccessPayments&&!locked} navHidden={isHidden||hidden}/>
 

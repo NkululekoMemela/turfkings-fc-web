@@ -263,3 +263,24 @@
 .kit-purchase-backdrop .kit-purchase-dialog .secondary-btn{background:#e9f0eb;color:#214634;border-color:#c0d0c6;box-shadow:none}
 .kit-purchase-backdrop .kit-purchase-dialog .primary-btn{background:#147d48;color:white}
 .kit-purchase-dialog .actions-row{display:flex;gap:10px}.kit-purchase-dialog .actions-row button{flex:1;min-height:44px}
+
+.profile-attendance-summary { margin-top: 1rem; }
+.profile-attendance-summary header { display: flex; align-items: center; flex-wrap: wrap; gap: .7rem; }
+.profile-attendance-summary h2 { flex: 1; margin: 0; font-size: 1.1rem; }
+.profile-attendance-avatar {
+  display: grid; place-items: center; width: 2.5rem; height: 2.5rem; overflow: hidden;
+  border: 1px solid #9de6d177; border-radius: 50%; background: #17384a;
+}
+.profile-attendance-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-attendance-badge {
+  display: grid; gap: .18rem; padding: .38rem .65rem; border: 1px solid #9de6d166;
+  border-radius: .7rem; background: #173b3a; color: #e2fff6; text-align: right;
+}
+.profile-attendance-badge span { font-size: .65rem; }
+.profile-attendance-summary dl { margin: .6rem 0 0; }
+.profile-attendance-summary dl > div {
+  display: flex; justify-content: space-between; gap: .85rem; padding: .6rem 0;
+  border-bottom: 1px solid #95afc425;
+}
+.profile-attendance-summary dl > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.profile-attendance-summary dd { margin: 0; font-weight: 700; text-align: right; }

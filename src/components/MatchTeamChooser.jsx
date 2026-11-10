@@ -37,7 +37,7 @@ function TeamBadge({ team }) {
 }
 
 export default function MatchTeamChooser({
-  label, value, teams = [], renderLabel, onChange, disabled, side,
+  label, value, teams = [], renderLabel, onChange, disabled, side, roundCrest = false,
 }) {
   const selected = teams.find(team => String(team.id) === String(value));
   const nameOf = team => renderLabel
@@ -55,7 +55,7 @@ export default function MatchTeamChooser({
     </>
   );
   return (
-    <div className={`match-team-chooser match-team-chooser--${side}`}>
+    <div className={`match-team-chooser match-team-chooser--${side}${roundCrest ? " match-team-chooser--round" : ""}`}>
       {disabled ? (
         <div className="match-team-chooser__card">{identity}</div>
       ) : (

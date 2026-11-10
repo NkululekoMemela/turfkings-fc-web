@@ -1,3 +1,6 @@
+import ClubAdminNoticeHeader from "../components/ClubAdminNoticeHeader.jsx";
+import ClubChallengeInbox from "../components/ClubChallengeInbox.jsx";
+import {clubChallengesEnabled} from "../storage/clubChallengeGateway.js";
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import EntryManagementButton from "../components/EntryManagementButton.jsx";
 import PlayerNameSelectionButton from "../components/PlayerNameSelectionButton.jsx";
@@ -461,6 +464,7 @@ export function EntryPage({
   identity,
   selectedClub,
   entryPageIntent = null,
+  isPracticeMode = false,
   onComplete,
   onDevSkipToLanding,
   onGoHome,
@@ -4695,6 +4699,8 @@ export function EntryPage({
   return (
     <div className="page entry-page">
       <ClubFieldSeasonInvitation clubId={activeClubId} />
+      {clubChallengesEnabled && !isPracticeMode && currentUser?.emailVerified &&
+        <ClubChallengeInbox key={`${activeClubId}:${currentUser.uid}`} clubId={activeClubId} userId={currentUser.uid} promptOnly />}
       {showMemberLoadingWelcome && !showSigninLoading && (
         <div
           className="entry-member-loading-backdrop"
@@ -6365,20 +6371,8 @@ onClick={() => {
             </button>
           ) : activeAdminNotice ? (
             <div className="tk-admin-notification-card" role="status">
-              <div className="tk-admin-notification-topline">
-                <div className="tk-admin-notification-icon" aria-hidden="true">
-                  <span>{activeAdminNotice.icon || "🔔"}</span>
-                </div>
-
-                <div className="tk-admin-notification-title-wrap">
-                  <div className="tk-admin-notification-title">{activeAdminNotice.title}</div>
-                  <div className="tk-admin-notification-tag">{activeAdminNotice.tag}</div>
-                </div>
-
-                <div className="tk-admin-notification-count-pill">
-                  {Math.min(activeAdminNoticeIndex + 1, notificationCount)} of {notificationCount}
-                </div>
-              </div>
+              <ClubAdminNoticeHeader icon={activeAdminNotice.icon || "🔔"} title={activeAdminNotice.title}
+                tag={activeAdminNotice.tag} count={`${Math.min(activeAdminNoticeIndex + 1, notificationCount)} of ${notificationCount}`} />
 
               <div className="tk-admin-notification-body">
                 <p className="tk-admin-notification-message">

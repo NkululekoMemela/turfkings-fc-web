@@ -7,6 +7,8 @@ const requireFunctions = createRequire(
 const {announce, validateSession} =
   requireFunctions("./fieldPracticeInvitations");
 
+const fivePlayers = Array.from({length:5}, (_,i)=>({memberId:`test-${i}`}));
+
 const session = {
   kind: "venueLeague", environment: "practice",
   venueId: "field", sessionId: "session", userId: "owner",
@@ -47,7 +49,7 @@ test("Invitations accept sandbox Clubs without recording payment or Official wri
       entryFee: 100, prizes: {first: 200}},
     now: 1000,
     loadCopies: async () => [{
-      clubId: "club", name: "Club", players: [],
+      clubId: "club", name: "Club", players: fivePlayers,
       environment: "practice", simulated: true,
     }],
   });
@@ -83,7 +85,7 @@ function invitationWorkspace(workspace) {
       settings: {name: "Next Practice League", startsOn: "2026-10-07"},
       now: 1000,
       loadCopies: async () => [{
-        clubId: "club", name: "Club", players: [],
+        clubId: "club", name: "Club", players: fivePlayers,
         environment: "practice", simulated: true,
       }],
     }),
@@ -158,10 +160,15 @@ test("Practice can invite fictional Clubs without reading any real Club or playe
     }),
   };
   await announce({db, user:{uid:"owner"}, venueId:"field", sessionId:"session",
-    now:1000, settings:{name:"First run", startsOn:"2026-11-07", minimumClubs:4}});
+    now:1000, settings:{name:"First run", startsOn:"2026-11-07", minimumClubs:4,
+      gameFormat:"11_V_11", fixtureLegs:1, singleLegConfirmed:true}});
   const clubs = writes.filter(row => row.path.startsWith(`${root}/clubs/`));
   assert.equal(clubs.length, 4);
-  assert.ok(clubs.every(({data}) => data.simulated && data.players.length === 6 &&
+  assert.ok(clubs.every(({data}) => data.simulated && data.players.length === 12 && /^Test Club \d$/.test(data.name) &&
+    data.logoUrl.startsWith("data:image/svg+xml;base64,") &&
     data.players.every(player => player.simulated && player.memberId.startsWith("sandbox-"))));
+  const season = writes[0].data["league.activeSeason"];
+  assert.equal(season.gameFormat, "11_V_11");
+  assert.equal(season.scheduleSettings.legs, 1);
   assert.ok(writes.every(row => row.path.startsWith(root)));
 });

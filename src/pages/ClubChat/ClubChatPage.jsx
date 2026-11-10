@@ -6,6 +6,7 @@ export function ClubChatPage({
   onBack,
   activeClubId,
   activeClubName,
+  exhibitionRoom,
   currentUser,
   selectedMember,
   identity,
@@ -23,6 +24,7 @@ export function ClubChatPage({
       <ClubChatWidget
         activeClubId={activeClubId}
         activeClubName={activeClubName}
+        exhibitionRoom={exhibitionRoom}
         currentUser={currentUser}
         selectedMember={selectedMember}
         identity={identity}

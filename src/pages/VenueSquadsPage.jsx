@@ -1,3 +1,4 @@
+import {getGameFormatConfig as getFieldFormatConfig} from "../core/matchConfig.js";
 import {fieldOpenMatchDays,fieldDateLabel} from "../core/fieldRouteSafety.mjs";
 import {subscribeFieldManifest} from "../storage/fieldManifestSubscription.js";
 import {fieldPageKey, readFieldPage, saveFieldPage} from "../storage/fieldPageMemory.js";
@@ -20,6 +21,7 @@ const today = () => new Intl.DateTimeFormat("en-CA", {
 export default function VenueSquadsPage({
   venue = {}, season = null, onBack, scope = null,
 }) {
+  const {label: fieldFormatLabel, playersPerSide: fieldStarterCount} = getFieldFormatConfig(season?.gameFormat);
   const days = fieldOpenMatchDays(season);
   const [dayId,setDayId] = useState(days[0]?.id || "");
   const memoryKey = fieldPageKey("squads", venue?.id, season?.id, dayId,scope?.environment||"official",scope?.practiceSessionId||"");
@@ -56,6 +58,7 @@ export default function VenueSquadsPage({
   const clubs = (Array.isArray(data?.clubs)?data.clubs:[]).filter(Boolean);
   const teams = clubs.filter(club => club.status !== "bye").map(club => ({
     ...club,id:club.clubId,
+    kitPlayers: club.players,
     players:(Array.isArray(club.players)?club.players:[]).filter(Boolean).map(player => `${club.clubId}::${player.sourcePlayerId}`),
   }));
   const people = new Map(clubs.flatMap(club => (Array.isArray(club.players)?club.players:[]).filter(Boolean).map(player => [
@@ -92,7 +95,7 @@ export default function VenueSquadsPage({
             activeClubName={venue.name}
             teamsheetDisplayDateParts={{
               dateLabel: fieldDateLabel(data?.dateLocal),
-              scheduleLabel: "Five starters · one substitute",
+              scheduleLabel: `${fieldFormatLabel} · ${fieldStarterCount} starters · up to one substitute`,
             }}
             getTeamTheme={team=>({accent:team.matchColour||"#e7b974",glow:"rgba(231,185,116,.18)"})}
             getChallengeTeamLogo={team=>team.logoUrl || ""}
@@ -103,7 +106,7 @@ export default function VenueSquadsPage({
               const player = people.get(id);
               const team = teams.find(item=>item.players.includes(id));
               return `${player?.jerseyNumber==null?"(-) ":`(${player.jerseyNumber}) `}${player?.fullName || ""}${
-                team?.players.indexOf(id) === 5 ? " (Sub)" : ""
+                team?.players.indexOf(id) >= fieldStarterCount ? " (Sub)" : ""
               }${player?.isFillIn ? " · Fill-in" : ""}`;
             }}
           />}

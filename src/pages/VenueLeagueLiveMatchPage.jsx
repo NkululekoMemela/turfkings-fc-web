@@ -40,12 +40,15 @@ import {
 import {
   GAME_TYPE_6,
   GAME_TYPE_7,
+  GAME_TYPE_11,
   FORMATIONS_5,
   FORMATIONS_6,
   FORMATIONS_7,
+  FORMATIONS_11,
   DEFAULT_FORMATION_ID_5,
   DEFAULT_FORMATION_ID_6,
   DEFAULT_FORMATION_ID_7,
+  DEFAULT_FORMATION_ID_11,
   loadSavedLineups,
   resolvePreferredTeamLineup,
   createVerifiedLineupSnapshot,
@@ -83,6 +86,7 @@ import TeamIdentityEditor from "../components/TeamIdentityEditor";
 
 function getLineupGameTypeFromFormat(rawFormat) {
   const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.ELEVEN_V_ELEVEN) return GAME_TYPE_11;
   if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return GAME_TYPE_7;
   if (safeFormat === GAME_FORMAT.SIX_V_SIX) return GAME_TYPE_6;
   return "5";
@@ -90,6 +94,7 @@ function getLineupGameTypeFromFormat(rawFormat) {
 
 function getLiveFormationsMap(rawFormat) {
   const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.ELEVEN_V_ELEVEN) return FORMATIONS_11;
   if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return FORMATIONS_7;
   if (safeFormat === GAME_FORMAT.SIX_V_SIX) return FORMATIONS_6;
   return FORMATIONS_5;
@@ -97,6 +102,7 @@ function getLiveFormationsMap(rawFormat) {
 
 function getLiveDefaultFormationId(rawFormat) {
   const safeFormat = normalizeGameFormat(rawFormat, GAME_FORMAT.FIVE_V_FIVE);
+  if (safeFormat === GAME_FORMAT.ELEVEN_V_ELEVEN) return DEFAULT_FORMATION_ID_11;
   if (safeFormat === GAME_FORMAT.SEVEN_V_SEVEN) return DEFAULT_FORMATION_ID_7;
   if (safeFormat === GAME_FORMAT.SIX_V_SIX) return DEFAULT_FORMATION_ID_6;
   return DEFAULT_FORMATION_ID_5;
@@ -2898,7 +2904,14 @@ export function VenueLeagueLiveMatchPage({
   matchTeamColorOverrides = {},
   onUpdateMatchTeamColorOverride = null,
   onResetMatchTeamColorOverrides = null,
+  matchTransport = null,
+  externalSavedLineups = null,
+  externalAddedTime = 0,
+  onAddMatchTime = null,
 }) {
+  const externallyManaged = Boolean(matchTransport);
+  const appendLiveDocumentEvent = (...args) => externallyManaged ? undefined : appendEventToFirestore(...args);
+  const overwriteLiveDocumentEvents = (...args) => externallyManaged ? undefined : overwriteEventsInFirestore(...args);
   const effectiveConfirmedLineupsByMatchNo = useMemo(
     () =>
       buildConfirmedLineupsHistoryMap({
@@ -3006,8 +3019,8 @@ export function VenueLeagueLiveMatchPage({
       setPlayersLoading(true);
 
       try {
-        const supplied=fieldPaidSquads&&Object.keys(fieldPaidSquads).length>0;
-        const suppliedDocs=supplied?Object.entries(fieldPaidSquads).flatMap(([clubId,rows])=>rows.map(player=>({id:`${clubId}::${player.sourcePlayerId}`,data:()=>({...player,clubId,status:"active"})}))):null;
+        const supplied=externallyManaged || (fieldPaidSquads&&Object.keys(fieldPaidSquads).length>0);
+        const suppliedDocs=supplied?Object.entries(fieldPaidSquads || {}).flatMap(([clubId,rows])=>rows.map(player=>({id:`${clubId}::${player.sourcePlayerId}`,data:()=>({...player,clubId,status:"active"})}))):null;
         const snap = supplied ? {docs:suppliedDocs} : await loadVenuePaidMatchPlayers({
           firestore: db,
           scope: dataScope,
@@ -3457,7 +3470,7 @@ export function VenueLeagueLiveMatchPage({
       playerPhotosByName &&
       Object.keys(playerPhotosByName).length > 20;
 
-    if (alreadyLoaded) {
+    if (externallyManaged || alreadyLoaded) {
       return;
     }
 
@@ -3593,13 +3606,14 @@ export function VenueLeagueLiveMatchPage({
 
   const savedLineups = useMemo(
     () =>
-      dataScope?.kind === "venueLeague"
+      externalSavedLineups || (dataScope?.kind === "venueLeague"
         ? activeClub?.league?.activeSeason?.savedLineups || {}
         : loadSavedLineups(activeClubId, {
         isPracticeMode: dataScope?.environment === "practice",
         practiceSessionId: dataScope?.practiceSessionId || null,
-      }),
+      })),
     [
+      externalSavedLineups,
       activeClubId,
       dataScope?.kind,
       activeClub?.league?.activeSeason?.savedLineups,
@@ -3612,7 +3626,7 @@ export function VenueLeagueLiveMatchPage({
     const isPractice =
       dataScope?.environment === "practice";
 
-    if (isPractice || !activeClubId) {
+    if (externallyManaged || isPractice || !activeClubId) {
       setGoalkeeperRestrictionsByTeam({});
       setGoalkeeperRestrictionsReady(true);
       return undefined;
@@ -4003,7 +4017,7 @@ export function VenueLeagueLiveMatchPage({
     goalkeeperRestrictionsByTeam?.[standbyId] || [];
 
   const canManageLiveHandInjury =
-    canControlMatch &&
+    canControlMatch && !externallyManaged &&
     dataScope?.environment !== "practice";
 
   const isGoalkeeperRestricted = (
@@ -4265,7 +4279,7 @@ export function VenueLeagueLiveMatchPage({
     defaultTeamBLineup,
   ]);
 
-  const mustVerifyBeforePlay = isControllerSession;
+  const mustVerifyBeforePlay = externallyManaged ? canControlMatch && awaitingKitVerification : isControllerSession;
 
   useEffect(() => {
     if (mustVerifyBeforePlay && !hasVerifiedLineups) {
@@ -4328,11 +4342,11 @@ export function VenueLeagueLiveMatchPage({
   }, []);
 
   useEffect(() => {
-    const shouldSoundFinalWhistle =
-      additionalTimeFinished ||
+    const shouldSoundWhistle =
+      fieldClockPhase === "halftime" || additionalTimeFinished ||
       (timeUp && !pendingAdditionalTimeSeconds && !additionalTimeRunning);
 
-    if (!shouldSoundFinalWhistle) {
+    if (!shouldSoundWhistle) {
       stopAlarmLoop(alarmLoopRef);
       return;
     }
@@ -4358,6 +4372,7 @@ export function VenueLeagueLiveMatchPage({
       stopAlarmLoop(alarmLoopRef);
     };
   }, [
+    fieldClockPhase,
     timeUp,
     pendingAdditionalTimeSeconds,
     additionalTimeRunning,
@@ -4443,7 +4458,7 @@ export function VenueLeagueLiveMatchPage({
   }, []);
 
   useEffect(() => {
-    if (!canControlMatch) return;
+    if (externallyManaged || !canControlMatch) return;
     if (!running) return;
     if (secondsLeft == null) return;
 
@@ -4480,7 +4495,7 @@ export function VenueLeagueLiveMatchPage({
   useEffect(() => {
     if (!isControllerSession) return;
     // Field initialization already created the authoritative match.
-    if (dataScope?.kind === "venueLeague") return;
+    if (externallyManaged || dataScope?.kind === "venueLeague") return;
     if (!teamA || !teamB || !standbyTeam) return;
 
     hardResetMatchDoc(
@@ -4533,6 +4548,12 @@ export function VenueLeagueLiveMatchPage({
 
     return formattedTime;
   }, [additionalTimeRunning, additionalTimeSecondsLeft, formattedTime]);
+
+  const addTimeRemaining = externallyManaged
+    ? fieldHalfSecondsLeft({matchSeconds,secondsLeft:displaySeconds,clockPhase:fieldClockPhase})
+    : displaySeconds;
+  const canAddTime = !awaitingKitVerification && fieldClockPhase !== "halftime" &&
+    (addTimeRemaining <= 120 || timeUp) && !additionalTimeTotalSeconds && !externalAddedTime;
 
   const goalsA = currentEvents.filter(
     (e) => e.teamId === teamAId && e.type === "goal"
@@ -5087,7 +5108,7 @@ export function VenueLeagueLiveMatchPage({
 
   const [digitalCard,setDigitalCard]=useState(null);
   const disciplineWritePending=useRef(false);
-  const normalizedActiveRedCardRule = "two_minute";
+  const normalizedActiveRedCardRule = externallyManaged && livePlayersPerSide === 11 ? "permanent" : "two_minute";
   const futsalPlayingSeconds=Math.max(0,Number(matchSeconds||0)-Number(displaySeconds||0)) + Math.max(0,Number(additionalTimeTotalSeconds||0)-Number(additionalTimeSecondsLeft||0));
   const refereeLabel=player=><RefereePlayerLabel player={player} peers={disciplinePlayers.filter(p=>p.teamId===player.teamId).map(p=>p.name)} numberLabel={numberLabel} displayName={displayCompactPlayerName}/>;
 
@@ -5239,7 +5260,8 @@ export function VenueLeagueLiveMatchPage({
       setVerifyTeamBLineup(nextSnapshots[teamBId]);
     }
 
-    onConfirmPreMatchLineups?.(nextSnapshots);
+    const save = onConfirmPreMatchLineups?.(nextSnapshots);
+    if (externallyManaged) void save?.catch(error=>fieldAlert(error.message));
   };
 
   const removeLeagueDismissedPlayer = (player) => {
@@ -5554,8 +5576,8 @@ export function VenueLeagueLiveMatchPage({
       type: normalizedType,
       secondCaution: decision.secondCaution,
       cautionNumber: decision.secondCaution ? 2 : normalizedType==="yellow_card" ? 1 : null,
-      disciplineRules: "fifa_futsal_2025_26",
-      requiresAbandonment: normalizedType==="red_card" && futsalMustAbandon(Object.values(relevantSnapshot?.positions||{}).filter(Boolean).length,dismissalDetails.wasSubstitute),
+      disciplineRules: externallyManaged && livePlayersPerSide === 11 ? "eleven_a_side" : "fifa_futsal_2025_26",
+      requiresAbandonment: (!externallyManaged || livePlayersPerSide < 11) && normalizedType==="red_card" && futsalMustAbandon(Object.values(relevantSnapshot?.positions||{}).filter(Boolean).length,dismissalDetails.wasSubstitute),
       teamId: player.teamId,
       playerName: canonicalName(player.name),
       playerType: isGuestPlayerInSnapshot(
@@ -5581,9 +5603,10 @@ export function VenueLeagueLiveMatchPage({
           : null,
     };
 
-    onAddEvent?.(event);
+    if (externallyManaged) await matchTransport.addEvent(event);
+    else onAddEvent?.(event);
 
-    await appendEventToFirestore(
+    await appendLiveDocumentEvent(
       event,
       basicSummary,
       displaySeconds,
@@ -5624,7 +5647,7 @@ export function VenueLeagueLiveMatchPage({
       (_, index) => index !== cardEvent.eventIndex
     );
 
-    await overwriteEventsInFirestore(
+    await overwriteLiveDocumentEvents(
       nextEvents,
       basicSummary,
       displaySeconds,
@@ -6330,9 +6353,10 @@ export function VenueLeagueLiveMatchPage({
       /*
        * EXACT same event pipeline used by League goals/cards.
        */
-      onAddEvent?.(event);
+      if (externallyManaged) await matchTransport.addEvent(event);
+    else onAddEvent?.(event);
 
-      await appendEventToFirestore(
+      await appendLiveDocumentEvent(
         event,
         basicSummary,
         displaySeconds,
@@ -6359,9 +6383,14 @@ export function VenueLeagueLiveMatchPage({
   };
 
 
-  const addAdditionalTime = (seconds) => {
+  const addAdditionalTime = async (seconds) => {
     const extra = Number(seconds || 0);
     if (!extra) return;
+    if (onAddMatchTime) {
+      try {await onAddMatchTime(extra); setShowAdditionalTimeModal(false);}
+      catch (error) {await fieldAlert(error.message || "Could not add time.");}
+      return;
+    }
 
     setAdditionalTimeTotalSeconds(extra);
     setAdditionalTimeFinished(false);
@@ -6483,14 +6512,17 @@ export function VenueLeagueLiveMatchPage({
       },
     };
 
-    onAddEvent(event);
+    if (externallyManaged) {
+      try {await matchTransport.addEvent(event);}
+      catch (error) {await fieldAlert(error.message); return;}
+    } else onAddEvent(event);
     setScoringTeamId("");
     setScorerName("");
     setAssistName("");
     setShowGoalRecorder(false);
     setGoalStep("team");
 
-    appendEventToFirestore(
+    appendLiveDocumentEvent(
       event,
       basicSummary,
       displaySeconds,
@@ -6623,10 +6655,13 @@ export function VenueLeagueLiveMatchPage({
      * Firestore persistence alone does not mutate currentEvents, which is
      * why an edited scorer previously remained stale on screen.
      */
-    onDeleteEvent?.(editingGoalIndex);
-    onAddEvent?.(updatedEvent);
+    if (matchTransport) {
+      try {await matchTransport.replaceEvent(originalEvent.id, updatedEvent);}
+      catch (error) {await fieldAlert(error.message);return;}
+    }
+    else {onDeleteEvent?.(editingGoalIndex); onAddEvent?.(updatedEvent);}
 
-    await overwriteEventsInFirestore(
+    await overwriteLiveDocumentEvents(
       updatedEvents,
       basicSummary,
       displaySeconds,
@@ -6690,6 +6725,11 @@ export function VenueLeagueLiveMatchPage({
       goalsB,
     };
 
+    if (externallyManaged) {
+      try { await onConfirmEndMatch(summary); }
+      catch (error) { await fieldAlert(error.message || "Could not end the match."); }
+      return;
+    }
     onConfirmEndMatch(summary);
 
     const finalSummary = {
@@ -6739,7 +6779,7 @@ export function VenueLeagueLiveMatchPage({
     if (deleteIndex !== null) {
       onDeleteEvent(deleteIndex);
       const newEvents = currentEvents.filter((_, i) => i !== deleteIndex);
-      overwriteEventsInFirestore(
+      overwriteLiveDocumentEvents(
         newEvents,
         basicSummary,
         displaySeconds,
@@ -6822,7 +6862,7 @@ export function VenueLeagueLiveMatchPage({
     onUndoLastEvent();
     const newEvents = currentEvents.slice(0, -1);
 
-    overwriteEventsInFirestore(
+    overwriteLiveDocumentEvents(
       newEvents,
       basicSummary,
       displaySeconds,
@@ -6944,12 +6984,12 @@ export function VenueLeagueLiveMatchPage({
             {canControlMatch && !additionalTimeRunning ? (
               <button
                 type="button"
-                className={`secondary-btn live-add-time-btn ${(displaySeconds <= 120 || timeUp) && !additionalTimeTotalSeconds ? "is-ready" : "is-locked"}`}
+                className={`secondary-btn live-add-time-btn ${canAddTime ? "is-ready" : "is-locked"}`}
                 onClick={() => setShowAdditionalTimeModal(true)}
-                disabled={(displaySeconds > 120 && !timeUp) || Boolean(additionalTimeTotalSeconds)}
-                title={additionalTimeTotalSeconds ? "Additional time already selected" : displaySeconds > 120 && !timeUp ? "Additional time opens in the final 2 minutes" : "Add additional time"}
+                disabled={!canAddTime}
+                title={additionalTimeTotalSeconds || externalAddedTime ? "Additional time already selected" : !canAddTime ? "Additional time opens in the final 2 minutes" : "Add additional time"}
               >
-                {additionalTimeTotalSeconds ? "✅ Time added" : "⏳ Add time"}
+                {additionalTimeTotalSeconds || externalAddedTime ? "✅ Time added" : "⏳ Add time"}
               </button>
             ) : null}
 

@@ -1,3 +1,4 @@
+import {resolveGameFormat} from "../core/matchConfig.js";
 import {readBooth, queueBoothPatch, rememberBoothContext} from "./fieldBoothJournal.js";
 import {recoverFieldClock, applyPendingBooth, sameBooth} from "../core/fieldBoothRecovery.mjs";
 import {
@@ -561,7 +562,7 @@ export function buildVenueLiveMatchDocument({
     standbyId,
     matchType: "LEAGUE",
     matchMode: "fixtured",
-    gameFormat: "5_V_5",
+    gameFormat: resolveGameFormat(match?.gameFormat),
   };
 
   const teamA = teams.find((team) => team?.id === teamAId);
@@ -582,6 +583,7 @@ export function buildVenueLiveMatchDocument({
       currentMatchNo:
         Number(currentMatchNo) || 1,
       currentMatch,
+      gameFormat: currentMatch.gameFormat,
       matchType: "LEAGUE",
       matchNumber: Number(currentMatchNo) || 1,
       teamAId,

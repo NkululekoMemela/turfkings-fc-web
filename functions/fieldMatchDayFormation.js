@@ -1,7 +1,6 @@
 const {FieldPath, FieldValue} = require("firebase-admin/firestore");
 const service = require("./fieldSeasonSquadService");
 const squads = require("./fieldMatchDaySquad");
-const formationIds = new Set(["2-0-2", "1-2-1", "2-1-1", "1-1-2"]);
 const normalize = value => String(value || "").trim()
   .replace(/\s+/g, " ").toLowerCase();
 
@@ -13,10 +12,10 @@ async function save({db, user, body, now = Date.now()}) {
   const scope = {venueId, seasonId, clubId};
   service.squadId(scope);
   if (!/^[A-Za-z0-9_-]{1,150}$/.test(matchDayId || "") ||
-      !lineup || !formationIds.has(lineup.formationId) ||
+      !lineup || typeof lineup.formationId !== "string" ||
       !lineup.positions || typeof lineup.positions !== "object" ||
       Array.isArray(lineup.positions)) {
-    throw new Error("Choose a valid match day and five-player formation.");
+    throw new Error("Choose a valid match day and formation.");
   }
 
   return db.runTransaction(async tx => {
@@ -39,8 +38,12 @@ async function save({db, user, body, now = Date.now()}) {
     }
 
     const day = await squads.loadDay({tx, db, scope, matchDayId});
-    if (!day.submission.ready || day.submission.players.length < 5 ||
-        day.submission.players.length > 6) {
+    const {fieldFormat} = await import("./fieldBoothShared/fieldFormat.mjs");
+    const {minimum, maximum, lineupKey, formations} = fieldFormat(day.season.gameFormat);
+    const formation = Object.hasOwn(formations, lineup.formationId) && formations[lineup.formationId];
+    if (!formation) throw new Error("Choose a formation for this match format.");
+    if (!day.submission.ready || day.submission.players.length < minimum ||
+        day.submission.players.length > maximum) {
       throw new Error("Resolve this Club's roster or kit warnings before saving its formation.");
     }
 
@@ -57,7 +60,7 @@ async function save({db, user, body, now = Date.now()}) {
       names.set(key, player.fullName);
     }
 
-    const slots = ["p1", "p2", "p3", "p4", "p5"];
+    const slots = formation.positions.map(position => position.id);
     if (Object.keys(lineup.positions).some(key => !slots.includes(key))) {
       throw new Error("This formation contains an invalid position.");
     }
@@ -99,7 +102,7 @@ async function save({db, user, body, now = Date.now()}) {
     // Patch only this Club's role variant; preserve every other Club.
     tx.update(venueRef,
       new FieldPath("league", "activeSeason", "savedLineups",
-        clubId, "5", "variants", role),
+        clubId, lineupKey, "variants", role),
       savedLineup,
       "updatedAt", FieldValue.serverTimestamp()
     );

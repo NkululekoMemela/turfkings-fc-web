@@ -1,3 +1,4 @@
+import FixtureCrests from "../components/FixtureCrests.jsx";
 import useClubRibbonEdges from "../components/useClubRibbonEdges.js";
 import RibbonArtwork from '../components/RibbonArtwork.jsx';
 import "../components/LandingDesktopLayout.css";
@@ -282,7 +283,6 @@ export function LandingPage({
   onBrowseMatchType,
   onForceSetMatchType,
   onSetGameFormat,
-  onForceSetGameFormat,
   formatSwitchLocked = false,
   onSetLeagueMode,
   onSetMatchMode,
@@ -299,6 +299,8 @@ export function LandingPage({
   onGoToEntryDev,
   onGoToPayments,
   leagueSeasonEntry = null,
+  nextExhibition = null,
+  onOpenExhibition,
   identity,
   activeRole,
   isAdmin = false,
@@ -307,6 +309,7 @@ export function LandingPage({
   isSpectator = false,
   canStartMatch = false,
   hasRecordedMatchDayState = false,
+  gameFormatChangeBlocked = false,
   onReady,
 }) {
   const { teamAId, teamBId, standbyId } = currentMatch || {};
@@ -594,11 +597,11 @@ export function LandingPage({
     : isThreeTeamLeague
       ? 5 * 60
       : 60 * 60;
-  const matchDurationLabel = formatMatchDurationLabel(resolvedMatchSeconds);
+  const matchDurationLabel = nextExhibition?.format === "11v11" ? "90 min" : formatMatchDurationLabel(resolvedMatchSeconds);
   const defaultDurationLabel = formatMatchDurationLabel(resolvedDefaultMatchSeconds);
   const durationIsCustom =
     Math.round(resolvedMatchSeconds) !== Math.round(resolvedDefaultMatchSeconds);
-  const settingsSummary = isThreeTeamLeague
+  const settingsSummary = nextExhibition?.format === "11v11" ? "Exhibition • 11 v 11 • 90 min" : isThreeTeamLeague
     ? `League • ${resolvedLeagueMode === "scheduled_target" ? "Fixtured" : "Round Robin"} • ${activeGameFormatLabel} • ${matchDurationLabel}`
     : `Friendly • ${activeGameFormatLabel} • ${matchDurationLabel}`;
   const fixturedMode =
@@ -1085,7 +1088,8 @@ export function LandingPage({
     isMobile ? team.label : matchTeamCaption(team);
 
   const handleSpectatorLiveClick = () => {
-    onGoToLiveAsSpectator();
+    if (nextExhibition) onOpenExhibition?.(nextExhibition.fixtureId, true);
+    else onGoToLiveAsSpectator();
   };
 
   const handleStartMatchClick = () => {
@@ -1093,7 +1097,8 @@ export function LandingPage({
       window.alert("Only captains or admin can start a match.");
       return;
     }
-    onStartMatch();
+    if (nextExhibition) onOpenExhibition?.(nextExhibition.fixtureId);
+    else onStartMatch();
   };
 
   const canSeeCaptainStyleControls = isCaptain || isAdmin;
@@ -1209,11 +1214,7 @@ export function LandingPage({
     }
 
     if (change.kind === "gameFormat") {
-      if (isFormatLocked && typeof onForceSetGameFormat === "function") {
-        onForceSetGameFormat(change.value);
-      } else {
-        onSetGameFormat?.(change.value);
-      }
+      onSetGameFormat?.(change.value);
       return;
     }
 
@@ -1648,7 +1649,8 @@ export function LandingPage({
                 justifyContent: "space-between",
                 gap: "0.75rem",
                 borderRadius: "1rem",
-                padding: "0.75rem 0.9rem",
+                padding: "0.75rem 0.9rem 0.75rem 0",
+                textAlign: "left",
                 background:
                   "linear-gradient(145deg, rgba(15,23,42,0.92), rgba(2,6,23,0.92))",
                 border: "1px solid rgba(148,163,184,0.18)",
@@ -1860,13 +1862,14 @@ export function LandingPage({
                       type="button"
                       className="secondary-btn"
                       onClick={() => {
-                        if (isFormatLocked) return;
+                        if (gameFormatChangeBlocked) return;
                         requestGameFormatChange(option.value);
                       }}
-                      disabled={isFormatLocked}
+                      disabled={gameFormatChangeBlocked}
                       style={{
                         borderRadius: "999px",
-                        padding: "0.45rem 0.9rem",
+                        padding: option.playersPerSide === 11 && !active ? "0.45rem 0.65rem" : "0.45rem 0.9rem",
+                        opacity: option.playersPerSide === 11 && !active ? 0.75 : 1,
                         color: "#ffffff",
                         border: active
                           ? "1px solid rgba(34, 197, 94, 0.55)"
@@ -1978,10 +1981,10 @@ export function LandingPage({
           </div>
           <div className="match-preview-heading__details">
             <span className="match-preview-heading__mode">
-              {isThreeTeamLeague ? "League" : "Friendly"}
+              {nextExhibition ? "Exhibition" : isThreeTeamLeague ? "Mini-league" : "Friendly"}
             </span>
-            <span>{activeGameFormatLabel}</span>
-            {isThreeTeamLeague && (
+            <span>{nextExhibition ? nextExhibition.format : activeGameFormatLabel}</span>
+            {!nextExhibition && (isThreeTeamLeague || (!canSeeCaptainStyleControls && isFriendlyMatch && teams.length >= 2)) && (
               <span className="match-preview-heading__number">
                 Match #{currentMatchNo}
               </span>
@@ -1992,7 +1995,22 @@ export function LandingPage({
 
 
 
-        {isThreeTeamLeague && (
+        {nextExhibition && <>
+          <div className="match-setup-row exhibition-landing-pair">
+            {[nextExhibition.home, nextExhibition.away].map((club, index) => <React.Fragment key={club.id}>
+              {index === 1 && <span className="vs-label match-team-versus">VS</span>}
+              <div className="exhibition-landing-team">
+                <span className="field-tile-crest" style={{borderColor: (index ? nextExhibition.awayColour : nextExhibition.homeColour) || undefined}}>
+                  {club.logoUrl ? <img src={club.logoUrl} alt="" /> : club.name.slice(0, 3)}
+                </span>
+                <strong>{club.name}</strong>
+              </div>
+            </React.Fragment>)}
+          </div>
+          <p className="exhibition-landing-kickoff">{new Intl.DateTimeFormat("en-ZA",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"}).format(new Date(`${nextExhibition.proposedDate}T12:00:00Z`))} · {nextExhibition.proposedKickoff} SAST · {nextExhibition.venue}</p>
+        </>}
+
+        {isThreeTeamLeague && !nextExhibition && (
           <div
             className={`match-setup-row ${
               fixturedMode
@@ -2044,14 +2062,20 @@ export function LandingPage({
               className="primary-btn"
               style={tileButtonStyle(isMobile, activePrimaryStyle)}
               data-practice-guide="club-match-start"
+              aria-label={nextExhibition ? `Start Match: ${nextExhibition.home.name} vs ${nextExhibition.away.name}` : undefined}
               onClick={handleStartMatchClick}
               type="button"
             >
               {renderTileContent({
                 isMobile,
-                icon: "⚽",
-                desktopLines: ["Start Match"],
-                mobileLines: ["Start", "Match"],
+                icon: nextExhibition ? <span className="field-start-art"><span className="field-start-crests">
+                  <FixtureCrests teams={[nextExhibition.home, nextExhibition.away].map((club, index) => ({
+                    id: club.id, badge: club.logoUrl, abbreviation: club.name.slice(0, 3).toUpperCase(),
+                    colour: index ? nextExhibition.awayColour : nextExhibition.homeColour,
+                  }))} />
+                </span></span> : "⚽",
+                desktopLines: [nextExhibition?.status === "live" ? "Open Live Match" : "Start Match"],
+                mobileLines: nextExhibition?.status === "live" ? ["Open", "Live Match"] : ["Start", "Match"],
               })}
             </button>
 
@@ -2249,17 +2273,7 @@ export function LandingPage({
           </div>
         ) : (
           <>
-            <p
-              className={
-                isPlayer
-                  ? "muted"
-                  : "muted landing-spectator-note"
-              }
-            >
-              {isPlayer
-                ? "Match start: captains and admins only."
-                : "You can follow the live game."}
-            </p>
+            {isSpectator && <p className="muted landing-spectator-note">You can follow the live game.</p>}
 
             <div
               className="actions-row landing-actions landing-actions--viewer"
@@ -2282,7 +2296,7 @@ export function LandingPage({
                 {renderTileContent({
                   isMobile,
                   icon: "⚽",
-                  desktopLines: [hasLiveMatch ? "View Live Match" : "Live Match"],
+                  desktopLines: [hasLiveMatch || nextExhibition?.status === "live" ? "View Live Match" : "Live Match"],
                   mobileLines: ["Live", "Match"],
                 })}
               </button>

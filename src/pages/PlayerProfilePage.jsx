@@ -13,6 +13,7 @@ import {buildPlayerProfileInsights} from "../core/playerProfileInsights.mjs";
 import {cachedOwnPlayerProfile, loadOwnPlayerProfile, saveOwnPlayerProfile} from "../storage/playerProfileRepository.js";
 import {confirmCurrentGoogleAccount, selectReplacementGoogleToken, replacePlayerGoogleAccount} from "../storage/playerGoogleAccountGateway.js";
 import {usePlayerProfileReport} from "../hooks/usePlayerProfileReport.js";
+import {usePlayerAttendanceSummary} from "../hooks/usePlayerAttendanceSummary.js";
 import "./PlayerProfilePage.css";
 const emptyDraft={fullName:"",shortName:"",email:"",whatsappNumber:"",jerseyNumber:"",ownsNumberedBib:"",bibColor:""};
 function toDraft(member,session) {
@@ -22,7 +23,7 @@ function toDraft(member,session) {
     ownsNumberedBib:member?.ownsNumberedBib == null ? "" : member.ownsNumberedBib ? "yes" : "no",ownsHomeShirt:member?.ownsHomeShirt?"yes":"no",ownsAwayShirt:member?.ownsAwayShirt?"yes":"no",additionalBibs:member?.additionalBibs||[],homeShirtColor:member?.homeShirtColor||"",awayShirtColor:member?.awayShirtColor||"",bibColor:member?.bibColor || ""};
 }
 const Pencil=()=> <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15l-1 6Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/></svg>;
-export default function PlayerProfilePage({clubId,clubName="Your club",identity,user,activeRole,isPracticeMode=false,onBack,onProfileUpdated,onOpenShop}) {
+export default function PlayerProfilePage({clubId,clubName="Your club",identity,user,activeRole,currentTeams,isPracticeMode=false,onBack,onProfileUpdated,onOpenShop}) {
   const club=useClubKit(clubId);
   const [session,setSession]=useState(()=>auth.currentUser);
   const playerAccess=canUsePlayerFeatures({user:session,identity,clubId,activeRole});
@@ -119,6 +120,9 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
   const seasons=report.state?.seasons || [];
   const season=seasons.find(item=>item.seasonId===report.state?.activeSeasonId) || null;
   const insights=useMemo(()=>buildPlayerProfileInsights({season:season||{},members:report.members,memberId:member?.id,mode,awards:[...(season?.profileSeasonAwards || []),...report.awards],leaders:report.leaders}),[season,report.members,member?.id,mode,report.awards,report.leaders]);
+  const attendance=usePlayerAttendanceSummary({
+    clubId:playerAccess && !isPracticeMode ? clubId : "", report, member, teams:currentTeams,
+  });
   const stats=insights.player;
   const story=useMemo(()=>buildPlayerProfileStory({insights,seasons,members:report.members,memberId:member?.id,awards:report.awards}),[insights,seasons,report.members,member?.id,report.awards]);
   const number=(()=>{try{return parseJerseyNumber(draft.jerseyNumber);}catch{return null;}})();
@@ -161,6 +165,26 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
         {editing&&<div className="actions-row profile-save-actions" role="region" aria-label="Profile edit actions"><button type="button" className="secondary-btn" disabled={saving||preparing} onClick={cancelEdit}>Cancel</button><button type="submit" className="primary-btn" disabled={saving||preparing||!member||isPracticeMode}>{saving?"Saving…":"Save profile"}</button></div>}
       </div>
     </form>
+    {member && playerAccess && !isPracticeMode && (
+      <section className="card profile-attendance-summary" aria-labelledby="profile-attendance-title">
+        <header>
+          <div className="profile-attendance-avatar">
+            {photo ? <img src={photo} alt="" /> : <span>{(draft.fullName || "P").slice(0,1).toUpperCase()}</span>}
+          </div>
+          <h2 id="profile-attendance-title">Summary</h2>
+          <div className="profile-attendance-badge">
+            <span>Attendance badge</span>
+            <strong>{attendance.loading ? "Loading…" : attendance.error || attendance.percent === null ? "Not available" : `${attendance.percent}%`}</strong>
+          </div>
+        </header>
+        <dl>
+          <div><dt>Weeks attended</dt><dd>{attendance.loading || attendance.error || attendance.percent === null ? "—" : attendance.attended}</dd></div>
+          <div><dt>Games played</dt><dd>{attendance.loading || attendance.error || attendance.percent === null ? "—" : attendance.gamesPlayed}</dd></div>
+          <div><dt>Current team</dt><dd>{attendance.teamName || "Not assigned"}</dd></div>
+          <div><dt>Profile</dt><dd>Squad player</dd></div>
+        </dl>
+      </section>
+    )}
     {member&&<PendingBibNotice clubId={clubId} isPracticeMode={isPracticeMode}/>}
     {member&&canEditProfile&&!isPracticeMode&&<ProfileNumberStudio clubId={clubId} member={member} club={club} onChanged={()=>{if(!dirty.current)setRefresh(value=>value+1);}}/>}
     {!report.loading&&!report.error&&(story.highlights.length>0||story.honours.length>0)&&<section className="card profile-football-story" aria-labelledby="profile-story-heading">

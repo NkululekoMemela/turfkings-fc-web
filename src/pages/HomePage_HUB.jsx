@@ -1,3 +1,4 @@
+import {clubChallengeRequest, clubChallengesEnabled} from "../storage/clubChallengeGateway.js";
 import OrganizationArchiveControls, {canManageOrganizationArchive, confirmOrganizationArchive} from "../components/OrganizationArchiveControls.jsx";
 import { clubFounderName } from "../core/clubFounderCredit.mjs";
 import HubMarketingAdvert from "../components/HubMarketingAdvert.jsx";
@@ -14,15 +15,13 @@ import { ABOUT_RELEASE } from "../content/aboutRelease.js";
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
-  serverTimestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth, db } from "../firebaseConfig";
+import { auth, db, isStagingFirebase } from "../firebaseConfig";
 import "../styles/HomePage_HUB.css";
 import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubCard.jsx";
 import { getClubFeaturedHighlight } from "../storage/VideoHighlightsRepository.js";
@@ -473,7 +472,7 @@ export default function HomePage_HUB({
   onRegisterClub,
   onFindClub,
   onJoinClub,
-  onChallengeClub,
+  isPracticeMode = false,
   onNavigateToEntryPage,
   onBackToWelcome,
 }) {
@@ -524,6 +523,29 @@ export default function HomePage_HUB({
   useEffect(()=>{try{sessionStorage.setItem("fanm:club-category",clubCategoryView);}catch{}},[clubCategoryView]);
   const [companyWorkspaceOpen,setCompanyWorkspaceOpen]=useState(false);
   const [challengeClub, setChallengeClub] = useState(null);
+  const [challengeCaptainScope, setChallengeCaptainScope] = useState("");
+  const [challengeVenue, setChallengeVenue] = useState("");
+  const [challengeTotal, setChallengeTotal] = useState("");
+  const [environmentToolsOpen, setEnvironmentToolsOpen] = useState(false);
+  const [homeColour, setHomeColour] = useState("#1d4ed8");
+  const [awayColour, setAwayColour] = useState("#f59e0b");
+  const [instigateHome, setInstigateHome] = useState("");
+  const [instigateAway, setInstigateAway] = useState("");
+  const isPlatformAdmin = isSuperAdmin(currentUser);
+  const canInstigate = clubChallengesEnabled && !isPracticeMode && currentUser?.emailVerified && isPlatformAdmin;
+  const instigationBlock = !currentUser?.emailVerified ? "Verify your FANM Google account to continue."
+    : isPracticeMode ? "Switch to Official to create a FANM Challenge."
+    : !isStagingFirebase ? "Switch to Staging under Database environment to try FANM Challenges."
+    : !clubChallengesEnabled ? "Install the FANM staging build with Club Challenges enabled." : "";
+  const challengeScope = `${currentUser?.uid || ""}:${identity?.clubId || ""}`;
+  useEffect(() => {
+    if (!clubChallengesEnabled || isPracticeMode || !currentUser?.emailVerified || !identity?.clubId) return;
+    const controller = new AbortController();
+    clubChallengeRequest("list", {clubId: identity.clubId, accessOnly: true}, controller.signal)
+      .then(({allowed}) => { if (allowed && !controller.signal.aborted) setChallengeCaptainScope(challengeScope); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [challengeScope, currentUser?.emailVerified, identity?.clubId, isPracticeMode]);
   const [challengeFormat, setChallengeFormat] = useState("5v5");
   const [challengeDate, setChallengeDate] = useState("");
   const [challengeKickoff, setChallengeKickoff] = useState("19:00");
@@ -1002,11 +1024,32 @@ export default function HomePage_HUB({
 
 
   function canCurrentUserSendChallenge() {
-    const role = String(identity?.role || identity?.actingRole || identity?.realRole || "").toLowerCase();
-    return Boolean(currentUser?.email) && ["admin", "captain"].includes(role);
+    return clubChallengesEnabled && !isPracticeMode && challengeCaptainScope === challengeScope;
+  }
+
+  function openInstigateMatch() {
+    if (!canInstigate) return;
+    setInstigateHome("");
+    setInstigateAway("");
+    setChallengeClub({instigate: true});
+    setHomeColour("#1d4ed8");
+    setAwayColour("#f59e0b");
+    setChallengeFormat("11v11");
+    setChallengeDate("");
+    setChallengeKickoff("19:00");
+    setChallengeVenue("");
+    setChallengeTotal("2200");
+    setChallengeMessage("");
+    setChallengeError("");
+    setChallengeStatus("");
   }
 
   function openChallengeRequest(club) {
+    if (!canCurrentUserSendChallenge() || isUsersOwnClub(club)) return;
+    setChallengeVenue("");
+    setChallengeTotal("0");
+    setHomeColour("#1d4ed8");
+    setAwayColour("#f59e0b");
     setActiveClub(null);
     setActiveMapClub(null);
     setChallengeClub(club);
@@ -1052,18 +1095,19 @@ export default function HomePage_HUB({
     setChallengeError("");
     setChallengeStatus("");
 
-    if (!canCurrentUserSendChallenge()) {
-      setChallengeError("Only a signed-in club admin or captain can send a challenge.");
+    const instigated = Boolean(challengeClub?.instigate);
+    if (instigated ? !canInstigate : !canCurrentUserSendChallenge()) {
+      setChallengeError(instigated ? "Use your verified FANM superuser account in the Official staging build." : "Only a verified Club captain can send a challenge.");
       return;
     }
 
-    if (!identity?.clubId) {
+    if (!instigated && !identity?.clubId) {
       setChallengeError("Open your own club first before sending challenges.");
       return;
     }
 
-    if (!challengeClub?.id) {
-      setChallengeError("Select a club to challenge.");
+    if (instigated ? (!instigateHome || !instigateAway || instigateHome === instigateAway) : !challengeClub?.id) {
+      setChallengeError(instigated ? "Select two different Clubs." : "Select a Club to challenge.");
       return;
     }
 
@@ -1072,48 +1116,34 @@ export default function HomePage_HUB({
       return;
     }
 
+    const total = instigated && challengeFormat === "11v11" ? "2200" : challengeTotal.trim().replace(",", ".");
+    if (!/^\d{1,7}(?:\.\d{1,2})?$/.test(total)) {
+      setChallengeError("Enter the total each Club must collect. Use 0 for a free match.");
+      return;
+    }
+    const [rand, cents = ""] = total.split(".");
+    const clubTotalCents = Number(rand) * 100 + Number(cents.padEnd(2, "0"));
+
     try {
       setIsSubmittingChallenge(true);
 
-      const payload = {
-        challengerClubId: identity.clubId,
-        challengerClubName: identity.clubName || identity.clubShortName || "Challenger club",
-
-        challengerClubLogo:
-          identity?.logoUrl ||
-          identity?.clubLogoUrl ||
-          identity?.image ||
-          "",
-
-        challengerAdminEmail: currentUser?.email || identity?.email || "",
-        challengerAdminName: identity?.shortName || identity?.fullName || currentUser?.displayName || "Club admin",
-
-        targetClubId: challengeClub.id,
-        targetClubName: challengeClub.name || "Target club",
-
-        targetClubLogo:
-          challengeClub?.logoUrl ||
-          challengeClub?.image ||
-          "",
-
+      await clubChallengeRequest(instigated ? "instigate" : "send", {
+        homeClubId: instigated ? instigateHome : identity.clubId,
+        awayClubId: instigated ? instigateAway : challengeClub.id,
         format: challengeFormat,
         proposedDate: challengeDate,
         proposedKickoff: challengeKickoff,
-        message: challengeMessage.trim(),
-
-        status: "pending",
-        createdAt: serverTimestamp(),
-        createdAtMs: Date.now(),
-      };
-
-      await addDoc(collection(db, "clubs", challengeClub.id, "incomingChallenges"), payload);
-      await addDoc(collection(db, "clubChallenges"), payload);
-
-      setChallengeStatus("Challenge sent. The other club admin can review it once incoming challenges are connected.");
+        venue: challengeVenue,
+        clubTotalCents, homeColour, awayColour,
+        message: challengeMessage,
+      });
+      setChallengeStatus(instigated
+        ? "Invitations sent. Both captains must accept before signups open."
+        : "Challenge sent. The other captain can review it in their Club inbox.");
       setChallengeMessage("");
     } catch (error) {
       console.error("[HomePage_HUB] Challenge request failed:", error);
-      setChallengeError("Could not send the challenge request. Please try again.");
+      setChallengeError(error.message || "Could not send the challenge.");
     } finally {
       setIsSubmittingChallenge(false);
     }
@@ -1332,15 +1362,7 @@ export default function HomePage_HUB({
                 )}
               </span>
 
-              <button
-                type="button"
-                className="hub-nav__primary"
-                onClick={() => {
-                  console.log("[HomePage_HUB] New Challenge clicked");
-                }}
-              >
-                New Challenge
-              </button>
+
             </>
           ) : (
             <button
@@ -1353,6 +1375,8 @@ export default function HomePage_HUB({
           )}
         </nav>
       </header>
+
+
 
       <section className="hub-clubs-section hub-clubs-section--hero" id="hub-clubs">
         <div className="hub-section-head hub-section-head--clubs-first">
@@ -1535,9 +1559,7 @@ export default function HomePage_HUB({
         </div>
       </section>
 
-      {isSuperAdmin(currentUser) && (
-        <FirebaseEnvironmentControl user={currentUser} />
-      )}
+
 
       <HubMarketingAdvert audience="club"/>
       <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer fanm-marketing-split">
@@ -1828,7 +1850,7 @@ export default function HomePage_HUB({
             if (event.target === event.currentTarget) setChallengeClub(null);
           }}
         >
-          <section className="hub-challenge-modal" aria-label={`Challenge ${challengeClub.name}`}>
+          <section className="hub-challenge-modal" role="dialog" aria-modal="true" aria-label={challengeClub.instigate ? "Create FANM Challenge" : `Challenge ${challengeClub.name}`}>
             <button
               type="button"
               className="hub-challenge-modal__close"
@@ -1837,10 +1859,10 @@ export default function HomePage_HUB({
               ×
             </button>
 
-            <span className="hub-challenge-modal__kicker">Club challenge</span>
-            <h2>Challenge {challengeClub.name}</h2>
+            <span className="hub-challenge-modal__kicker">{challengeClub.instigate ? "FANM exhibition" : "Club challenge"}</span>
+            <h2>{challengeClub.instigate ? "Create FANM Challenge" : `Challenge ${challengeClub.name}`}</h2>
             <p className="hub-challenge-modal__intro">
-              Send a formal challenge request. Match signup and payments will only be created after both clubs agree.
+              {challengeClub.instigate ? "Invite two Clubs. Both captains must accept." : "Propose a Club match. The other captain can accept or decline."}
             </p>
 
             <div className="hub-challenge-format-grid">
@@ -1854,7 +1876,7 @@ export default function HomePage_HUB({
                   key={value}
                   type="button"
                   className={challengeFormat === value ? "is-selected" : ""}
-                  onClick={() => setChallengeFormat(value)}
+                  onClick={() => {setChallengeFormat(value); if (challengeClub.instigate) setChallengeTotal(value === "11v11" ? "2200" : "");}}
                 >
                   {label}
                 </button>
@@ -1862,6 +1884,15 @@ export default function HomePage_HUB({
             </div>
 
             <div className="hub-challenge-form-grid">
+              {challengeClub.instigate && [["Home Club", instigateHome, setInstigateHome, instigateAway],
+                ["Away Club", instigateAway, setInstigateAway, instigateHome]].map(([label, value, setValue, otherId]) => (
+                <label key={label}><span>{label}</span>
+                  <select value={value} onChange={(event) => setValue(event.target.value)}>
+                    <option value="">Select Club</option>
+                    {clubsInCategory(visibleClubs, "community").filter((club) => club.id).map((club) => <option key={club.id} value={club.id} disabled={club.id === otherId}>{club.name}</option>)}
+                  </select>
+                </label>
+              ))}
               <label>
                 <span>Suggested date</span>
                 <input
@@ -1881,9 +1912,30 @@ export default function HomePage_HUB({
               </label>
 
               <label className="hub-challenge-form-grid__wide">
-                <span>Message</span>
+                <span>Venue</span>
+                <input value={challengeVenue} maxLength={140}
+                  onChange={(event) => setChallengeVenue(event.target.value)} placeholder="Where will you play?" />
+              </label>
+              <label className="hub-challenge-form-grid__wide">
+                <span>{challengeClub.instigate ? "FANM total per Club (R)" : "Club contribution per side (R)"}</span>
+                <input value={challengeTotal} inputMode="decimal" maxLength={10}
+                  readOnly={challengeClub.instigate && challengeFormat === "11v11"}
+                  onChange={(event) => setChallengeTotal(event.target.value)} placeholder={challengeClub.instigate ? "Enter the agreed quote per Club" : "0 for a free match"} />
+                <small>{challengeClub.instigate ? "Each captain collects from their players and settles with FANM." : "Optional cost share. Leave at 0 if there’s no charge."}</small>
+                {challengeClub.instigate && challengeFormat === "11v11" && <small className="hub-fanm-package">
+                  R2,200 per Club · 15 players per Club · field booking, referee, camera operator and 24 × 500 mL waters per Club.
+                </small>}
+                {challengeClub.instigate && challengeFormat !== "11v11" && <small className="hub-fanm-package">
+                  Quote the Club’s share of field hire and the agreed FANM service charge before sending. Explain what the quote includes in the message.
+                </small>}
+              </label>
+              <label><span>Home kit colour</span><input type="color" value={homeColour} onChange={(event) => setHomeColour(event.target.value)} /></label>
+              <label><span>Away kit colour</span><input type="color" value={awayColour} onChange={(event) => setAwayColour(event.target.value)} /></label>
+              <label className="hub-challenge-form-grid__wide">
+                <span>Message (optional)</span>
                 <textarea
                   rows="4"
+                  maxLength={600}
                   value={challengeMessage}
                   onChange={(event) => setChallengeMessage(event.target.value)}
                   placeholder="Example: We are available next Friday evening. Let us know if this works."
@@ -1901,9 +1953,9 @@ export default function HomePage_HUB({
               <button
                 type="button"
                 onClick={submitChallengeRequest}
-                disabled={isSubmittingChallenge}
+                disabled={isSubmittingChallenge || Boolean(challengeStatus) || !challengeVenue.trim() || !challengeTotal.trim()}
               >
-                {isSubmittingChallenge ? "Sending..." : "Send challenge"}
+                {isSubmittingChallenge ? "Sending…" : challengeClub.instigate ? "Invite both Clubs" : "Send challenge"}
               </button>
             </div>
           </section>
@@ -1927,7 +1979,7 @@ export default function HomePage_HUB({
 
       {showTour ? (
         <div className="hub-tour-modal-backdrop" onClick={() => setShowTour(false)}>
-          <section className="hub-tour-modal" onClick={(event) => event.stopPropagation()}>
+          <section className="hub-tour-modal" role="dialog" aria-modal="true" aria-label="Take the tour" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
               className="hub-tour-modal-close"
@@ -1939,6 +1991,17 @@ export default function HomePage_HUB({
 
             <p className="hub-tour-modal-kicker">Choose your guide</p>
             <h2>Start with the right tour</h2>
+            {isPlatformAdmin && <section className="hub-superuser-tools hub-tour-fanm" aria-label="FANM superuser tools">
+              <p className="hub-tour-modal-kicker">FANM · Superuser</p>
+              <h3>Organise a Club vs Club exhibition</h3>
+              <p>Choose two Clubs and send the same offer to both captains. Signups open only after both agree.</p>
+              <button type="button" className="hub-nav__primary" disabled={!canInstigate}
+                onClick={() => {setShowTour(false); openInstigateMatch();}}>Create FANM Challenge</button>
+              {instigationBlock && <p role="status">{instigationBlock}</p>}
+              <button type="button" className="hub-platform-view-button" aria-expanded={environmentToolsOpen}
+                onClick={() => setEnvironmentToolsOpen((value) => !value)}>Database environment</button>
+              {environmentToolsOpen && <FirebaseEnvironmentControl user={currentUser} />}
+            </section>}
 
             <div className="hub-tour-video-grid">
               <button

@@ -1,3 +1,5 @@
+import FixtureCrests from "../components/FixtureCrests.jsx";
+import {getFieldMatchDaySquads} from "../storage/fieldSeasonSquadRepository.js";
 import {fieldOperatingHoursLine} from "../core/fieldOperatingHours.mjs";
 import "../components/LandingDesktopLayout.css";
 import {matchTeamCaption} from "../core/matchTeamCaption.mjs";
@@ -110,19 +112,12 @@ function getLandingTeamBadge(team = {}) {
   );
 }
 
-function FieldTileCrests({ids, teams}) {
-  return <span className="field-tile-crests" aria-hidden="true">
-    {ids.map((id, index) => {
-      const team = teams.find(item => item.id === id);
-      const badge = getLandingTeamBadge(team);
-      return <React.Fragment key={index}>
-        {index > 0 && <small>vs</small>}
-        <span className="field-tile-crest">
-          {badge ? <img src={badge} alt="" /> : getLandingTeamAbbreviation(team)}
-        </span>
-      </React.Fragment>;
-    })}
-  </span>;
+function FieldTileCrests({ids, teams, colours = {}}) {
+  return <FixtureCrests teams={ids.map((id) => {
+    const team = teams.find((item) => item.id === id);
+    return {id, badge: getLandingTeamBadge(team), abbreviation: getLandingTeamAbbreviation(team),
+      colour: String(colours[id] || "").trim().replace(/\s+/g, "")};
+  })} />;
 }
 
 const activePrimaryStyle = {
@@ -210,7 +205,7 @@ function renderTileContent({ isMobile, icon, desktopLines, mobileLines }) {
         minWidth: 0,
       }}
     >
-      <span style={{ fontSize: isMobile ? "1.2rem" : "1rem" }}>{icon}</span>
+      {icon != null && <span style={{ fontSize: isMobile ? "1.2rem" : "1rem" }}>{icon}</span>}
       {lines.map((line) => (
         <span
           key={line}
@@ -317,6 +312,10 @@ export default function VenueLandingPage({
   nextFixtureLabel = "",
   takeoverFixtureLabel = "",
   startTeamIds = [],
+  practiceStartColours,
+  startKitSeasonId = "",
+  startKitMatchDayId = "",
+  startKitFixtureId = "",
   takeoverTeamIds = [],
   takeoverCount = 0,
   onSetMatchType,
@@ -644,6 +643,25 @@ export default function VenueLandingPage({
   const activeGameFormatOption =
     GAME_FORMAT_OPTIONS.find((option) => option.value === resolvedGameFormat) ||
     GAME_FORMAT_OPTIONS[0];
+  const [startKits, setStartKits] = useState(null);
+  useEffect(() => {
+    if (!activeClubId || !startKitSeasonId || !startKitMatchDayId || !startKitFixtureId) return;
+    let active = true;
+    const load = () => getFieldMatchDaySquads({
+      venueId:activeClubId, seasonId:startKitSeasonId, matchDayId:startKitMatchDayId,
+    }).then(result => {
+      if (!active) return;
+      const colours = Object.fromEntries((result.clubs || [])
+        .filter(club=>club.fixtureId === startKitFixtureId && club.matchColour)
+        .map(club=>[club.clubId,club.matchColour]));
+      setStartKits({fixtureId:startKitFixtureId,colours});
+    }).catch(()=>{});
+    load();
+    window.addEventListener("focus",load);
+    return () => {active = false;window.removeEventListener("focus",load);};
+  }, [activeClubId, startKitSeasonId, startKitMatchDayId, startKitFixtureId]);
+  const startColours = practiceStartColours || (startKits?.fixtureId === startKitFixtureId ? startKits.colours : undefined);
+  const showTakeover = Boolean(hasLiveMatch && onTakeoverMatch);
   const activeGameFormatLabel = activeGameFormatOption?.label || "5 v 5";
   const resolvedMatchSeconds = Number.isFinite(Number(matchSeconds))
     ? Number(matchSeconds)
@@ -1666,6 +1684,7 @@ export default function VenueLandingPage({
           >
             <MatchTeamChooser
               label="On-field Team 1"
+              roundCrest
               value={teamAId || ""}
               teams={optionsForTeamA}
               renderLabel={renderOptionLabel}
@@ -1678,6 +1697,7 @@ export default function VenueLandingPage({
 
             <MatchTeamChooser
               label="On-field Team 2"
+              roundCrest
               value={teamBId || ""}
               teams={optionsForTeamB}
               renderLabel={renderOptionLabel}
@@ -1752,21 +1772,20 @@ export default function VenueLandingPage({
             >
               {renderTileContent({
                 isMobile,
-                icon: "⚽",
+                icon: startTeamIds.length === 2 ? (
+                  <span className={`field-start-art${showTakeover ? "" : " field-start-art--cycle"}`} aria-hidden="true">
+                    {!showTakeover && <span className="field-start-ball"><span>⚽</span></span>}
+                    <span className="field-start-crests"><FieldTileCrests ids={startTeamIds} teams={teams} colours={startColours} /></span>
+                  </span>
+                ) : showTakeover ? null : "⚽",
                 desktopLines: ["Start Match"],
                 mobileLines: ["Start", "Match"],
               })}
             </button>
-            {startTeamIds.length === 2 ? (
-              <span className="field-start-fixture" aria-hidden="true">
-                <FieldTileCrests ids={startTeamIds} teams={teams} />
-              </span>
-            ) : hasLiveMatch && (
-              <span className="field-start-fixture field-start-fixture--waiting">
-                No parallel fixture ready
-              </span>
+            {startTeamIds.length !== 2 && hasLiveMatch && (
+              <span className="field-start-fixture field-start-fixture--waiting">No parallel fixture ready</span>
             )}
-            {hasLiveMatch && onTakeoverMatch && (
+            {showTakeover && (
               <button type="button" className="field-takeover-badge"
                 onClick={onTakeoverMatch}
                 aria-label={`Takeover: ${takeoverFixtureLabel}`}

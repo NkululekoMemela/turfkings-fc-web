@@ -9,7 +9,10 @@ export function fieldSpectatorView({season={},live=null,now=Date.now(),requested
  if(live?.status==='live'&&!live.isFinished&&(!requestedFixtureId||matches(live)))return {kind:'live',match:live};
  if(requestedFixtureId){
   const result=unique.find(matches)||(matches(live)&&(live.status==='completed'||live.isFinished)?live:null);
-  return result?{kind:'result',match:result}:{kind:'empty',match:null};
+  if(result)return {kind:'result',match:result};
+  // An accepted exhibition stays on its selected fixture until the referee starts it.
+  if(matches(live)&&live.status==='accepted')return {kind:'upcoming',match:{...live,atMs:stamp(live.kickoffMs)}};
+  return {kind:'empty',match:null};
  }
  const at=r=>stamp(r.completedAtMs||r.completedAt||r.endedAtMs)||scheduledAt(fixtures.find(f=>f.id===r.fixtureId)?.scheduledLocal)||0;
  const last=unique.sort((a,b)=>at(b)-at(a))[0]||(live?.status==='completed'?live:null);

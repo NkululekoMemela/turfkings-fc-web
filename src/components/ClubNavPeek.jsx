@@ -30,7 +30,8 @@ export default function ClubNavPeek({buttonRef, enabled, kind, children}) {
       }
       if (!playing) return;
       const centre = b.left + b.width / 2;
-      const left = kind === "rate" ? Math.max(62, Math.min(viewport.clientWidth - 62, centre)) : centre;
+      const width = kind === "exhibition" ? 88 : kind === "rate" ? 62 : 0;
+      const left = width ? Math.max(width, Math.min(viewport.clientWidth - width, centre)) : centre;
       const top = b.top - 4;
       const anchor = centre - left;
       setPosition(previous => previous?.left === left && previous.top === top && previous.anchor === anchor

@@ -1,3 +1,4 @@
+import {fieldFormat} from "../../functions/fieldBoothShared/fieldFormat.mjs";
 import {
   doc, runTransaction, FieldPath, serverTimestamp,
 } from "firebase/firestore";
@@ -32,20 +33,22 @@ export async function saveFieldPracticeFormation({
       throw new Error("The Practice squad changed. Reload Formations.");
     }
     const players = manifest.players || [];
-    const names = ["p1", "p2", "p3", "p4", "p5"]
-      .map(slot => lineup.positions?.[slot]);
+    const {minimum, maximum, lineupKey, formations} = fieldFormat(season.gameFormat);
+    const formation = Object.hasOwn(formations, lineup?.formationId) && formations[lineup.formationId];
+    if (!formation) throw Error("Choose a formation for this Practice match format.");
+    const names = formation.positions.map(({id}) => lineup.positions?.[id]);
     const allowed = new Set(players.map(p => p.fullName));
-    if (players.length < 5 || players.length > 6 ||
+    if (players.length < minimum || players.length > maximum ||
         names.some(name => !name || !allowed.has(name)) ||
-        new Set(names).size !== 5) {
-      throw new Error("Use five distinct players from this Practice squad.");
+        new Set(names).size !== minimum) {
+      throw new Error(`Use ${minimum} distinct players from this Practice squad.`);
     }
     const saved = {
       ...lineup, matchDayId, squadFingerprint: expectedFingerprint,
       meta: {...lineup.meta, savedByRole: "admin"},
     };
     tx.update(rootRef,
-      new FieldPath("league", "activeSeason", "savedLineups", clubId, "5"),
+      new FieldPath("league", "activeSeason", "savedLineups", clubId, lineupKey),
       {variants: {admin: saved}},
       "updatedAt", serverTimestamp()
     );

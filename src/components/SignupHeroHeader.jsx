@@ -37,7 +37,7 @@ export default function SignupHeroHeader({
                 {subtext}
               </p>
 
-              <div className="signup-top-meta">
+              {attendanceBadgeText && <div className="signup-top-meta">
                 <div className="signup-attendance-badge">
                   <span className="signup-attendance-badge-label">
                     Attendance Badge 🛡️
@@ -45,7 +45,7 @@ export default function SignupHeroHeader({
                   <strong>{attendanceBadgeText}</strong>
                   {attendanceSubtext ? <small>{attendanceSubtext}</small> : null}
                 </div>
-              </div>
+              </div>}
             </div>
           </div>
 

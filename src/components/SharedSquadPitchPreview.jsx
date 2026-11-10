@@ -26,7 +26,10 @@ export default function SharedSquadPitchPreview({
   displayNameOf,
   handlePreviewSlotClick,
   handlePreviewRemovePlayer,
-  getPreviewTeamName
+  getPreviewTeamName,
+  lockColours = false,
+  renderKitControl,
+  showRemoveControls,
 }) {
     const slots = getSquadPreviewSlots();
     const isClubChallengePreview = Boolean(activeChallengeFixture);
@@ -120,7 +123,8 @@ export default function SharedSquadPitchPreview({
                     )}
 
                     <p style={{ marginTop: "0.35rem" }}>
-                      {players.length}/{playersPerSide} selected
+                      {showRemoveControls === undefined ? `${players.length}/${playersPerSide} selected` :
+                        `${players.slice(0, playersPerSide).filter(Boolean).length}/${playersPerSide} starters · ${players.slice(playersPerSide).filter(Boolean).length} reserves`}
                     </p>
                   </div>
 
@@ -148,7 +152,7 @@ export default function SharedSquadPitchPreview({
                         ))}
                       </PremiumSelect>
 
-                      <TeamIdentityEditor
+                      {renderKitControl ? renderKitControl(team, isLockedOpponentPreview) : <TeamIdentityEditor
                         team={team}
                         colourName={
                           team.teamColorName ||
@@ -160,20 +164,20 @@ export default function SharedSquadPitchPreview({
                         showAbbreviation={false}
                         showColour
                         compact
-                        disabled={isLockedOpponentPreview}
+                        disabled={isLockedOpponentPreview || lockColours}
                         onColourChange={(nextColour) =>
                           handleTeamColorNameChange(
                             team.id,
                             nextColour.teamColorName
                           )
                         }
-                      />
+                      />}
                     </div>
                   ) : null}
                 </div>
               </div>
 
-              <div className="squad-preview-mini-pitch">
+              <div className={`squad-preview-mini-pitch${renderKitControl ? " exhibition-kit-pitch" : ""}`}>
                 <div className="squad-preview-centre-circle" />
                 <div className="squad-preview-half-line" />
                 <div className="squad-preview-box top" />
@@ -194,9 +198,9 @@ export default function SharedSquadPitchPreview({
                     team.captainId === pid;
 
                   return (
+                    <React.Fragment key={`preview-slot-${team.id}-${index}`}>
                     <button
                       type="button"
-                      key={`preview-slot-${team.id}-${index}`}
                       className={`squad-preview-position ${pid ? "has-player" : "is-empty"}`}
                       style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
                       onClick={() => handlePreviewSlotClick(team.id, index)}
@@ -216,7 +220,7 @@ export default function SharedSquadPitchPreview({
                         <span>{slot.label}</span>
                       </div>
 
-                      {canEdit && pid && !isLockedOpponentPreview ? (
+                      {showRemoveControls === undefined && canEdit && pid && !isLockedOpponentPreview ? (
                         <div className="squad-preview-mini-actions">
                           <span
                             role="button"
@@ -232,10 +236,15 @@ export default function SharedSquadPitchPreview({
                         </div>
                       ) : null}
                     </button>
+                    {showRemoveControls && canEdit && pid && !isLockedOpponentPreview &&
+                      <button type="button" className="exhibition-slot-remove"
+                        style={{left: `${slot.x}%`, top: `${slot.y}%`}} aria-label={`Remove ${displayNameOf(pid)}`}
+                        onClick={() => handlePreviewRemovePlayer(team.id, pid)}>×</button>}
+                    </React.Fragment>
                   );
                 })}
 
-                {players.length > slots.length && (
+                {showRemoveControls === undefined && players.length > slots.length && (
                   <div className="squad-preview-extra-list">
 
                     {players.slice(slots.length).map((pid, extraIndex) => (
@@ -252,7 +261,7 @@ export default function SharedSquadPitchPreview({
                   </div>
                 )}
 
-                {canEdit && players.length >= playersPerSide && (
+                {showRemoveControls === undefined && canEdit && players.length >= playersPerSide && (
                   <button
                     type="button"
                     className="squad-preview-add-extra-btn"
@@ -262,6 +271,23 @@ export default function SharedSquadPitchPreview({
                   </button>
                 )}
               </div>
+              {showRemoveControls !== undefined && players.slice(slots.length).some(Boolean) &&
+                <div className="exhibition-reserves">
+                  <strong>Reserves</strong>
+                  <div>
+                    {players.slice(slots.length).map((pid, extraIndex) => pid && (
+                      <span key={pid} className="exhibition-reserve-slot">
+                        <button type="button" className="squad-preview-extra-player"
+                          disabled={isLockedOpponentPreview} onClick={() => handlePreviewSlotClick(team.id, slots.length + extraIndex)}>
+                          {displayNameOf(pid)}
+                        </button>
+                        {showRemoveControls && canEdit && !isLockedOpponentPreview &&
+                          <button type="button" className="exhibition-reserve-remove" aria-label={`Remove reserve ${displayNameOf(pid)}`}
+                            onClick={() => handlePreviewRemovePlayer(team.id, pid)}>×</button>}
+                      </span>
+                    ))}
+                  </div>
+                </div>}
             </div>
           );
         })}

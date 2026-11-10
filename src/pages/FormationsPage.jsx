@@ -1,3 +1,6 @@
+import FormationTeamSelector from "../components/FormationTeamSelector.jsx";
+import {useExhibitionMatchday} from "../storage/useExhibitionMatchday.js";
+import {clubChallengeRequest} from "../storage/clubChallengeGateway.js";
 import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import PremiumSelect from "../components/PremiumSelect.jsx";
 import {resolvePlayerPortrait,indexPlayerPortraits} from "../core/playerPortrait.mjs";
@@ -53,81 +56,12 @@ import {
 import HandInjuryConfirmationModal from "../components/HandInjuryConfirmationModal.jsx";
 
 
-const FORMATIONS_11_WITH_ULTRA_DEFENSIVE = (() => {
-  const adjusted = {};
-
-  Object.entries(FORMATIONS_11 || {}).forEach(([key, formation]) => {
-    const idText = String(formation?.id || key || "").toLowerCase();
-    const labelText = String(formation?.label || "").toLowerCase();
-    const isThreeFiveTwo =
-      idText.includes("3_5_2") ||
-      idText.includes("352") ||
-      labelText.includes("3-5-2") ||
-      labelText.includes("352");
-
-    if (!isThreeFiveTwo) {
-      adjusted[key] = formation;
-      return;
-    }
-
-    const forwardIndexes = [];
-    const positions = (formation?.positions || []).map((pos, index) => {
-      const posText = `${pos?.id || ""} ${pos?.label || ""}`.toLowerCase();
-      const isForward =
-        posText.includes("st") ||
-        posText.includes("striker") ||
-        posText.includes("cf") ||
-        posText.includes("forward") ||
-        posText.includes("fwd") ||
-        posText.includes("ls") ||
-        posText.includes("rs");
-
-      if (isForward) forwardIndexes.push(index);
-      return { ...pos };
-    });
-
-    if (forwardIndexes.length >= 2) {
-      const first = forwardIndexes[0];
-      const second = forwardIndexes[1];
-      positions[first] = { ...positions[first], x: 34, y: positions[first].y ?? 18 };
-      positions[second] = { ...positions[second], x: 66, y: positions[second].y ?? 18 };
-    }
-
-    adjusted[key] = {
-      ...formation,
-      label: "3-5-2",
-      positions,
-    };
-  });
-
-  return {
-    ...adjusted,
-    "11_5_4_1": {
-      id: "11_5_4_1",
-      label: "5-4-1",
-      positions: [
-        { id: "gk", label: "GK", x: 50, y: 91 },
-        { id: "lb", label: "LB", x: 17, y: 73 },
-        { id: "lcb", label: "LCB", x: 34, y: 76 },
-        { id: "cb", label: "CB", x: 50, y: 78 },
-        { id: "rcb", label: "RCB", x: 66, y: 76 },
-        { id: "rb", label: "RB", x: 83, y: 73 },
-        { id: "lm", label: "LM", x: 22, y: 47 },
-        { id: "lcm", label: "CM", x: 40, y: 44 },
-        { id: "rcm", label: "CM", x: 60, y: 44 },
-        { id: "rm", label: "RM", x: 78, y: 47 },
-        { id: "st", label: "ST", x: 50, y: 18 },
-      ],
-    },
-  };
-})();
-
 function isSmallSidedGameType(type) {
   return type === GAME_TYPE_5 || type === GAME_TYPE_6 || type === GAME_TYPE_7;
 }
 
 function getFormationsMapForGameType(type) {
-  if (type === GAME_TYPE_11) return FORMATIONS_11_WITH_ULTRA_DEFENSIVE;
+  if (type === GAME_TYPE_11) return FORMATIONS_11;
   if (type === GAME_TYPE_7) return FORMATIONS_7;
   if (type === GAME_TYPE_6) return FORMATIONS_6;
   return FORMATIONS_5;
@@ -156,6 +90,7 @@ function getGameTypeLabel(type) {
 
 function gameFormatToFormationGameType(format) {
   const value = String(format || "").trim().toUpperCase();
+  if (["11_V_11", "11V11", "11_ASIDE"].includes(value)) return GAME_TYPE_11;
   if (value === "7_V_7" || value === "7V7" || value === "7_ASIDE") return GAME_TYPE_7;
   if (value === "6_V_6" || value === "6V6" || value === "6_ASIDE") return GAME_TYPE_6;
   return GAME_TYPE_5;
@@ -956,6 +891,9 @@ const LONG_PRESS_MS = 650;
 const MAX_SUBS = 6;
 
 export function FormationsPage({
+  exhibitionCandidate,
+  exhibitionCalendarLoading = false,
+  canManageExhibition = false,
   canEditNumbers=false,onNumberChange,
   activeClubId = "turf-kings",
   isPracticeMode = false,
@@ -972,15 +910,20 @@ export function FormationsPage({
   identity = null,
   authUser = null,
   onBack,
-  onGoToSquads,
   matchType = "FRIENDLY",
   gameFormat = "5_V_5",
 }) {
-  const canEditLineups = true;
+  const exhibitionScope = Boolean(exhibitionCandidate?.fixtureId && !isPracticeMode);
+  const matchday = useExhibitionMatchday(activeClubId, exhibitionScope ? exhibitionCandidate.fixtureId : null);
+  const exhibitionMatch = matchday.match;
+  const [exhibitionSaveError, setExhibitionSaveError] = useState("");
+  const [exhibitionSaving, setExhibitionSaving] = useState(false);
+  const exhibitionSaveRef = useRef(false);
+  useEffect(() => {setExhibitionSaveError("");}, [activeClubId, exhibitionCandidate?.fixtureId]);
   const activeClubName = String(
     activeClub?.shortName ||
     activeClub?.name ||
-    activeClubName
+    "Club"
   ).trim();
 
   const isFriendlyMatch = String(matchType || "FRIENDLY").toUpperCase() !== "LEAGUE";
@@ -1025,28 +968,27 @@ export function FormationsPage({
   }, [activeClubId, isPracticeMode]);
 
   const sourceTeams = useMemo(() => {
+    if (exhibitionScope) {
+      if (!exhibitionMatch) return [];
+      return ["home", "away"].map((side) => ({
+        id: exhibitionMatch[side].id, label: exhibitionMatch[side].name, logoUrl: exhibitionMatch[side].logoUrl,
+        teamColorHex: side === "home" ? exhibitionMatch.homeColour : exhibitionMatch.awayColour,
+        players: [...(exhibitionMatch.teams?.[side]?.starters || []), ...(exhibitionMatch.teams?.[side]?.substitutes || [])],
+      }));
+    }
     if (!isFriendlyMatch) return teams || [];
     return Array.isArray(fiveVFiveTeams) && fiveVFiveTeams.length
       ? fiveVFiveTeams
       : [];
-  }, [isFriendlyMatch, teams, fiveVFiveTeams]);
+  }, [isFriendlyMatch, teams, fiveVFiveTeams, exhibitionScope, exhibitionMatch]);
 
   const initialTeamId =
     currentMatch?.teamAId || (sourceTeams[0] ? sourceTeams[0].id : null);
 
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId);
 
-  const [gameType, setGameType] = useState(() => gameFormatToFormationGameType(gameFormat));
-
-  const selectedSmallSidedGameType = useMemo(
-    () => gameFormatToFormationGameType(gameFormat),
-    [gameFormat]
-  );
-
-  const visibleGameTypeOptions = useMemo(
-    () => [selectedSmallSidedGameType, GAME_TYPE_11],
-    [selectedSmallSidedGameType]
-  );
+  const gameType = gameFormatToFormationGameType(exhibitionScope ? exhibitionCandidate.format : gameFormat);
+  const usesTeamLineups = true;
 
   const [players, setPlayers] = useState([]);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -1073,13 +1015,6 @@ export function FormationsPage({
 
   const exportRef = useRef(null);
   const longPressTimerRef = useRef(null);
-
-  useEffect(() => {
-    const nextGameType = gameFormatToFormationGameType(gameFormat);
-    if (isSmallSidedGameType(nextGameType)) {
-      setGameType(nextGameType);
-    }
-  }, [gameFormat]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1230,7 +1165,7 @@ export function FormationsPage({
     return { resolve };
   }, [players]);
 
-  const canonicalName = (raw) => playerResolver.resolve(raw).display;
+  const canonicalName = (raw) => exhibitionScope ? String(raw || "").trim() : playerResolver.resolve(raw).display;
 
   const displayCompactName = (raw) => {
     if (!raw) return "";
@@ -1386,6 +1321,7 @@ export function FormationsPage({
 
   const selectedTeamCanonical =
     canonicalTeams.find((t) => t.id === selectedTeamId) || canonicalTeams[0] || null;
+  const canEditLineups = !exhibitionScope || Boolean(canManageExhibition && exhibitionMatch?.canEdit && selectedTeamCanonical?.id === activeClubId && !exhibitionSaving);
 
   const isTemporaryOpponentTeam = useMemo(() => {
     return Boolean(
@@ -1439,7 +1375,7 @@ export function FormationsPage({
       return loggedInCanonicalName || "";
     }
 
-    if (isSmallSidedGameType(gameType)) {
+    if (usesTeamLineups) {
       return selectedTeamCanonical?.captain || "";
     }
 
@@ -1457,12 +1393,12 @@ export function FormationsPage({
     currentAccessRole === "super_admin";
 
   const isSelectedTeamCaptain =
-    isSmallSidedGameType(gameType) &&
+    usesTeamLineups &&
     Boolean(loggedInCanonicalName) &&
     normKey(loggedInCanonicalName) ===
       normKey(selectedTeamCanonical?.captain || "");
 
-  const canManageHandInjury =
+  const canManageHandInjury = !exhibitionScope &&
     !isPracticeMode &&
     gameType !== GAME_TYPE_11 &&
     Boolean(selectedTeamCanonical?.id) &&
@@ -1567,9 +1503,12 @@ export function FormationsPage({
     const targetDefaultFormationId = getDefaultFormationIdForGameType(targetGameType);
 
     const targetPlayerPool =
-      targetGameType === GAME_TYPE_11 ? clubPlayers : targetTeam?.players || [];
+      targetTeam?.players || [];
 
-    const next = resolveLatestPreferredTeamLineup(
+    const side = exhibitionMatch?.home.id === targetTeam?.id ? "home" : "away";
+    const next = exhibitionScope
+      ? (exhibitionMatch?.lineups?.[side] || buildDefaultLineupLocal(targetPlayerPool, targetDefaultFormationId, targetFormationsMap))
+      : resolveLatestPreferredTeamLineup(
       targetTeam,
       targetGameType,
       lineupsByTeam,
@@ -1731,7 +1670,7 @@ export function FormationsPage({
   }, [results, todayFriendlyResults]);
 
   const matchDayDecorations = useMemo(() => {
-    if (!isSmallSidedGameType(gameType)) return {};
+    if (!usesTeamLineups) return {};
     if (!selectedTeamCanonical?.id) return {};
 
     // Use the whole selected team, not only the 5 players on the pitch,
@@ -1754,7 +1693,7 @@ export function FormationsPage({
   ]);
 
   const benchPoolPlayers =
-    gameType === GAME_TYPE_11 ? clubPlayers : selectedTeamCanonical?.players || [];
+    usesTeamLineups ? selectedTeamCanonical?.players || [] : clubPlayers;
 
   const assignedKeys = new Set(
     Object.values(lineup.positions)
@@ -1782,16 +1721,20 @@ export function FormationsPage({
     setPhotoMessage("");
   };
 
-  const handleGameTypeClick = (type) => {
-    const nextLineup = buildResolvedLineup(selectedTeamId, type);
-    setGameType(type);
-    setLineup(nextLineup);
-    setSelectedPlayer(null);
-    setPhotoMessage("");
-  };
-
   const saveTeamLineup = (teamId, updatedLineup) => {
     if (!teamId) return;
+    if (exhibitionScope) {
+      if (!canManageExhibition || !exhibitionMatch?.canEdit || teamId !== activeClubId || exhibitionSaveRef.current) return;
+      exhibitionSaveRef.current = true;
+      setExhibitionSaving(true);
+      setExhibitionSaveError("");
+      clubChallengeRequest("saveLineup", {clubId: activeClubId, fixtureId: exhibitionMatch.fixtureId,
+        teamId, formationId: updatedLineup.formationId, positions: updatedLineup.positions})
+        .then(() => matchday.refresh()).catch((error) => {
+          setExhibitionSaveError(error.message); setLineup(buildResolvedLineup(teamId, gameType));
+        }).finally(() => {exhibitionSaveRef.current = false; setExhibitionSaving(false);});
+      return;
+    }
 
     const previewLineup = makeSavedLineup(
       {
@@ -2121,26 +2064,15 @@ export function FormationsPage({
   const renderTopHeader = (isEmpty = false) => (
     <>
       <ClubPageRibbon title={<>Lineups &amp; Formations</>} onHome={onBack} showLogo/>
+      {exhibitionScope && <p role="status">{exhibitionSaveError || matchday.error ||
+        (!exhibitionMatch ? "Loading exhibition formations…" : exhibitionSaving ? "Saving formation…" :
+        !canManageExhibition ? "Exhibition formation · read only" :
+        selectedTeamCanonical?.id !== activeClubId ? "Opponent formation · read only" : "Exhibition formation")}</p>}
+
 
       <header className="header" style={{ marginBottom: isEmpty ? undefined : "0.35rem" }}>
-        <div className="header-top-row">
-          <button
-            className="secondary-btn"
-            type="button"
-            onClick={onGoToSquads}
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(20, 35, 63, 0.98), rgba(11, 23, 48, 0.98))",
-              color: "#f8fafc",
-              border: "1px solid rgba(148, 163, 184, 0.28)",
-              boxShadow: "0 10px 24px rgba(2, 6, 23, 0.35)",
-            }}
-          >
-            Manage Squads
-          </button>
-        </div>
         <p className="muted small" style={{ marginTop: "0.65rem" }}>
-          Match day format: <strong>{isFriendlyMatch ? `Friendly ${getGameTypeLabel(gameType)}` : `League ${getGameTypeLabel(gameType)}`}</strong>
+          Match day format: <strong>{exhibitionScope ? `Exhibition ${getGameTypeLabel(gameType)}` : isFriendlyMatch ? `Friendly ${getGameTypeLabel(gameType)}` : `League ${getGameTypeLabel(gameType)}`}</strong>
         </p>
       </header>
     </>
@@ -2171,7 +2103,9 @@ export function FormationsPage({
 
     return (
       <span className="fanm-inline-team-identity">
-        {identity?.type === "national" && identity.flag ? (
+        {exhibitionScope && team?.logoUrl ? (
+          <img src={team.logoUrl} alt="" className="fanm-inline-team-logo exhibition-formation-crest" />
+        ) : identity?.type === "national" && identity.flag ? (
           <span className="fanm-inline-team-flag">
             {identity.flag}
           </span>
@@ -2186,6 +2120,13 @@ export function FormationsPage({
       </span>
     );
   };
+
+  if (exhibitionCalendarLoading) {
+    return <div className="page lineups-page">
+      <ClubPageRibbon title={<>Lineups &amp; Formations</>} onHome={onBack} showLogo/>
+      <p role="status">Checking the Club match calendar…</p>
+    </div>;
+  }
 
   if (!selectedTeamCanonical) {
     return (
@@ -2220,36 +2161,15 @@ export function FormationsPage({
       >
         <div className="lineups-controls">
           <div className="field-row inline-field">
-            <label>Game type</label>
-            <div className="segmented-toggle">
-              {visibleGameTypeOptions.map((type) => (
-                <button
-                  key={`game-type-${type}`}
-                  type="button"
-                  className={`segmented-option ${gameType === type ? "active" : ""}`}
-                  onClick={() => handleGameTypeClick(type)}
-                >
-                  {getGameTypeLabel(type)}
-                </button>
-              ))}
-            </div>
+            <label>Match format</label>
+            <strong>{getGameTypeLabel(gameType)}</strong>
           </div>
 
-          {isSmallSidedGameType(gameType) ? (
+          {usesTeamLineups ? (
             <div className="field-row inline-field">
               <label>Team ({getGameTypeLabel(gameType)})</label>
-              <div className="team-pill-row">
-                {canonicalTeams.map((t) => (
-                  <button
-                    key={`team-pill-${gameFormat}-${t.id}`}
-                    type="button"
-                    className={`team-pill-btn ${t.id === selectedTeamCanonical.id ? "active" : ""}`}
-                    onClick={() => handleTeamClick(t.id)}
-                  >
-                    {renderTeamIdentityLabel(t, t.label)}
-                  </button>
-                ))}
-              </div>
+              <FormationTeamSelector teams={canonicalTeams} selectedId={selectedTeamCanonical.id}
+                onSelect={handleTeamClick} renderLabel={team => renderTeamIdentityLabel(team, team.label)} />
             </div>
           ) : (
             <div className="field-row inline-field">
@@ -2498,7 +2418,7 @@ export function FormationsPage({
                   boxShadow: "0 6px 14px rgba(2, 6, 23, 0.18)",
                 }}
               >
-                {isSmallSidedGameType(gameType) ? renderTeamIdentityLabel(selectedTeamCanonical, getGameTypeLabel(gameType)) : activeClubName}
+                {usesTeamLineups ? renderTeamIdentityLabel(selectedTeamCanonical, getGameTypeLabel(gameType)) : activeClubName}
               </div>
 
               {formation.positions.map((pos) => {
@@ -2549,7 +2469,7 @@ export function FormationsPage({
                     }}
                   >
                     <div className="player-token" style={{ position: "relative", overflow: "visible" }}>
-                      {decor?.rating != null && isSmallSidedGameType(gameType) ? (
+                      {decor?.rating != null && usesTeamLineups ? (
                         <div
                           style={{
                             position: "absolute",

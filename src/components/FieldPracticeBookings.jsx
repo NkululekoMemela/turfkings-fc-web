@@ -3,7 +3,7 @@ import {collection, onSnapshot} from "firebase/firestore";
 import {db} from "../firebaseConfig.js";
 import {venueLeagueRootPath} from "../core/venueLeaguePaths.js";
 
-export default function FieldPracticeBookings({scope, season, nextFixture, onReady, receiptCheck, onReceiptCheck}) {
+export default function FieldPracticeBookings({scope, season, nextFixture, receiptCheck, onReceiptCheck}) {
   if (scope.environment !== "practice") throw Error("This view requires a Practice session.");
   const root = venueLeagueRootPath(scope);
   const dayId = nextFixture?.matchDayId;
@@ -21,10 +21,6 @@ export default function FieldPracticeBookings({scope, season, nextFixture, onRea
     manifest?.matchDayId === dayId;
   const entryConfirmed = Boolean(nextFixture && receiptCheck?.seasonId === season?.id &&
     receiptCheck?.fixtureId === nextFixture.id);
-  const bothBooked = Boolean(manifests && nextFixture && [nextFixture.clubAId,nextFixture.clubBId]
-    .every(id => isBooked(manifests.get(id)) && manifests.get(id).confirmed));
-  const ready = bothBooked && entryConfirmed;
-  useEffect(() => { onReady?.(ready); return () => onReady?.(false); }, [onReady, ready]);
   const invited = Object.values(season?.invitations || {});
   return (
     <section className="card practice-booking-review" data-practice-guide="field-bookings-review">
@@ -36,10 +32,10 @@ export default function FieldPracticeBookings({scope, season, nextFixture, onRea
         ? "Could not load the sandbox squads." : "Checking the sandbox squads…"}</p>}
       {nextFixture && <div>
         <h3>Club-to-Field entry</h3>
-        <p>Check the two Clubs’ simulated entry records independently of their player bookings. A company-funded Club can use an authorised company entry.</p>
-        <button type="button" className="secondary-btn" disabled={!bothBooked || entryConfirmed}
+        <p>Rehearse recording an EFT or cash payment received by the Field. In Official, Field staff confirm the Club’s entry receipt and Club admins handle contributions from their own players.</p>
+        <button type="button" className="secondary-btn" disabled={entryConfirmed}
           onClick={() => onReceiptCheck({seasonId:season.id,fixtureId:nextFixture.id})}>
-          {entryConfirmed ? "Practice entry records confirmed" : "Confirm simulated entry records"}
+          {entryConfirmed ? "Practice entry records confirmed" : "Record simulated receipt"}
         </button>
       </div>}
       <ul>{invited.map(item => {

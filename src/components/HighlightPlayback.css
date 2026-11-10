@@ -48,3 +48,17 @@
 .fanm-highlight-fixture-heading{grid-column:1/-1;margin:14px 0 2px;padding:8px 0;border-bottom:1px solid #83b3b63d;font-size:14px;color:#e7f7f2;}
 
 .video-highlights-page .tkh-card .fanm-clip-social,.fanm-clip-options-toggle{z-index:41;}
+
+.fanm-highlight-player-actions {display:flex;align-items:center;gap:5px;flex-shrink:0}
+.fanm-highlight-player-actions:empty {display:none}
+.fanm-highlight-player-bar > button {flex-shrink:0}
+.fanm-highlight-player-bar .fanm-highlight-player-actions button {
+  width:auto;min-height:34px;padding:0 9px;font-size:.75rem;font-weight:750;white-space:nowrap;
+  border:1px solid #a8d8d277;border-radius:20px;background:#082630;color:#fff;
+}
+.fanm-highlight-player-bar .fanm-highlight-player-like {background:#164846}
+.fanm-highlight-player-bar .fanm-highlight-player-like[aria-pressed="true"] {color:#ffe1e5;background:#6b2742}
+.fanm-highlight-player-like span {font-size:1rem;line-height:1}
+@media(max-width:640px) {
+  .fanm-highlight-player[data-docked="true"] {width:min(360px,calc(100vw - 20px))}
+}

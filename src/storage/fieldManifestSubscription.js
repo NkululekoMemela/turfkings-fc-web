@@ -1,3 +1,4 @@
+import {fieldFormat} from "../../functions/fieldBoothShared/fieldFormat.mjs";
 import {subscribeCarriedFieldRoster} from "./fieldCarriedRosterSubscription.js";
 import {collection, onSnapshot} from "firebase/firestore";
 import {db} from "../firebaseConfig.js";
@@ -19,12 +20,13 @@ export function subscribeFieldManifest({
   if (!scope || scope.environment === "official") {
     return subscribeCarriedFieldRoster({venueId,season,matchDayId,onData,onError});
   }
+  const {minimum, maximum} = fieldFormat(season.gameFormat);
   const day = (season.matchDays || []).find(item => item.id === matchDayId);
   const fixtures = (season.fixtures || []).filter(
     item => item.matchDayId === matchDayId
   );
   const key = JSON.stringify([
-    root, season.id, matchDayId, day?.dateLocal,
+    root, season.id, season.gameFormat, matchDayId, day?.dateLocal,
     fixtures.map(f => [f.id, f.clubAId, f.clubBId, f.scheduledLocal]),
     season.clubIds,
   ]);
@@ -53,13 +55,14 @@ export function subscribeFieldManifest({
         manifest.dateLocal === day?.dateLocal &&
         manifest.scheduledLocal === (fixture.scheduledLocal || "") &&
         manifest.confirmed === true &&
-        players.length >= 5 && players.length <= 6 &&
+        players.length >= minimum && players.length <= maximum &&
         players.every(p => p.memberId && p.sourcePlayerId && p.fullName) &&
         new Set(players.map(p => p.memberId)).size === players.length
       );
       return {
         clubId, name: manifest?.name || clubId,
         logoUrl: manifest?.logoUrl || "",
+        matchColour: manifest?.matchColour || "",
         matchDayId, dateLocal: day?.dateLocal || "",
         fixtureId: fixture?.id || "",
         confirmed: valid,

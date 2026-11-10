@@ -69,10 +69,18 @@ test("Missing, stale, incomplete and duplicated saved lineups fall back automati
   }
 });
 
-test("Other game formats retain their existing start path", () => {
-  const args = setup();
-  args.season.gameFormat = "6_V_6";
-  assert.deepEqual(build(args), {startingLineups: {}, sourceFormations: {}});
+test("Larger formats take the correct number of distinct starters and preserve the substitute", () => {
+  for (const [size, defaultId] of [[6,"6_2_2_1"], [7,"7_3_2_1"], [11,"4-3-3"]]) {
+    const args = setup(size + 1);
+    args.season.gameFormat = `${size}_V_${size}`;
+    const {startingLineups} = build(args);
+    for (const id of ["a", "b"]) {
+      const lineup = startingLineups[id];
+      assert.equal(lineup.formationId, defaultId);
+      assert.equal(new Set(Object.values(lineup.positions)).size, size);
+      assert.deepEqual(lineup.benchSnapshot, [`${id} Player ${size}`]);
+    }
+  }
 });
 
 test("Automatic outfield positions use mentality and shooting without selecting GK", () => {
@@ -96,7 +104,7 @@ test("Automatic outfield positions use mentality and shooting without selecting 
 test("Invalid or insufficient squads still cannot produce a lineup", () => {
   const short = setup();
   short.squads.a = short.squads.a.slice(0, 4);
-  assert.throws(() => build(short), /five or six/);
+  assert.throws(() => build(short), /5 or 6/);
   const args = setup();
   args.squads.a[1].fullName = args.squads.a[0].fullName;
   assert.throws(() => build(args), /duplicate/);

@@ -20,3 +20,14 @@ test('archived results and explicit timezone fixture fallback are supported',()=
  assert.equal(fieldSpectatorView({season:null,now}).kind,'empty');
  assert.equal(fieldSpectatorView({season:{fixtures:[{status:'scheduled',scheduledLocal:'invalid'}]},now}).kind,'empty');
 });
+
+test("an accepted exhibition stays selected after its scheduled kickoff while waiting for the referee", () => {
+  const kickoffMs=Date.parse("2026-11-11T17:00:00Z");
+  const fixture={status:"accepted",fixtureId:"exhibition",kickoffMs,teamAId:"home",teamBId:"away"};
+  const open=live=>fieldSpectatorView({live,requestedFixtureId:"exhibition",now:kickoffMs+180000});
+  assert.equal(open(fixture).kind,"upcoming");
+  assert.equal(open(fixture).match.atMs,kickoffMs);
+  assert.equal(open({...fixture,status:"live"}).kind,"live");
+  assert.equal(open({...fixture,status:"completed"}).kind,"result");
+  assert.equal(open({...fixture,status:"withdrawn"}).kind,"empty");
+});
