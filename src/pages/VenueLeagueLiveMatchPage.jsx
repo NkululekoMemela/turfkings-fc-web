@@ -8643,6 +8643,7 @@ export function VenueLeagueLiveMatchPage({
                         </div>
 
                         <TeamIdentityEditor
+                          kitKind={externallyManaged ? "jersey" : "bib"}
                           team={effectiveTeam || team}
                           colourName={
                             effectiveTeam?.teamColorName ||

@@ -1,5 +1,5 @@
 import React, {useState} from "react";
-import TeamColourPalette from "./TeamColourPalette.jsx";
+import TeamColourPalette, {TeamKitSwatch} from "./TeamColourPalette.jsx";
 
 const options = [
   ["#0f172a", "Black"], ["#f8fafc", "White"], ["#dc2626", "Red"],
@@ -11,7 +11,6 @@ export function exhibitionKitLabel(value) {
   return options.find(([id]) => id === hex)?.[1] || (hex === "#f59e0b" || hex === "#d97706" ? "Amber" : hex || "To be agreed");
 }
 
-const swatch = (hex) => /^#[0-9a-f]{6}$/i.test(hex) ? <i aria-hidden="true" className="exhibition-kit-swatch" style={{background:hex}}/> : null;
 
 export default function ExhibitionKitPicker({colour, opponentColour, clubName, disabled, onSave}) {
   const current = String(colour || "").toLowerCase();
@@ -19,7 +18,7 @@ export default function ExhibitionKitPicker({colour, opponentColour, clubName, d
   const [message, setMessage] = useState("");
   const opponent = String(opponentColour || "").toLowerCase();
   const wearLabel = (hex) => hex ? `Wear ${exhibitionKitLabel(hex).toLowerCase()}` : "Choose kit colour";
-  if (disabled) return <small className="exhibition-kit-readonly">{swatch(current)}{current ? wearLabel(current) : "Kit to be agreed"}</small>;
+  if (disabled) return <small className="exhibition-kit-readonly">{current && <TeamKitSwatch colour={current}/>}{current ? wearLabel(current) : "Kit to be agreed"}</small>;
   async function select(next) {
     if (next === current || next === opponent || pending) return;
     setPending(next); setMessage("");
