@@ -72,6 +72,7 @@ export default function TeamIdentityEditor({
   nameLabel = "Team name",
   abbreviationLabel = "Abbreviation",
   colourLabel = "Wear colour",
+  kitKind = "jersey",
   onNameChange = null,
   onAbbreviationChange = null,
   onColourChange = null,
@@ -156,7 +157,7 @@ export default function TeamIdentityEditor({
           <TeamColourPalette label={colourLabel} value={selectedColour.name}
             selectedLabel={selectedColour.label || selectedColour.hex}
             options={TEAM_COLOUR_OPTIONS.map(option=>({...option,value:option.name}))}
-            onSelect={handleColourChange} disabled={disabled}/>
+            onSelect={handleColourChange} disabled={disabled} kind={kitKind}/>
         </div>
       ) : null}
     </div>

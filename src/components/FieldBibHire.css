@@ -40,7 +40,6 @@ body .hire-stock-note{display:block;margin-top:10px;color:#aebfd2;font-size:12px
 .bib-inventory-table tbody tr:last-child>*{border-bottom:0;}
 .bib-inventory-table tbody tr:nth-child(even){background:#82c9ba06;}
 .bib-inventory-colour{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-weight:650;}
-.bib-inventory-colour i{display:inline-block;width:11px;height:11px;border-radius:50%;border:1px solid #d6eee380;flex:none;}
 .bib-inventory-table input{width:30px;min-width:0;padding:6px 1px;border-radius:6px;border:1px solid #6caba34d;background:#091b25;color:white;text-align:center;font:inherit;box-sizing:border-box;}
 .bib-inventory-edit{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:12px;}
 .bib-inventory-edit>.primary-btn{grid-column:1/-1;}
