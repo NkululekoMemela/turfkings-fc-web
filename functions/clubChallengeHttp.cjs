@@ -18,6 +18,7 @@ const actions = Object.freeze({
   revise: service.reviseClubChallenge,
   send: service.sendClubChallenge,
   instigate: service.instigateClubChallenge,
+  instigateClubs: service.listChallengeClubs,
   respond: service.respondToClubChallenge,
   saveTeam: service.updateChallengeTeam,
   chat: service.challengeChat,

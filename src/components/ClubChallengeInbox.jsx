@@ -1,4 +1,6 @@
-import ClubAdminNoticeHeader from "./ClubAdminNoticeHeader.jsx";
+import {createPortal} from "react-dom";
+import "./FieldSeasonInvitations.css";
+import "./ClubAdminNoticeHeader.css";
 import React, {useCallback, useEffect, useRef, useState} from "react";
 import {clubChallengeRequest} from "../storage/clubChallengeGateway.js";
 import "./ClubChallengeInbox.css";
@@ -42,7 +44,7 @@ function ChallengeDetails({match}) {
   </>;
 }
 
-export default function ClubChallengeInbox({clubId, userId, promptOnly = false, focusFixtureId, onChange, managementOnly = false}) {
+export default function ClubChallengeInbox({clubId, userId, promptOnly = false, focusFixtureId, onChange, managementOnly = false, invitationOpen = null}) {
   const [matches, setMatches] = useState([]);
   const [allowed, setAllowed] = useState(false);
   const [canAccept, setCanAccept] = useState(false);
@@ -57,6 +59,7 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
   const [error, setError] = useState("");
   const skipped = useRef(new Set());
   const dialog = useRef(null);
+  const openedNotification = useRef(null);
   const storageKey = `fanm-challenge-later:${userId}:${clubId}`;
   const refresh = useCallback(async (signal) => {
     try {
@@ -93,11 +96,23 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
     };
   }, [refresh, storageKey]);
   useEffect(() => {
-    if (openId || !promptOnly || !canAccept) return;
+    if (!promptOnly || !canAccept || busy) return;
+    if (invitationOpen?.openedAt && openedNotification.current !== invitationOpen.openedAt) {
+      const target = matches.find(match => match.fixtureId === invitationOpen.fixtureId && canRespond(match,clubId));
+      if (target) {
+        openedNotification.current = invitationOpen.openedAt;
+        setProposal(null); setWithdraw(false); setPostpone(null); setCancellationText(""); setError("");
+        setOpenId(target.fixtureId);
+        return;
+      }
+    }
+    if (openId) return;
     const next = matches.find((match) => (canRespond(match, clubId) || needsCancellationReview(match, clubId) || needsPostponementReview(match, clubId)) &&
       !skipped.current.has(noticeKey(match)));
     if (next) setOpenId(next.fixtureId);
-  }, [clubId, matches, openId, promptOnly, canAccept]);
+  }, [clubId, matches, openId, promptOnly, canAccept, busy, invitationOpen]);
+  const pendingInvitations = canAccept ? matches.filter(match => canRespond(match,clubId)) : [];
+  const pendingIndex = pendingInvitations.findIndex(match => match.fixtureId === openId);
   const selected = matches.find((match) => match.fixtureId === openId);
   const request = selected?.cancellation;
   const pendingCancellation = selected?.status === "accepted" && request?.outcome === "pending";
@@ -164,7 +179,15 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
     finally {setBusy(false);}
   }
   if (!allowed) return null;
-  return <>{!promptOnly && <section className={managementOnly ? "club-challenge-inbox exhibition-management" : "club-challenge-inbox card"} aria-label="Exhibition matches">
+  return <>
+    {promptOnly && pendingInvitations.length > 0 && createPortal(
+      <div className="tk-admin-notification-dock club-challenge-notification-dock">
+        <button type="button" className="tk-admin-notification-bell" onClick={() => openReview(pendingInvitations[0])}
+          aria-label={`Open Club challenges, ${pendingInvitations.length} awaiting reply`} title="Club challenge invitations">
+          <span aria-hidden="true">🔔</span><em className="tk-admin-notification-count">{pendingInvitations.length}</em>
+        </button>
+      </div>, document.body)}
+    {!promptOnly && <section className={managementOnly ? "club-challenge-inbox exhibition-management" : "club-challenge-inbox card"} aria-label="Exhibition matches">
     {!managementOnly && <h3>Exhibition referee booth</h3>}
     {!managementOnly && !matches.length && <p>No challenges yet. Open the Hub to challenge another Club.</p>}
     {matches.filter((match) => (!focusFixtureId || match.fixtureId === focusFixtureId || (managementOnly && match.status === "withdrawn")) && (!managementOnly || match.kickoffMs > Date.now()) &&
@@ -196,18 +219,27 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
   </section>}
     {selected && <dialog ref={dialog} className="club-challenge-dialog tk-admin-notification-card"
       aria-labelledby="club-challenge-title" onCancel={(event) => {event.preventDefault(); if (!busy) reviewLater();}}>
-      <ClubAdminNoticeHeader icon={selected.instigated ? "🏟️" : "⚽"} titleId="club-challenge-title"
-        title={archive ? "Archived cancellation" : reviewingPostponement ? "Postpone exhibition" : withdraw ? "Withdraw challenge?" : pendingCancellation
-          ? "Cancellation requested" : selected.revisedBy ? "Updated fixture proposal" : "Incoming challenge"}
-        tag={selected.instigated ? "FANM exhibition" : "Club challenge"} />
+      <div className="tk-admin-notification-topline">
+        <img src="/favicon_nobackground.png" alt="FANM" className="club-challenge-brand" />
+        <div className="tk-admin-notification-title-wrap">
+          <div className="tk-admin-notification-title" id="club-challenge-title">
+            {archive ? "Archived cancellation" : reviewingPostponement ? "Postpone exhibition" : withdraw ? "Withdraw challenge?" : pendingCancellation
+              ? "Cancellation requested" : selected.revisedBy ? "Updated fixture proposal" : "Your Club is invited"}
+          </div>
+          <span className="tk-admin-notification-tag">{selected.instigated ? "FANM exhibition" : "Club challenge invitation"}</span>
+        </div>
+      </div>
       <div className="tk-admin-notification-body">
-        <ChallengeDetails match={selected} />
+        <div className="field-invite-intro"><span>Club exhibition</span><ChallengePair match={selected}/></div>
+        <div className="field-invite-facts">
+          <div><span>Match day</span><strong>{selected.proposedDate}</strong><small>{selected.proposedKickoff} SAST</small></div>
+          <div><span>Venue</span><strong>{selected.venue}</strong></div>
+          <div><span>Format</span><strong>{formatName(selected.format)}</strong></div>
+          <div><span>Entry per Club</span><strong>{selected.clubTotalCents > 0 ? `R${(selected.clubTotalCents / 100).toFixed(2)}` : "Free to play"}</strong></div>
+        </div>
         {selected.homeColour && selected.awayColour && <p className="challenge-kit-pair">
           <span><i style={{background: selected.homeColour}} />{selected.home.name} kit</span>
           <span><i style={{background: selected.awayColour}} />{selected.away.name} kit</span>
-        </p>}
-        {Number.isSafeInteger(selected.clubTotalCents) && (selected.instigated || selected.clubTotalCents > 0) && <p>
-          {selected.clubTotalCents ? `R${(selected.clubTotalCents / 100).toFixed(2)} per Club · 15 places` : "Free to play."}
         </p>}
         {selected.hostedPackage && <p className="exhibition-hosted-package">
           <strong>FANM package:</strong> {selected.hostedPackage.rosterPerClub} players and {selected.hostedPackage.waterPerClub} × {selected.hostedPackage.waterMl} mL waters per Club. Field booking, referee and camera operator included.
@@ -253,6 +285,11 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
           <button type="submit" className="tk-admin-notification-primary" disabled={busy}>Send counterproposal</button>
         </form>}
         {error && <p role="alert">{error}</p>}
+        {promptOnly && pendingIndex >= 0 && pendingInvitations.length > 1 && <nav className="club-challenge-invitation-nav" aria-label="Pending invitations">
+          <button type="button" disabled={busy} onClick={() => openReview(pendingInvitations[(pendingIndex + pendingInvitations.length - 1) % pendingInvitations.length])}>Previous</button>
+          <span>{pendingIndex + 1} of {pendingInvitations.length}</span>
+          <button type="button" disabled={busy} onClick={() => openReview(pendingInvitations[(pendingIndex + 1) % pendingInvitations.length])}>Next</button>
+        </nav>}
         <div className="tk-admin-notification-actions">
           {withdraw && !archive && !pendingCancellation && <button type="button" className="tk-admin-notification-primary" disabled={busy || !cancellationText.trim()}
             onClick={() => revise(closeToKickoff && selected.status === "accepted" ? "force" : "request")}>

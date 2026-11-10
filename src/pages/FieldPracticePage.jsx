@@ -272,17 +272,6 @@ export default function FieldPracticePage({venue, session, onExit, onPageChange,
           onPublish={() => preparePracticeSchedule(scope, clubs)}
         />
       }
-      fieldScheduleView={
-        <button type="button" className="field-fixtures-open"
-          onClick={() => navigate("fixtures")}>
-          <span className="field-fixtures-open__icon" aria-hidden="true">▦</span>
-          <span>
-            <strong>Fixtures</strong>
-            <small>Match days, opponents and kickoff times</small>
-          </span>
-          <span aria-hidden="true">→</span>
-        </button>
-      }
       activeClub={practiceVenue}
       activeClubId={venue.id}
       activeClubName={practiceVenue.name}

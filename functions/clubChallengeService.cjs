@@ -50,6 +50,19 @@ async function requireCaptain(tx, db, id, club, user, allowAdmin = false) {
   throw forbidden("Only a captain of this Club can respond to or send a challenge.");
 }
 
+async function isClubChallengeCaptain(db, id, user) {
+  try {
+    requireVerifiedUser(user);
+    return await db.runTransaction(async tx => {
+      await requireCaptain(tx,db,id,await getClub(tx,db,id),user);
+      return true;
+    });
+  } catch (error) {
+    if (["permission-denied","not-found"].includes(error.code)) return false;
+    throw error;
+  }
+}
+
 const EXHIBITION_CAPACITY = 15;
 const SQUAD_READY_COUNT = 12;
 const MAX_CLUB_TOTAL_CENTS = 100000000;
@@ -160,18 +173,38 @@ function clubDisplay(id, club) {
 
 async function getClub(tx, db, id) {
   const club = (await tx.get(db.doc(`clubs/${id}`))).data();
-  if (!club || club.deleted === true || club.archived === true ||
-      club.organizationArchive?.active === true || ["archived", "deleted"].includes(club.status)) {
+  if (!isActiveClub(club)) {
     throw new ChallengeError("not-found", "This Club is unavailable.");
   }
   return club;
 }
 
-async function sendClubChallenge({db, user, data, now = Date.now()}, instigated = false) {
+function isActiveClub(club) {
+  return club && club.deleted !== true && club.archived !== true &&
+    club.organizationArchive?.active !== true && !["archived", "deleted"].includes(club.status);
+}
+
+function requireChallengeSuperAdmin(user) {
   requireVerifiedUser(user);
-  if (instigated && normaliseEmail(user.email) !== "nkululekolerato@gmail.com") {
+  if (normaliseEmail(user.email) !== "nkululekolerato@gmail.com") {
     throw forbidden("Use your verified platform administrator account.");
   }
+}
+
+async function listChallengeClubs({db, user}) {
+  requireChallengeSuperAdmin(user);
+  const snapshot = await db.collection("clubs").get();
+  const clubs = snapshot.docs.flatMap((doc) => {
+    const club = doc.data();
+    if (!ID_PATTERN.test(doc.id) || !isActiveClub(club) || club.clubType === "company") return [];
+    return [clubDisplay(doc.id, club)];
+  });
+  return {clubs: clubs.sort((a, b) => a.name.localeCompare(b.name))};
+}
+
+async function sendClubChallenge({db, user, data, now = Date.now()}, instigated = false) {
+  if (instigated) requireChallengeSuperAdmin(user);
+  else requireVerifiedUser(user);
   const homeId = clubId(data?.homeClubId);
   const awayId = clubId(data?.awayClubId);
   if (homeId === awayId) throw invalid("Choose another Club to challenge.");
@@ -839,7 +872,7 @@ function exhibitionBoothView(match, user, canOperate, now) {
     request: canOperate && request?.status ? {status: request.status, requester: profile(request),
       requestedAtISO: request.requestedAtISO, expiresAtISO: request.expiresAtISO} : null,
     events: exhibitionLiveEvents(match), confirmedLineups: live.confirmedLineups || null,
-    addedTime: live.addedTime || {},
+    addedTime: live.addedTime || {}, matchColours:live.matchColours || {},
   };
 }
 
@@ -944,6 +977,17 @@ async function operateChallenge({db, user, data, now = Date.now()}) {
           if (!live.request || live.request.status !== "pending") throw invalid("No phone has requested control.");
           patch.request = {...live.request, status:"rejected"};
           break;
+        case "matchColour": {
+          if (data.reset === true) {patch.matchColours={};break;}
+          const selected=["home","away"].find(key=>match[key].id===data.teamId);
+          const hex=text(data.hex).toLowerCase();
+          if (!selected || !/^#[0-9a-f]{6}$/.test(hex)) throw invalid("Choose a kit colour for one of the match Clubs.");
+          const opposite=selected==="home"?"away":"home";
+          const oppositeHex=live.matchColours?.[match[opposite].id]?.teamColorHex || match[`${opposite}Colour`];
+          if (oppositeHex) kitColours(hex,oppositeHex);
+          patch.matchColours={...live.matchColours,[data.teamId]:{teamColorHex:hex}};
+          break;
+        }
         case "confirmLineups":
           validateExhibitionLineups(match, data.snapshots, live.awaitingLineups);
           patch.confirmedLineups = data.snapshots;
@@ -1049,4 +1093,4 @@ async function operateChallenge({db, user, data, now = Date.now()}) {
 const instigateClubChallenge = (args) => sendClubChallenge(args, true);
 
 module.exports = {COLLECTION, ChallengeError, sendClubChallenge, instigateClubChallenge, respondToClubChallenge,
-  listClubChallenges, updateChallengeTeam, challengeChat, operateChallenge, exhibitionOverview, bookExhibition, exhibitionShareCents, reviseClubChallenge, manageExhibitionBookings, getExhibitionMatchday, saveExhibitionLineup, listExhibitionClips, changeExhibitionKit, expireExhibitionCancellations, watchExhibition};
+  listClubChallenges, updateChallengeTeam, challengeChat, operateChallenge, exhibitionOverview, bookExhibition, exhibitionShareCents, reviseClubChallenge, manageExhibitionBookings, getExhibitionMatchday, saveExhibitionLineup, listExhibitionClips, changeExhibitionKit, expireExhibitionCancellations, watchExhibition, isClubChallengeCaptain, listChallengeClubs};

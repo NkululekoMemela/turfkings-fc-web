@@ -160,6 +160,23 @@ public final class FanmNotificationPresenter {
         return result;
     }
 
+    private static Bitmap challengeCrestPair(Bitmap home, Bitmap away, boolean compact) {
+        final int width=compact?192:480, height=compact?192:218;
+        final int size=compact?82:152, top=(height-size)/2;
+        final int left=compact?2:52, right=width-left-size;
+        Bitmap image=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);
+        Canvas canvas=new Canvas(image);
+        Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        if(!compact){paint.setColor(0xff13263a);canvas.drawRoundRect(new android.graphics.RectF(0,0,width,height),24,24,paint);}
+        canvas.drawBitmap(home,null,new android.graphics.RectF(left,top,left+size,top+size),paint);
+        canvas.drawBitmap(away,null,new android.graphics.RectF(right,top,right+size,top+size),paint);
+        if(!compact){
+            paint.setColor(0xffe7f5ff);paint.setTextSize(28);paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("VS",width/2f,height/2f-(paint.ascent()+paint.descent())/2f,paint);
+        }
+        return image;
+    }
+
     private static final String GROUP = "fanm.updates";
     private static final int SUMMARY_ID = 2100000001;
     private static final String THREAD = "fanm.thread";
@@ -268,6 +285,14 @@ public final class FanmNotificationPresenter {
                     }catch(Exception ignored){}
                     if(chat)chatPreview(context,builder,thread,data.optString("sourceName",title),portrait);
                     else if(content!=null)builder.setStyle(new NotificationCompat.BigPictureStyle().bigPicture(content).setSummaryText(body));
+                    if("club_exhibition_invitation".equals(data.optString("type"))){
+                        Bitmap home=notificationPicture(data.optString("homeCrestUrl",""),false);
+                        Bitmap away=notificationPicture(data.optString("awayCrestUrl",""),false);
+                        if(home==null)home=sourcePlaceholder(data.optString("homeClubName","Home"));
+                        if(away==null)away=sourcePlaceholder(data.optString("awayClubName","Away"));
+                        builder.setLargeIcon(challengeCrestPair(home,away,true));
+                        builder.setStyle(new NotificationCompat.BigPictureStyle().bigPicture(challengeCrestPair(home,away,false)).setSummaryText(body));
+                    }
                     synchronized(FanmNotificationPresenter.class){
                         android.app.Notification current=active(manager,id);
                         // Never resurrect a dismissed message or let a slow old image replace newer exchanges.

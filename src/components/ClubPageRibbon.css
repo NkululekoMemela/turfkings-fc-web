@@ -101,3 +101,28 @@
   margin-left: calc(-1 * var(--club-ribbon-left, 0px)) !important;
   margin-right: calc(-1 * var(--club-ribbon-right, 0px)) !important;
 }
+
+
+/* The referee booth shares the mobile Club shell, but owns its scrolling surface. */
+@media (max-width: 760px) {
+  html:has(.app-root--exhibition), body:has(.app-root--exhibition) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  .app-root.app-root--exhibition {
+    height: 100dvh;
+    min-height: 0 !important;
+    overflow: hidden;
+    padding: 0 !important;
+  }
+  .app-root--exhibition > .exhibition-match-scroll {
+    box-sizing: border-box;
+    min-width: 0;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y pinch-zoom;
+    padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  }
+}

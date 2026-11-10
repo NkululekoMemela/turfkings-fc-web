@@ -24,3 +24,10 @@ test('exhibition notices keep the exact Club and fixture for Signup',()=>{
  assert.deepEqual(notificationDestination({type:'club_exhibition_accepted',clubId:'club',fixtureId}),{kind:'exhibition',clubId:'club',fixtureId});
  assert.equal(notificationDestination({type:'club_exhibition_cancelled',clubId:'club',fixtureId:'not-a-fixture'}),null);
 });
+
+test('challenge invitations open the exact Club inbox, not match signup',()=>{
+ const fixtureId='a'.repeat(64);
+ assert.deepEqual(notificationDestination({type:'club_exhibition_invitation',clubId:'turf-kings',fixtureId}),
+  {kind:'challenge-invitation',clubId:'turf-kings',fixtureId});
+ assert.equal(notificationDestination({type:'club_exhibition_invitation',clubId:'turf-kings',fixtureId:'../../other'}),null);
+});

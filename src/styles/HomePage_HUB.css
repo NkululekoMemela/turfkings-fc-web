@@ -8907,3 +8907,10 @@
   border-radius: .65rem; background: #e2f4ed; color: #154f42; line-height: 1.45;
 }
 .hub-challenge-form-grid select { width: 100%; min-height: 44px; padding: .6rem; border: 1px solid #d6e3e7; border-radius: .7rem; background: #fff; color: #132c3d; }
+
+.hub-fanm-challenge-shortcut {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .65rem;
+  margin: .75rem 0 1rem; padding: .65rem; border: 1px solid #67e8f945; border-radius: 14px; background: #12303e;
+}
+.hub-fanm-challenge-shortcut button { min-height: 44px; }
+.hub-fanm-challenge-shortcut p { margin: 0; color: #cde5f2; font-size: .84rem; }

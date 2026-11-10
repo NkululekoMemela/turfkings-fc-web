@@ -1,4 +1,4 @@
-import PremiumSelect from "./PremiumSelect.jsx";
+import TeamColourPalette from "./TeamColourPalette.jsx";
 import React from "react";
 
 export const TEAM_COLOUR_OPTIONS = [
@@ -85,13 +85,15 @@ export default function TeamIdentityEditor({
       "Black"
     ).trim() || "Black";
 
-  const selectedColour =
-    getTeamColourOption(resolvedColourName) ||
-    TEAM_COLOUR_OPTIONS[0];
+  const explicitHex = String(team?.teamColorHex || team?.colorHex || "").trim();
+  const selectedColour = /^#[0-9a-f]{6}$/i.test(explicitHex)
+    ? TEAM_COLOUR_OPTIONS.find(option => option.hex.toLowerCase() === explicitHex.toLowerCase()) ||
+      {name:explicitHex,hex:explicitHex}
+    : getTeamColourOption(resolvedColourName) || TEAM_COLOUR_OPTIONS[0];
 
-  const handleColourChange = (event) => {
+  const handleColourChange = (value) => {
     const nextOption =
-      getTeamColourOption(event.target.value) ||
+      getTeamColourOption(value) ||
       TEAM_COLOUR_OPTIONS[0];
 
     onColourChange?.({
@@ -149,43 +151,13 @@ export default function TeamIdentityEditor({
       ) : null}
 
       {showColour ? (
-        <label className="team-identity-editor-field team-identity-editor-colour">
-          {!compact ? <span>{colourLabel}</span> : null}
-
-          <span className="team-identity-editor-colour-control">
-            <span
-              className="team-identity-editor-swatch"
-              style={{
-                "--team-identity-colour":
-                  selectedColour.hex,
-              }}
-              aria-hidden="true"
-            />
-
-            <PremiumSelect
-              className={
-                compact
-                  ? "squad-preview-colour-select"
-                  : "text-input"
-              }
-              value={selectedColour.name}
-              onChange={handleColourChange}
-              disabled={disabled}
-              title={colourLabel}
-            >
-              {TEAM_COLOUR_OPTIONS.map(
-                (option) => (
-                  <option
-                    key={option.name}
-                    value={option.name}
-                  >
-                    {option.label} {option.emoji}
-                  </option>
-                )
-              )}
-            </PremiumSelect>
-          </span>
-        </label>
+        <div className="team-identity-editor-field team-identity-editor-colour">
+          {!compact && <span>{colourLabel}</span>}
+          <TeamColourPalette label={colourLabel} value={selectedColour.name}
+            selectedLabel={selectedColour.label || selectedColour.hex}
+            options={TEAM_COLOUR_OPTIONS.map(option=>({...option,value:option.name}))}
+            onSelect={handleColourChange} disabled={disabled}/>
+        </div>
       ) : null}
     </div>
   );
