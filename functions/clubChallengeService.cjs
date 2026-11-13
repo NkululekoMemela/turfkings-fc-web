@@ -584,6 +584,29 @@ async function exhibitionOverview({db, user, data, now = Date.now()}) {
   });
 }
 
+async function assignedFanmRole(tx,db,match,user) {
+  if (!match.instigated) return "";
+  const role=match.fanmOfficials?.refereeUid===user.uid?"referee":
+    match.fanmOfficials?.cameraUid===user.uid?"camera_operator":"";
+  if (!role) return "";
+  const staff=(await tx.get(db.doc(`fanmOperations/main/staff/${user.uid}`))).data();
+  return staff?.status==="active"&&staff.role===role?role:"";
+}
+
+async function listAssignedFanmFixtures({db,user,data}) {
+  requireVerifiedUser(user);
+  const id=clubId(data?.clubId);
+  const staff=(await db.doc(`fanmOperations/main/staff/${user.uid}`).get()).data();
+  if(staff?.status!=="active"||!["referee","camera_operator"].includes(staff.role))return {fixtures:[]};
+  const key=staff.role==="referee"?"refereeUid":"cameraUid";
+  const rows=await db.collection(COLLECTION).where(`fanmOfficials.${key}`,"==",user.uid).get();
+  return {fixtures:rows.docs.flatMap(doc=>{
+    const match=doc.data();
+    return match.instigated&&match.participatingClubIds?.includes(id)&&["accepted","live"].includes(match.status)
+      ? [{fixtureId:doc.id,label:`${match.home.name} vs ${match.away.name}`,role:staff.role}] : [];
+  })};
+}
+
 async function getExhibitionMatchday({db, user, data, now = Date.now()}) {
   requireVerifiedUser(user);
   const id = clubId(data?.clubId);
@@ -599,7 +622,8 @@ async function getExhibitionMatchday({db, user, data, now = Date.now()}) {
       if (error.code !== "permission-denied") throw error;
       canEdit = false;
     }
-    if (!canEdit && !await verifiedMember(tx, db, id, user)) throw forbidden("Join this Club to see its exhibition.");
+    const official = canEdit ? "" : await assignedFanmRole(tx,db,match,user);
+    if (!canEdit && !official && !await verifiedMember(tx, db, id, user)) throw forbidden("Join this Club to see its exhibition.");
     const side = match.home.id === id ? "home" : "away";
     const teams = Object.fromEntries(["home", "away"].map((key) => {
       const team = match.teams?.[key];
@@ -609,7 +633,7 @@ async function getExhibitionMatchday({db, user, data, now = Date.now()}) {
     return {fixtureId, status: match.status, format: match.format, venue: match.venue,
       proposedDate: match.proposedDate, proposedKickoff: match.proposedKickoff, home: match.home, away: match.away,
       homeColour: match.homeColour || null, awayColour: match.awayColour || null, teams, side,
-      kickoffMs: match.kickoffMs, serverNowMs: now, canOperate: canEdit, live: exhibitionBoothView(match,user,canEdit,now),
+      kickoffMs: match.kickoffMs, serverNowMs: now, canOperate: canEdit || official === "referee", live: exhibitionBoothView(match,user,canEdit || official === "referee",now),
       lineups: match.lineups || {}, canEdit: canEdit && match.status === "accepted",
       eligible: canEdit ? Object.values(match.bookings?.[side] || {}).map(({memberId, name}) => ({memberId, name})) : []};
   });
@@ -792,7 +816,7 @@ async function updateChallengeTeam({db, user, data, now = Date.now()}) {
   });
 }
 
-async function withFixture({db, user, data}, operation, allowMember = false) {
+async function withFixture({db, user, data}, operation, allowMember = false, allowReferee = false) {
   requireVerifiedUser(user);
   const id = clubId(data?.clubId);
   const fixtureId = text(data?.fixtureId);
@@ -806,7 +830,7 @@ async function withFixture({db, user, data}, operation, allowMember = false) {
     if (allowMember) {
       member = await verifiedMember(tx, db, id, user);
       if (!member) await requireManager(tx, db, id, club, user);
-    } else await requireManager(tx, db, id, club, user);
+    } else if (!allowReferee || await assignedFanmRole(tx,db,match,user) !== "referee") await requireManager(tx, db, id, club, user);
     if (!["accepted", "live", "completed"].includes(match.status)) {
       throw new ChallengeError("failed-precondition", "Accept the challenge first.");
     }
@@ -1128,10 +1152,11 @@ async function operateChallenge({db, user, data, now = Date.now()}) {
     }
     tx.update(ref, {live: patch, status, updatedAtMs: now, ...(status === "completed" ? {completedAtMs: now} : {})});
     return {status, side, revision:patch.revision};
-  });
+  }, false, true);
 }
 
 const instigateClubChallenge = (args) => sendClubChallenge(args, true);
 
-module.exports = {COLLECTION, ChallengeError, sendClubChallenge, instigateClubChallenge, respondToClubChallenge,
+module.exports = {
+  listAssignedFanmFixtures,COLLECTION, ChallengeError, sendClubChallenge, instigateClubChallenge, respondToClubChallenge,
   listClubChallenges, updateChallengeTeam, challengeChat, operateChallenge, exhibitionOverview, bookExhibition, exhibitionShareCents, reviseClubChallenge, manageExhibitionBookings, getExhibitionMatchday, saveExhibitionLineup, listExhibitionClips, changeExhibitionKit, expireExhibitionCancellations, watchExhibition, isClubChallengeCaptain, listChallengeClubs};

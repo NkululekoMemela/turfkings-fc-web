@@ -1,0 +1,7 @@
+.fanm-operations-entry { display:flex;align-items:center;gap:1rem;width:min(100%,40rem);margin:1rem auto;padding:1rem 1.25rem;text-align:left;color:#f1f9ff;background:linear-gradient(120deg,#112e41,#132339 60%,#0d1726);border:1px solid #75ddda65;border-radius:1.2rem;box-shadow:0 12px 28px #040e2655;cursor:pointer; }
+.fanm-operations-entry > span:nth-child(2) { display:grid;gap:.25rem;flex:1; }
+.fanm-operations-entry small { color:#a6dedb; }
+.fanm-operations.hub-challenge-modal { width:min(94vw,60rem); }
+.fanm-operations-tabs { display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:.5rem;margin:1rem 0; }
+.fanm-operations-tabs button { color:inherit;padding:.7rem;border:1px solid #718ca966;border-radius:.75rem;background:#152943;cursor:pointer; }
+.fanm-operations-tabs button.is-selected { background:#155d67;border-color:#87efdb; }

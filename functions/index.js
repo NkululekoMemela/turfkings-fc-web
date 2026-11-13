@@ -1104,6 +1104,12 @@ exports.createYocoCheckout = onRequest(
 
     try {
       const body = req.body && typeof req.body === "object" ? req.body : {};
+      if (body.purpose === "year_end") {
+        const bearer=String(req.headers.authorization||"").match(/^Bearer (.+)$/);
+        if(!bearer)throw Error("Sign in to pay for your RSVP.");
+        const user=await admin.auth().verifyIdToken(bearer[1],true);
+        return res.status(200).json(await require("./yearEndEvent.cjs").checkout({db,user,body,secret:YOCO_SECRET_KEY}));
+      }
       if (body.purpose === "kit_shop") {
         const bearer=String(req.headers.authorization||"").match(/^Bearer (.+)$/);
         if(!bearer)throw Error("Sign in to pay for your order.");
@@ -1780,6 +1786,10 @@ exports.handleYocoWebhook = onRequest(
     }
 
     try {
+      if(payload.payload?.metadata?.purpose === "year_end") {
+        await require("./yearEndEvent.cjs").settle(db,payload);
+        return res.status(200).send("Event payment received");
+      }
       if(payload.payload?.metadata?.purpose === "kit_shop") {
         await require("./kitShopPayments.cjs").settle(db,payload);
         return res.status(200).send("Shop payment received");

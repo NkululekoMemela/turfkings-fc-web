@@ -46,6 +46,10 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
         const result = await manageFanmOperations({body:req.body,user,admin,db,fail});
         return res.json({ok:true,...result});
       }
+      if (["yearEndView","yearEndPublish","yearEndArchive"].includes(req.body?.action)) {
+        const result=await require("./yearEndEvent.cjs").eventAction({db,user,body:req.body});
+        return res.json({ok:true,...result});
+      }
       if (req.body?.action === "update") {
         const {updateFieldProfile} = require("./fieldProfileUpdate.cjs");
         const venue = await updateFieldProfile({body:req.body,user,admin,db,fail,replenish});
@@ -54,7 +58,7 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
       if (req.body?.action === "delete") {
         fail("Update FANM and use Archive Field to remove this listing.", 409);
       }
-      if (["organizationArchive", "organizationRestore", "organizationArchived", "organizationDelete"].includes(req.body?.action)) {
+      if (["organizationAccess", "organizationArchive", "organizationRestore", "organizationArchived", "organizationDelete"].includes(req.body?.action)) {
         const {manageOrganizationArchive} = require("./organizationArchive.cjs");
         const result = await manageOrganizationArchive({
           body: req.body, user, db, fail, stamp: admin.firestore.FieldValue.serverTimestamp,
