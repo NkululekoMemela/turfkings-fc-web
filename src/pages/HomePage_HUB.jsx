@@ -1,5 +1,7 @@
 import {challengeDistanceKm, FANM_CHALLENGE_ORGANISERS} from "../../functions/clubChallengeLocation.mjs";
 import {clubChallengeRequest, clubChallengesEnabled} from "../storage/clubChallengeGateway.js";
+import PremiumSelect from "../components/PremiumSelect.jsx";
+import FanmOperations from "../components/FanmOperations.jsx";
 import OrganizationArchiveControls, {canManageOrganizationArchive, confirmOrganizationArchive} from "../components/OrganizationArchiveControls.jsx";
 import { clubFounderName } from "../core/clubFounderCredit.mjs";
 import HubMarketingAdvert from "../components/HubMarketingAdvert.jsx";
@@ -523,6 +525,7 @@ export default function HomePage_HUB({
   const [clubCategoryView,setClubCategoryView]=useState(()=>{try{return sessionStorage.getItem("fanm:club-category")==="company"?"company":"community";}catch{return "community";}});
   useEffect(()=>{try{sessionStorage.setItem("fanm:club-category",clubCategoryView);}catch{}},[clubCategoryView]);
   const [companyWorkspaceOpen,setCompanyWorkspaceOpen]=useState(false);
+  const [operationsOpen, setOperationsOpen] = useState(false);
   const [challengeClub, setChallengeClub] = useState(null);
   const [challengeCaptainScope, setChallengeCaptainScope] = useState("");
   const [challengeVenue, setChallengeVenue] = useState("");
@@ -1141,7 +1144,7 @@ export default function HomePage_HUB({
       return;
     }
 
-    const total = instigated && challengeFormat === "11v11" ? "2200" : challengeTotal.trim().replace(",", ".");
+    const total = challengeTotal.trim().replace(",", ".");
     if (!/^\d{1,7}(?:\.\d{1,2})?$/.test(total)) {
       setChallengeError("Enter the total each Club must collect. Use 0 for a free match.");
       return;
@@ -1590,11 +1593,17 @@ export default function HomePage_HUB({
 
 
       <HubMarketingAdvert audience="club"/>
-      {isChallengeOrganiser && <section className="hub-fanm-challenge-shortcut" aria-label="FANM exhibition organiser">
+      {isChallengeOrganiser && !canManageOrganizationArchive(currentUser) && <section className="hub-fanm-challenge-shortcut" aria-label="FANM exhibition organiser">
         <div><strong>FANM Club vs Club Exhibition</strong><p>Invite two Clubs to a FANM-hosted match.</p></div>
         <button type="button" className="hub-fanm-create-button" disabled={!canInstigate} onClick={openInstigateMatch}><span aria-hidden="true">⚔</span> Create FANM Challenge</button>
         {instigationBlock && <p role="status">{instigationBlock}</p>}
       </section>}
+      {canManageOrganizationArchive(currentUser) && !isPracticeMode && <>
+        <button type="button" className="hub-fanm-create-button" onClick={() => setOperationsOpen(true)}>FANM Operations</button>
+        {operationsOpen && <FanmOperations user={currentUser} onClose={() => setOperationsOpen(false)}
+          onChallenge={canInstigate ? () => {setOperationsOpen(false); openInstigateMatch();} : null}
+          onOrganizationsChanged={() => setArchiveRefresh(count => count + 1)}/>}
+      </>}
       <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer fanm-marketing-split">
         <div className="hub-footer-logo-stage">
           {footerLogoRotation.map((logo, index) => (
@@ -1676,7 +1685,7 @@ export default function HomePage_HUB({
                 onRestored={() => setArchiveRefresh(count => count + 1)} />
             )}
             {hubInfoModal === HUB_INFO_CONTENT.terms &&
-              <LegalSignature scope="club" />}
+              <><a href="/terms.html">Open public Terms and Conditions</a><LegalSignature scope="club" /></>}
           </section>
         </div>
       ) : null}
@@ -1909,7 +1918,7 @@ export default function HomePage_HUB({
                   key={value}
                   type="button"
                   className={challengeFormat === value ? "is-selected" : ""}
-                  onClick={() => {setChallengeFormat(value); if (challengeClub.instigate) setChallengeTotal(value === "11v11" ? "2200" : "");}}
+                  onClick={() => setChallengeFormat(value)}
                 >
                   {label}
                 </button>
@@ -1925,10 +1934,10 @@ export default function HomePage_HUB({
               {challengeClub.instigate && [["Home Club", instigateHome, setInstigateHome, instigateAway],
                 ["Away Club", instigateAway, setInstigateAway, instigateHome]].map(([label, value, setValue, otherId]) => (
                 <label key={label}><span>{label}</span>
-                  <select value={value} disabled={instigateLoading || instigateClubs.length < 2} onChange={(event) => {setValue(event.target.value); setDistanceAcknowledged(false); setServerDistanceWarning("");}}>
+                  <PremiumSelect aria-label={label} optionImages={Object.fromEntries(instigateClubs.map(club => [club.id, club.logoUrl]))} value={value} disabled={instigateLoading || instigateClubs.length < 2} onChange={(event) => {setValue(event.target.value); setDistanceAcknowledged(false); setServerDistanceWarning("");}}>
                     <option value="">Select Club</option>
                     {instigateClubs.map((club) => <option key={club.id} value={club.id} disabled={club.id === otherId}>{club.name}</option>)}
-                  </select>
+                  </PremiumSelect>
                 </label>
               ))}
               <label>
@@ -1957,11 +1966,10 @@ export default function HomePage_HUB({
               <label className="hub-challenge-form-grid__wide">
                 <span>{challengeClub.instigate ? "FANM total per Club (R)" : "Club contribution per side (R)"}</span>
                 <input value={challengeTotal} inputMode="decimal" maxLength={10}
-                  readOnly={challengeClub.instigate && challengeFormat === "11v11"}
                   onChange={(event) => setChallengeTotal(event.target.value)} placeholder={challengeClub.instigate ? "Enter the agreed quote per Club" : "0 for a free match"} />
                 <small>{challengeClub.instigate ? "Each captain collects from their players and settles with FANM." : "Optional cost share. Leave at 0 if there’s no charge."}</small>
                 {challengeClub.instigate && challengeFormat === "11v11" && <small className="hub-fanm-package">
-                  R2,200 per Club · 15 players per Club · field booking, referee, camera operator and 24 × 500 mL waters per Club.
+                  15 players per Club · field booking, referee, camera operator, numbered bibs and 24 × 500 mL waters per Club.
                 </small>}
                 {challengeClub.instigate && challengeFormat !== "11v11" && <small className="hub-fanm-package">
                   Quote the Club’s share of field hire and the agreed FANM service charge before sending. Explain what the quote includes in the message.

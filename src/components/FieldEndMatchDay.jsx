@@ -5,7 +5,7 @@ import {
 } from "../storage/leagueSeasonRepository.js";
 
 export default function FieldEndMatchDay({
-  venue, season: venueSeason, scope = null, canDiscard = false, onClose,
+  venue, season: venueSeason, teams = [], scope = null, canDiscard = false, onClose,
 }) {
   if (scope && (scope.venueId !== venue?.id ||
       scope.seasonId !== venueSeason?.id)) {
@@ -17,6 +17,16 @@ export default function FieldEndMatchDay({
   const fixtureName = (fixture, side) => fixture.result?.[`team${side}Name`] ||
     fixture.result?.[`team${side}Label`] || fixture[`club${side}Name`] ||
     venueSeason?.invitations?.[fixture[`club${side}Id`]]?.clubName || fixture[`club${side}Id`] || `Club ${side}`;
+  const renderClub = (fixture, side) => {
+    const id = fixture[`club${side}Id`];
+    const club = teams.find(team => team.id === id);
+    const logo = club?.logoUrl || club?.image || venueSeason?.invitations?.[id]?.logoUrl;
+    const name = fixtureName(fixture, side);
+    return <span className="field-day-club">
+      {logo && <img src={logo} alt="" width="30" height="30" onError={event => {event.currentTarget.hidden = true;}} />}
+      {name}
+    </span>;
+  };
   const [showEndMatchDayModal, setVisible] = useState(true);
   const [confirmedDayId, setConfirmedDayId] = useState("");
   const confirmEndMatchDay = Boolean(summary && confirmedDayId === summary.day.id);
@@ -46,9 +56,10 @@ export default function FieldEndMatchDay({
               <p><strong>{summary.day.dateLocal || "Current match day"}</strong></p>
               <ul className="field-day-summary">
                 {summary.fixtures.map(fixture => <li key={fixture.id}>
-                  <span>{fixtureName(fixture, "A")} vs {fixtureName(fixture, "B")}</span>
+                  {renderClub(fixture, "A")}
                   <strong>{fixture.result ? `${fixture.result.goalsA ?? fixture.result.scoreA ?? 0}–${fixture.result.goalsB ?? fixture.result.scoreB ?? 0}`
                     : fixture.live ? "Live" : fixture.invalidResult ? "Check result" : "Outstanding"}</strong>
+                  {renderClub(fixture, "B")}
                 </li>)}
               </ul>
             </> : <p className="muted">There is no scheduled match day ready to close.</p>}

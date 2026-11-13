@@ -235,7 +235,7 @@ export default function VenueRegistrationModal({
         logo: {
           spec: logoDraft.localDesignSpec,
           stockId: logoDraft.stockDesignId || "",
-          uploadDataUrl: logoDraft.preparedUploadDataUrl || "",
+          carouselLogo: logoDraft.carouselLogo || "", uploadDataUrl: logoDraft.preparedUploadDataUrl || "",
         },
       });
       onVenueCreated?.(result.venue);

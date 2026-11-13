@@ -13,3 +13,16 @@ export async function prepareLogoImage(file) {
   throw Error('This image could not be prepared. Choose another logo.');
  }finally{URL.revokeObjectURL(url);}
 }
+
+export async function prepareCarouselLogo(dataUrl) {
+ const image = new Image();
+ image.src = dataUrl;
+ await image.decode();
+ const scale = Math.min(1, 216 / Math.max(image.width, image.height));
+ const canvas = document.createElement("canvas");
+ canvas.width = Math.max(1, Math.round(image.width * scale));
+ canvas.height = Math.max(1, Math.round(image.height * scale));
+ canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+ const thumbnail = canvas.toDataURL("image/webp", .78);
+ return /^data:image\/webp;base64,/.test(thumbnail) && thumbnail.length <= 24000 ? thumbnail : "";
+}

@@ -853,7 +853,7 @@ export default function VenueLeagueStatsPage({
                                   {canReverseResults && <button type="button" className="tk-admin-compact-btn danger"
                                     onClick={async () => {
                                       const ok = (await fieldConfirm(`Delete saved match #${result.matchNo}?\n\n` +
-                                        "This will remove the match result and all linked scorer/assist events for that match."
+                                        "This removes the result and its linked events, and makes this fixture available to replay."
                                       ));
                                       if (!ok) return;
                                       const reason=await fieldPrompt("Why is this official result being reversed? (For example, practice recorded as official.)");

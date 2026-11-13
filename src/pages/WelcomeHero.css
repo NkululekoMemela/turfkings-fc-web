@@ -753,3 +753,14 @@
     display: none;
   }
 }
+
+.fanm-nearby-footage {
+  width: min(100%, 28rem);
+  aspect-ratio: 640 / 338;
+  margin-inline: auto;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #172b23 url("/nearby-football.webp") center / cover no-repeat;
+  box-shadow: 0 12px 32px #0005;
+}
+.fanm-nearby-footage video { display: block; width: 100%; height: 100%; object-fit: cover; }

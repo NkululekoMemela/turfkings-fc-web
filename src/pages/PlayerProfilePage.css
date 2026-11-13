@@ -272,11 +272,7 @@
   border: 1px solid #9de6d177; border-radius: 50%; background: #17384a;
 }
 .profile-attendance-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.profile-attendance-badge {
-  display: grid; gap: .18rem; padding: .38rem .65rem; border: 1px solid #9de6d166;
-  border-radius: .7rem; background: #173b3a; color: #e2fff6; text-align: right;
-}
-.profile-attendance-badge span { font-size: .65rem; }
+.profile-attendance-summary .profile-attendance-badge { margin: 0; text-align: right; }
 .profile-attendance-summary dl { margin: .6rem 0 0; }
 .profile-attendance-summary dl > div {
   display: flex; justify-content: space-between; gap: .85rem; padding: .6rem 0;

@@ -7,10 +7,13 @@ export default function FieldSeasonCelebration({celebration, venueId, userId, en
   const [dismissed,setDismissed]=useState("");
   const key=celebration?.seasonId ? `fanm:field-celebration:${venueId}:${userId||"viewer"}:${celebration.seasonId}` : "";
   useEffect(()=>{
-    if(!key||!enabled||Date.now()-celebration.endedAtMs>7*86400000)return;
+    if(!key||!enabled||!userId||!Number.isFinite(celebration.endedAtMs)||Date.now()-celebration.endedAtMs>7*86400000)return;
     let seen=false;try{seen=localStorage.getItem(key)==="seen";}catch{}
-    if(!seen&&dismissed!==key)dialog.current?.showModal();
-  },[key,enabled,dismissed,celebration?.endedAtMs]);
+    if (!seen && dismissed !== key && dialog.current && !dialog.current.open) {
+      dialog.current.showModal();
+      try { localStorage.setItem(key, "seen"); } catch {}
+    }
+  },[key,enabled,userId,dismissed,celebration?.endedAtMs]);
   if(!celebration)return null;
   const close=()=>{try{localStorage.setItem(key,"seen");}catch{}setDismissed(key);dialog.current?.close();};
   const winner=celebration.winner;

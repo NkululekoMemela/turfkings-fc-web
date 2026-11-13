@@ -25,7 +25,7 @@ export function resolveFieldUpcomingMatch({season, teams = []}) {
       canStartBesideLiveFixtures(venueSeason, fixture));
     const nextFixture = startableFixtures.find(
       fixture => fixture.id === venueSeason?.selectedFixtureId
-    ) || startableFixtures[0] || null;
+    ) || startableFixtures.find(fixture => fixture.replayRequestedAtMs) || startableFixtures[0] || null;
 
     const confirmedTeams = teams.filter((team) =>
       (venueSeason?.clubIds || []).includes(team.id)

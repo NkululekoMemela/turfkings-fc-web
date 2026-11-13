@@ -21438,3 +21438,7 @@ footer.club-marketing-footer > section {
   background: linear-gradient(135deg,#08a8c5,#2867cd); box-shadow: inset 0 1px 0 #fff4,0 3px 11px #08b5d633;
 }
 .club-match-mode-toggle > button:focus-visible { outline: 2px solid #a7ebff; outline-offset: 2px; }
+
+@media (max-width: 768px) {
+  .club-match-mode-toggle { display: grid; width: 100%; box-sizing: border-box; }
+}

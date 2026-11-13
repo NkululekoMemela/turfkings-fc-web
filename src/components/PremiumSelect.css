@@ -17,3 +17,5 @@
 /* Club management follows the Club theme rather than category colours. */
 [aria-label="Club management"]{background:linear-gradient(155deg,#102d2b,#0c1928)!important;border:1px solid #72ada466!important;box-shadow:0 24px 64px #0007!important}
 [aria-label="Club management"] button{background:linear-gradient(135deg,#163934,#102b31)!important;border-color:#77b4a64d!important;color:#eefbf7!important;box-shadow:none!important}
+.fanm-select-crest-label { display: inline-flex; align-items: center; gap: .55rem; min-width: 0; }
+.fanm-select-crest-label img { border-radius: 50%; object-fit: contain; background: #fff; flex: none; }

@@ -61,6 +61,7 @@ export default function VenueFieldChatPage({
   const [fieldClipPickerOpen, setFieldClipPickerOpen] =
     useState(false);
   const [fieldClips, setFieldClips] = useState([]);
+  const clipRequest = useRef(null);
   const [fieldClipsLoading, setFieldClipsLoading] =
     useState(false);
   const [fieldClipsError, setFieldClipsError] =
@@ -72,7 +73,9 @@ export default function VenueFieldChatPage({
   useEffect(()=>{if(initialFormation?.venueId!==venueId||initialFormation?.ownerUid!==currentUser?.uid)return;setFieldSelectedClip(initialFormation);onFormationConsumed?.();},[initialFormation?.clipId,venueId,currentUser?.uid]);
   async function openFieldClipPicker() {
     setFieldClipPickerOpen(true);
-    setFieldClipsLoading(true);
+    if (clipRequest.current === venueId) return;
+    clipRequest.current = venueId;
+    setFieldClipsLoading(!fieldClips.length);
     setFieldClipsError("");
 
     try {
@@ -81,14 +84,6 @@ export default function VenueFieldChatPage({
           .loadAllClubHighlightsForAudit === "function"
           ? FieldVideoRepository
               .loadAllClubHighlightsForAudit(venueId)
-          : Promise.resolve([]),
-        typeof FieldVideoRepository
-          .loadClubArchivedHighlightsFromFirebase ===
-            "function"
-          ? FieldVideoRepository
-              .loadClubArchivedHighlightsFromFirebase(
-                venueId
-              )
           : Promise.resolve([]),
       ]);
 
@@ -119,6 +114,7 @@ export default function VenueFieldChatPage({
             clip.playerName ||
             "Field highlight"
           ).slice(0, 160),
+          posterUrl: clip.thumbnailUrl || clip.posterUrl || "",
           mediaUrl: String(
             clip.videoUrl ||
             clip.downloadUrl ||
@@ -165,6 +161,7 @@ export default function VenueFieldChatPage({
         "Could not load Field videos."
       );
     } finally {
+      if (clipRequest.current === venueId) clipRequest.current = null;
       setFieldClipsLoading(false);
     }
   }
@@ -558,6 +555,7 @@ export default function VenueFieldChatPage({
                       controls
                       playsInline
                       preload="none"
+                      poster={message.attachment.posterUrl}
                       src={message.attachment.mediaUrl}
                     />}
                   </div>

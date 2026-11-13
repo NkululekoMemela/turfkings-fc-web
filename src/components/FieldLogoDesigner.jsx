@@ -1,5 +1,5 @@
 import PremiumSelect from "./PremiumSelect.jsx";
-import {prepareLogoImage as prepareUpload} from "../core/prepareLogoImage.js";
+import {prepareLogoImage as prepareUpload, prepareCarouselLogo} from "../core/prepareLogoImage.js";
 import React, {useEffect, useState} from "react";
 import {MASCOTS, FRAMES, PALETTES, NAME_STYLES, renderFieldLogo, svgDataUrl, stockSpec} from "../../functions/fieldLogoDesigns.mjs";
 import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
@@ -53,7 +53,11 @@ export default function FieldLogoDesigner({clubDraft, logoDraft, onChange}) {
         if (!file) return;
         setUploading(true); setError("");
         change({isPreparingUpload: true});
-        try {change({preparedUploadDataUrl: await prepareUpload(file), stockDesignId: "", logoFile: null, isPreparingUpload: false});}
+        try {
+          const preparedUploadDataUrl = await prepareUpload(file);
+          const carouselLogo = await prepareCarouselLogo(preparedUploadDataUrl).catch(() => "");
+          change({preparedUploadDataUrl, carouselLogo, stockDesignId: "", logoFile: null, isPreparingUpload: false});
+        }
         catch (e) {setError(e.message); change({isPreparingUpload: false});}
         finally {setUploading(false);}
       }}/>

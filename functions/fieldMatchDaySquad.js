@@ -92,7 +92,13 @@ async function loadDay({tx, db, scope, matchDayId, supersededUnstartedFixtureId 
     season: editableSeason, clubId: scope.clubId, matchDayId,
     liveMatch: superseded && live.data()?.fixtureId === supersededUnstartedFixtureId ? null : live.data() || null,
   });
-  const base = await loadSeasonStartSquad({transaction: tx, db, scope, includeRegistered: true});
+  const {bibCustodySnapshot,playerCarryPins,readBibCustody}=await import("./fieldBibCustody.mjs");
+  const [base, [homeClub, awayClub, stockSnapshot], loans] = await Promise.all([
+    loadSeasonStartSquad({transaction: tx, db, scope, includeRegistered: true}),
+    tx.getAll(db.doc(`clubs/${fixture.clubAId}`), db.doc(`clubs/${fixture.clubBId}`),
+      db.doc(`leagueVenues/${scope.venueId}/bibHireConfig/stock`)),
+    readBibCustody(db,tx,scope.venueId),
+  ]);
   const availability = context.squad?.matchDayAvailability?.[matchDayId] || {};
   const replacements = context.squad?.matchDayReplacements?.[matchDayId] || {};
   const candidates = [];
@@ -156,11 +162,8 @@ async function loadDay({tx, db, scope, matchDayId, supersededUnstartedFixtureId 
     candidates.push(player);
   }
   const [{fixtureColours,automaticFixtureBibs},{kitColourKey,teamBibColours}]=await Promise.all([import("./automaticFixtureKit.mjs"),import("./opponentKitColours.mjs")]);
-  const [homeClub,awayClub]=await tx.getAll(db.doc(`clubs/${fixture.clubAId}`),db.doc(`clubs/${fixture.clubBId}`));
-  const stockConfig=(await tx.get(db.doc(`leagueVenues/${scope.venueId}/bibHireConfig/stock`))).data()||{};
+  const stockConfig=stockSnapshot.data()||{};
   const ownedStock=stockConfig.confirmedAtMs?stockConfig.stock||[]:[];
-  const {bibCustodySnapshot,playerCarryPins,readBibCustody}=await import("./fieldBibCustody.mjs");
-  const loans=await readBibCustody(db,tx,scope.venueId);
   const confirmedStock=bibCustodySnapshot(ownedStock,loans).availableStock;
   const carryPins=playerCarryPins(loans,scope.clubId,matchDayId);
   const colours=fixtureColours(homeClub.data()||{},awayClub.data()||{},ownedStock);
@@ -316,7 +319,7 @@ async function submit({db, user, body, now = Date.now()}) {
 }
 
 async function getFieldDay({db, user, body}) {
-  const {venueId, seasonId, matchDayId} = body || {};
+  const {venueId, seasonId, matchDayId, previewFixtureId} = body || {};
   if (![venueId, seasonId, matchDayId].every(validId)) {
     throw new Error("Choose a valid Field match day.");
   }
@@ -335,6 +338,20 @@ async function getFieldDay({db, user, body}) {
     let allowed = venue.ownerUid === user.uid ||
       venue.adminUids?.includes(user.uid) ||
       staffSnap.data()?.status === "active";
+    if (previewFixtureId) {
+      if (!allowed) throw new Error("Sign in as Field staff to preview match kits.");
+      const fixture = season.fixtures?.find(item => item.id === previewFixtureId && item.matchDayId === matchDayId);
+      if (!fixture) throw new Error("Choose a fixture on this match day.");
+      const {fixtureColours} = await import("./automaticFixtureKit.mjs");
+      const [home, away, stock] = await tx.getAll(db.doc(`clubs/${fixture.clubAId}`),
+        db.doc(`clubs/${fixture.clubBId}`), venueRef.collection("bibHireConfig").doc("stock"));
+      const config=stock.data()||{};
+      const colours=fixtureColours(home.data()||{},away.data()||{},config.confirmedAtMs?config.stock||[]:[]);
+      return {clubs:[
+        {fixtureId:fixture.id,clubId:fixture.clubAId,matchColour:colours.home},
+        {fixtureId:fixture.id,clubId:fixture.clubBId,matchColour:colours.away},
+      ]};
+    }
     const clubIds = season.clubIds || [];
     if (clubIds.length > 100) throw new Error("Invalid league capacity.");
     const clubs = [];
