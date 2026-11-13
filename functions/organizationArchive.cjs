@@ -8,13 +8,18 @@ const hasLiveClubMatch = state => [state, ...(Array.isArray(state?.seasons) ? st
   .some(item => item?.liveMatchDraft?.status === "running" || item?.hasLiveMatch === true || item?.running === true);
 
 async function manageOrganizationArchive({body, user, db, stamp, fail}) {
-  if (user.email_verified !== true || user.cameraSession ||
-      text(user.email).toLowerCase() !== "nkululekolerato@gmail.com") {
-    fail("Use your verified platform administrator account.", 403);
+  const director = user.email_verified === true && !user.cameraSession &&
+    text(user.email).toLowerCase() === "nkululekolerato@gmail.com";
+  const staff = !director && user.email_verified === true && !user.cameraSession
+    ? (await db.doc(`fanmOperations/main/staff/${user.uid}`).get()).data() : null;
+  if (!director && !(staff?.role === "operations_manager" && staff.status === "active")) {
+    fail("FANM management access is required.", 403);
   }
+  const now = Date.now();
   const {action, kind, id} = body;
   if (kind !== "club" && kind !== "field") fail("Choose a Field or Club.");
   const collection = db.collection(ROOTS[kind]);
+  if (action === "organizationAccess") return {canManage:true};
   if (action === "organizationArchived") {
     const cursor = body.cursor;
     if (cursor != null && !validId(cursor)) fail("Invalid archive page.");
@@ -24,16 +29,16 @@ async function manageOrganizationArchive({body, user, db, stamp, fail}) {
     const page = docs.slice(0, 25);
     return {
       items: page.map(doc => ({id: doc.id, name: text(doc.data().name) || doc.id,
-        canRestore: doc.data().organizationArchive?.active === true})),
+        restoreUntilMs: doc.data().organizationArchive?.restoreUntilMs || null,
+        canRestore: doc.data().organizationArchive?.active === true &&
+          (!doc.data().organizationArchive.restoreUntilMs || doc.data().organizationArchive.restoreUntilMs > now)})),
       nextCursor: docs.length > 25 ? page.at(-1).id : null,
     };
   }
   if (!["organizationArchive", "organizationRestore", "organizationDelete"].includes(action) || !validId(id)) {
     fail("Choose a valid organisation.");
   }
-  const deleting = action === "organizationDelete";
-  if (deleting && kind !== "field") fail("Permanent deletion is available for Fields only.");
-  if (deleting && text(body.confirmation) !== "3333") fail("Incorrect confirmation code.");
+  if (action === "organizationDelete") fail("Use the 30-day recovery archive instead.",409);
   const restoring = action === "organizationRestore";
   const reason = text(body.reason);
   if (reason.length < 10 || reason.length > 500) fail("Give a reason of 10 to 500 characters.");
@@ -42,45 +47,12 @@ async function manageOrganizationArchive({body, user, db, stamp, fail}) {
     const snap = await tx.get(ref);
     if (!snap.exists) fail("This organisation no longer exists.", 404);
     const data = snap.data();
-    if (deleting) {
-      if (!archived(data) || data.visibility?.listed === true) {
-        fail("Archive this Field before deleting it permanently.", 409);
-      }
-      if (Object.keys(data.league || {}).length) {
-        fail("This Field has league records and must stay archived.", 409);
-      }
-      const [children, staff, ...links] = await Promise.all([
-        ref.listCollections(),
-        tx.get(ref.collection("staff").limit(2)),
-        ...["clubFieldMemberships", "leagueClubBookings", "leagueSeasonSquads",
-          "fieldRefereeInvites", "fieldLostFoundItems"].map(collection =>
-            tx.get(db.collection(collection).where("venueId", "==", id).limit(1))),
-      ]);
-      if (children.some(child => child.id !== "staff") || links.some(link => !link.empty)) {
-        fail("This Field has linked records and must stay archived.", 409);
-      }
-      const registration = staff.docs[0];
-      if (staff.docs.length > 1 || (registration && (
-          registration.id !== data.ownerUid || registration.data().isCreator !== true ||
-          (await registration.ref.listCollections()).length))) {
-        fail("This Field has staff records beyond registration and must stay archived.", 409);
-      }
-      const staffCollection = children.find(child => child.id === "staff");
-      if (staffCollection && (await staffCollection.listDocuments()).length !== staff.docs.length) {
-        fail("This Field has additional staff records and must stay archived.", 409);
-      }
-      if (registration) tx.delete(registration.ref);
-      tx.delete(ref);
-      tx.create(db.doc(`deletedFieldIds/${id}`), {
-        action: "delete", kind, organizationId: id, actorUid: user.uid, reason, at: stamp(),
-      });
-      return {id, deleted: true};
-    }
     const confirmation = `${restoring ? "RESTORE" : "ARCHIVE"} ${id}`;
     if (text(body.confirmation) !== confirmation) fail(`Type ${confirmation} to confirm.`);
     const prior = data.organizationArchive;
     let patch;
     if (restoring) {
+      if (prior?.restoreUntilMs && prior.restoreUntilMs <= now) fail("The 30-day recovery period has ended.",409);
       if (prior?.active !== true || !prior.previous) fail("This organisation has no recoverable archive record.", 409);
       patch = {status: prior.previous.status, deleted: false, organizationArchive: {active: false}};
       if (kind === "field") patch.visibility = prior.previous.visibility;
@@ -118,7 +90,7 @@ async function manageOrganizationArchive({body, user, db, stamp, fail}) {
       }
       const previous = {status: archived(data) ? "active" : data.status || "active", deleted: false};
       if (kind === "field") previous.visibility = data.visibility || {listed: false};
-      patch = {status: "deleted", deleted: true, organizationArchive: {active: true, previous}};
+      patch = {status: "deleted", deleted: true, organizationArchive: {active: true, previous, archivedAtMs:now, restoreUntilMs:now+30*86400000}};
       if (kind === "field") patch.visibility = {...data.visibility, listed: false};
     }
     tx.update(ref, patch);

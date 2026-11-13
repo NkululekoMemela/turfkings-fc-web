@@ -1,3 +1,4 @@
+import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
 import {challengeDistanceKm, FANM_CHALLENGE_ORGANISERS} from "../../functions/clubChallengeLocation.mjs";
 import {clubChallengeRequest, clubChallengesEnabled} from "../storage/clubChallengeGateway.js";
 import PremiumSelect from "../components/PremiumSelect.jsx";
@@ -525,6 +526,15 @@ export default function HomePage_HUB({
   const [clubCategoryView,setClubCategoryView]=useState(()=>{try{return sessionStorage.getItem("fanm:club-category")==="company"?"company":"community";}catch{return "community";}});
   useEffect(()=>{try{sessionStorage.setItem("fanm:club-category",clubCategoryView);}catch{}},[clubCategoryView]);
   const [companyWorkspaceOpen,setCompanyWorkspaceOpen]=useState(false);
+  const [operationsManagerUid,setOperationsManagerUid]=useState("");
+  useEffect(()=>{
+    if (!currentUser?.uid || !currentUser.emailVerified || isPracticeMode || canManageOrganizationArchive(currentUser)) return;
+    const controller=new AbortController();
+    fieldLogoStudioRequest({action:"organizationAccess",kind:"field"},controller.signal).then(result=>{
+      if (!controller.signal.aborted && result.canManage) setOperationsManagerUid(currentUser.uid);
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[currentUser?.uid,currentUser?.emailVerified,isPracticeMode]);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [challengeClub, setChallengeClub] = useState(null);
   const [challengeCaptainScope, setChallengeCaptainScope] = useState("");
@@ -1319,6 +1329,14 @@ export default function HomePage_HUB({
     return [...logos].sort(() => Math.random() - 0.5);
   }, []);
 
+  if (operationsOpen && !isPracticeMode && (canManageOrganizationArchive(currentUser) ||
+      (currentUser?.uid && operationsManagerUid===currentUser.uid))) {
+    return <FanmOperations director={canManageOrganizationArchive(currentUser)} user={currentUser}
+      onClose={()=>setOperationsOpen(false)}
+      onChallenge={canInstigate?()=>{setOperationsOpen(false);openInstigateMatch();}:null}
+      onOrganizationsChanged={()=>setArchiveRefresh(count=>count+1)}/>;
+  }
+
   return (
     <main className="homepage-hub-shell homepage-hub-shell--clubs-first">
       {startupVisible ? (
@@ -1598,11 +1616,11 @@ export default function HomePage_HUB({
         <button type="button" className="hub-fanm-create-button" disabled={!canInstigate} onClick={openInstigateMatch}><span aria-hidden="true">⚔</span> Create FANM Challenge</button>
         {instigationBlock && <p role="status">{instigationBlock}</p>}
       </section>}
-      {canManageOrganizationArchive(currentUser) && !isPracticeMode && <>
-        <button type="button" className="hub-fanm-create-button" onClick={() => setOperationsOpen(true)}>FANM Operations</button>
-        {operationsOpen && <FanmOperations user={currentUser} onClose={() => setOperationsOpen(false)}
-          onChallenge={canInstigate ? () => {setOperationsOpen(false); openInstigateMatch();} : null}
-          onOrganizationsChanged={() => setArchiveRefresh(count => count + 1)}/>}
+      {(canManageOrganizationArchive(currentUser) || (currentUser?.uid && operationsManagerUid === currentUser.uid)) && !isPracticeMode && <>
+        <button type="button" className="fanm-operations-entry" onClick={() => setOperationsOpen(true)}>
+          <span aria-hidden="true">◈</span><span><strong>FANM Operations</strong><small>Management desk</small></span><span aria-hidden="true">›</span>
+        </button>
+
       </>}
       <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer fanm-marketing-split">
         <div className="hub-footer-logo-stage">

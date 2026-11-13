@@ -5453,6 +5453,15 @@ function MainApp() {
     clubId: activeClubId, userId: authUser?.uid,
   });
   const [exhibitionDesk, setExhibitionDesk] = useState(null);
+  const [assignedFanm,setAssignedFanm]=useState(null);
+  useEffect(()=>{
+    if(!authUser?.uid||!activeClubId||isPracticeMode||!clubChallengesEnabled)return;
+    const controller=new AbortController();
+    clubChallengeRequest("assignedFanm",{clubId:activeClubId},controller.signal).then(result=>{
+      if(!controller.signal.aborted)setAssignedFanm({uid:authUser.uid,clubId:activeClubId,fixtures:result.fixtures});
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[authUser?.uid,activeClubId,isPracticeMode,page]);
   const showExhibitionDesk = exhibitionDesk?.clubId === activeClubId && exhibitionDesk?.userId === authUser?.uid;
   const [sharedExhibitionVideos, setSharedExhibitionVideos] = useState(null);
   const exhibitionVideoIds = (exhibition.mediaFixtures || []).map((fixture) => fixture.fixtureId || fixture.id).join(",");
@@ -5951,6 +5960,10 @@ function MainApp() {
   useEffect(()=>{
     if(!authUser?.uid||!authUser.emailVerified||activeClubId!=="turf-kings")return;
     const params=new URLSearchParams(window.location.search);
+    if(params.has("yearEndPayment")){
+      setPage(PAGE_NEWS);
+      return;
+    }
     if(!params.has("bibPayment"))return;
     setPage(PAGE_SHOP);params.delete("bibPayment");
     window.history.replaceState(null,"",window.location.pathname+(params.size?"?"+params.toString():"")+window.location.hash);
@@ -10133,6 +10146,11 @@ function MainApp() {
           <ExhibitionMatchRuntime key={exhibitionDesk.fixtureId} clubId={activeClubId} fixtureId={exhibitionDesk.fixtureId}
             identity={pageIdentity} viewerOnly={exhibitionDesk.viewerOnly} publicViewer={exhibitionDesk.publicViewer} onClose={() => setExhibitionDesk(null)}
             onGoToStats={() => {setExhibitionDesk(null); handleGoToStats(PAGE_LANDING);}} onChange={exhibition.refresh} />}
+        {!isPracticeMode && !showExhibitionDesk && assignedFanm?.uid === authUser?.uid && assignedFanm?.clubId === activeClubId &&
+          assignedFanm.fixtures.map(fixture=><button className="secondary-btn" key={fixture.fixtureId} onClick={()=>
+            setExhibitionDesk({fixtureId:fixture.fixtureId,clubId:activeClubId,userId:authUser.uid,viewerOnly:fixture.role!=="referee"})}>
+            {fixture.role==="referee"?"Referee booth":"Camera match view"} · {fixture.label}
+          </button>)}
         {!showExhibitionDesk && <LandingPage
           nextExhibition={browsedExhibition}
           onOpenExhibition={(fixtureId, viewerOnly = false) => setExhibitionDesk({fixtureId, clubId: activeClubId, userId: authUser?.uid, viewerOnly})}

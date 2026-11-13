@@ -33,12 +33,12 @@ export async function confirmOrganizationArchive({kind, id, name, restore = fals
   });
 }
 
-export default function OrganizationArchiveControls({kind, user, onRestored, onDeleted, compact = false}) {
+export default function OrganizationArchiveControls({kind, user, onRestored, onDeleted, compact = false, operationsManager = false}) {
   const [items, setItems] = useState(null);
   const [cursor, setCursor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  if (!canManageOrganizationArchive(user)) return null;
+  if (!canManageOrganizationArchive(user) && !operationsManager) return null;
 
   async function load(more = false) {
     setBusy(true);
@@ -85,11 +85,10 @@ export default function OrganizationArchiveControls({kind, user, onRestored, onD
     {message && <p role="status">{message}</p>}
     {items?.length === 0 && !cursor && <p>No archived {kind}s.</p>}
     {items?.length > 0 && <ul>{items.map(item => (
-      <li key={item.id}>{item.name}{" "}
+      <li key={item.id}>{item.name} {item.restoreUntilMs && <small>Recoverable until {new Date(item.restoreUntilMs).toLocaleDateString("en-ZA",{timeZone:"Africa/Johannesburg"})}</small>}{" "}
         {item.canRestore !== false && <button type="button" className="secondary-btn" disabled={busy}
           onClick={() => finishArchive(item)}>Restore</button>}
-        {kind === "field" && <button type="button" className="secondary-btn" disabled={busy}
-          onClick={() => finishArchive(item, true)}>Delete permanently</button>}
+
       </li>
     ))}</ul>}
     {cursor && <button type="button" className="secondary-btn" disabled={busy} onClick={() => load(true)}>Load more</button>}

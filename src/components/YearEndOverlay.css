@@ -1,0 +1,9 @@
+.year-end-overlay { position:fixed;inset:0;z-index:1000200;display:grid;place-items:center;padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));box-sizing:border-box;background:#020617bb; }
+.year-end-overlay .year-end-overlay-panel { box-sizing:border-box;max-height:100%!important;max-height:calc(100dvh - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)))!important;overflow:auto;overscroll-behavior:contain;color:#eff6ff; }
+.year-end-overlay .hub-challenge-modal.year-end-overlay-panel { background:#101c30;color:#eff6ff; }
+.year-end-overlay-actions { position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;gap:.4rem;background:#020617;padding:.35rem 0; }
+.year-end-program-editor,.year-end-program-editor fieldset { display:grid;gap:.65rem; }
+.year-end-program-editor fieldset { border:1px solid #6c89a8;border-radius:.7rem; }
+.year-end-program-editor label { display:block; }
+.year-end-in-canvas { scroll-margin-block:8rem 6rem; overflow-wrap:anywhere; }
+@media(max-width:760px){.news-page { padding-bottom:calc(96px + env(safe-area-inset-bottom))!important; }}

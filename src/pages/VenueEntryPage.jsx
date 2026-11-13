@@ -969,15 +969,9 @@ export default function VenueEntryPage({
   const [endSeasonError, setEndSeasonError] = useState("");
   const [endSeasonConfirmText, setEndSeasonConfirmText] = useState("");
   const [authenticatedFieldStaff, setAuthenticatedFieldStaff] = useState(null);
-  const resumedStaffAccount=useRef('');
   const [fieldStaffPowers, setFieldStaffPowers] = useState(null);
   const [showStaffPowersPanel, setShowStaffPowersPanel] = useState(false);
   const [showFieldTeamManager,setShowFieldTeamManager]=useState(false);
-  useEffect(()=>{
-    if(portalClubIdentity||fieldNavTarget?.entryRequest||enteredIdentity||!currentUser?.emailVerified||authenticatedFieldStaff?.uid!==currentUser.uid||authenticatedFieldStaff?.status!=="active")return;
-    const key=`${venue.id}:${currentUser.uid}`;if(resumedStaffAccount.current===key)return;resumedStaffAccount.current=key;
-    setEnteredIdentity({...authenticatedFieldStaff,uid:currentUser.uid,venueId:venue?.id,role:authenticatedFieldStaff.role,actingRole:authenticatedFieldStaff.role});
-  },[fieldNavTarget,currentUser?.uid,currentUser?.emailVerified,authenticatedFieldStaff,enteredIdentity,venue?.id,portalClubIdentity]);
   useEffect(()=>{if(currentUser?.emailVerified&&(authenticatedFieldStaff?.status==='active'||venue?.ownerUid===currentUser.uid))preloadFieldBibStock(venue?.id).catch(()=>{});},[venue?.id,currentUser?.uid,authenticatedFieldStaff?.status,authenticatedFieldStaff?.isAdministrator,venue?.ownerUid]);
   const canManageFieldTeam=Boolean(currentUser?.uid&&(venue?.ownerUid===currentUser.uid||(authenticatedFieldStaff?.uid===currentUser.uid&&authenticatedFieldStaff?.status==="active"&&authenticatedFieldStaff?.role==="field_manager"&&authenticatedFieldStaff?.isAdministrator===true)));
   useEffect(()=>setShowFieldTeamManager(false),[venue?.id,currentUser?.uid,canManageFieldTeam]);

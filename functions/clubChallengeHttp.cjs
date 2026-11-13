@@ -8,6 +8,7 @@ const service = require("./clubChallengeService.cjs");
 
 const actions = Object.freeze({
   list: service.listClubChallenges,
+  assignedFanm: service.listAssignedFanmFixtures,
   exhibitionOverview: service.exhibitionOverview,
   bookExhibition: service.bookExhibition,
   matchday: service.getExhibitionMatchday,

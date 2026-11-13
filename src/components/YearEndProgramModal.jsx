@@ -1,3 +1,6 @@
+import {createPortal} from "react-dom";
+import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
+import "./YearEndOverlay.css";
 // src/components/YearEndProgramModal.jsx
 import React, { useEffect, useState, useMemo } from "react";
 import { db } from "../firebaseConfig";
@@ -122,7 +125,16 @@ function formatMinutesToTime(totalMinutes) {
   return `${hStr}:${mStr}`;
 }
 
-export function YearEndProgramModal({ identity, onClose }) {
+export function YearEndProgramModal({ identity, onClose, event, canEditEvent, onSaved }) {
+  const [editorOpen,setEditorOpen]=useState(false);
+  const [itemsDraft,setItemsDraft]=useState([]);
+  const [publishedDraft,setPublishedDraft]=useState(false);
+  const [saveError,setSaveError]=useState("");
+  const currentItems=event?.programItems?.length?event.programItems:BASE_ITEMS;
+  const startEditing=()=>{
+    setItemsDraft(currentItems.map(item=>({...item,desc:Array.isArray(item.desc)?item.desc.join("\n"):item.desc||""})));
+    setPublishedDraft(event?.programPublished===true);setEditorOpen(true);setSaveError("");
+  };
   const [programPublished, setProgramPublished] = useState(false);
   const [programStartTime, setProgramStartTime] = useState(
     DEFAULT_START_TIME
@@ -151,11 +163,11 @@ export function YearEndProgramModal({ identity, onClose }) {
   const isPreviewUser =
     !!identityEmail && PREVIEW_EMAILS.includes(identityEmail);
 
-  const canSeeFullProgram =
-    isAdmin || isCaptain || isPreviewUser || programPublished;
+  const canSeeFullProgram = event ? canEditEvent || event.programPublished : isAdmin || isCaptain || isPreviewUser || programPublished;
 
   // Load programPublished + programStartTime from Firestore
   useEffect(() => {
+    if(event){setLoadingConfig(false);return;}
     let cancelled = false;
 
     async function loadConfig() {
@@ -190,7 +202,7 @@ export function YearEndProgramModal({ identity, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [event]);
 
   async function handleTogglePublish() {
     if (!isAdmin) return;
@@ -261,11 +273,11 @@ export function YearEndProgramModal({ identity, onClose }) {
   // ---- Compute adjusted times for all items based on programStartTime ----
   const { itemsWithTimes, headerStartLabel, headerEndLabel } = useMemo(() => {
     const baseStartMinutes =
-      parseTimeToMinutes(programStartTime) ??
+      parseTimeToMinutes(event?.program || programStartTime) ??
       parseTimeToMinutes(DEFAULT_START_TIME) ??
       19 * 60 + 30; // ultimate fallback: 19:30
 
-    const items = BASE_ITEMS.map((item) => {
+    const items = currentItems.map((item) => {
       const start = formatMinutesToTime(
         baseStartMinutes + item.offsetStart
       );
@@ -290,12 +302,12 @@ export function YearEndProgramModal({ identity, onClose }) {
       headerStartLabel: startLabel || programStartTime,
       headerEndLabel: endLabel || "",
     };
-  }, [programStartTime]);
+  }, [programStartTime,event?.program,currentItems]);
 
-  return (
-    <div className="modal-backdrop">
+  return createPortal(
+    <div className="year-end-overlay">
       <div
-        className="modal"
+        className="modal year-end-overlay-panel" role="dialog" aria-modal="true" aria-label="Year-End Programme"
         style={{
           maxWidth: "560px",
           width: "100%",
@@ -309,6 +321,36 @@ export function YearEndProgramModal({ identity, onClose }) {
           borderRadius: "1.25rem",
         }}
       >
+        <div className="year-end-overlay-actions">
+          <button className="secondary-btn" onClick={onClose}>Close</button>
+          {event&&canEditEvent&&<button className="primary-btn" onClick={editorOpen?()=>setEditorOpen(false):startEditing}>
+            {editorOpen?"Back to programme":"Edit programme"}
+          </button>}
+        </div>
+        {editorOpen&&<form className="year-end-program-editor" onSubmit={async e=>{
+          e.preventDefault();if(saving)return;setSaving(true);setSaveError("");
+          try {
+            await fieldLogoStudioRequest({action:"yearEndProgramme",eventId:event.id,items:itemsDraft,published:publishedDraft});
+            await onSaved?.();setEditorOpen(false);
+          }catch(error){setSaveError(error.message);}finally{setSaving(false);}
+        }}>
+          <p>Times are minutes from the advertised programme start ({event.program}).</p>
+          {itemsDraft.map((item,i)=>{
+            const update=(key,value)=>setItemsDraft(rows=>rows.map((row,index)=>index===i?{...row,[key]:value}:row));
+            return <fieldset key={i}><legend>Item {i+1}</legend>
+              <label>Title<input className="text-input" required maxLength={100} value={item.title} onChange={e=>update("title",e.target.value)}/></label>
+              <label>Speaker<input className="text-input" maxLength={100} value={item.speaker||""} onChange={e=>update("speaker",e.target.value)}/></label>
+              <label>Start minute<input className="text-input" type="number" required min={0} max={719} value={item.offsetStart} onChange={e=>update("offsetStart",Number(e.target.value))}/></label>
+              <label>End minute<input className="text-input" type="number" required min={item.offsetStart+1} max={720} value={item.offsetEnd} onChange={e=>update("offsetEnd",Number(e.target.value))}/></label>
+              <label>Notes<textarea className="text-input" maxLength={2000} value={item.desc} onChange={e=>update("desc",e.target.value)}/></label>
+              <button type="button" className="secondary-btn" onClick={()=>setItemsDraft(rows=>rows.filter((_,index)=>index!==i))}>Remove item</button>
+            </fieldset>;
+          })}
+          <button type="button" className="secondary-btn" onClick={()=>setItemsDraft(rows=>[...rows,{title:"",speaker:"",desc:"",offsetStart:0,offsetEnd:5,icon:"🎤"}])}>Add programme item</button>
+          <label><input type="checkbox" checked={publishedDraft} onChange={e=>setPublishedDraft(e.target.checked)}/> Publish programme to players</label>
+          {saveError&&<p role="alert">{saveError}</p>}
+          <button className="primary-btn" disabled={saving||!itemsDraft.length}>{saving?"Saving…":"Save programme"}</button>
+        </form>}
         {/* HEADER */}
         <header style={{ marginBottom: "0.9rem" }}>
           <h2 style={{ marginBottom: "0.25rem" }}>
@@ -349,7 +391,7 @@ export function YearEndProgramModal({ identity, onClose }) {
             </p>
           )}
 
-          {!loadingConfig && (isAdmin || isCaptain || isPreviewUser) && (
+          {!event && !loadingConfig && (isAdmin || isCaptain || isPreviewUser) && (
             <p
               style={{
                 marginTop: "0.4rem",
@@ -357,7 +399,7 @@ export function YearEndProgramModal({ identity, onClose }) {
                 opacity: 0.9,
               }}
             >
-              {programPublished ? (
+              {(event ? event.programPublished : programPublished) ? (
                 <span style={{ color: "#22c55e" }}>
                   ✅ Program is currently <strong>visible to everyone</strong>.
                 </span>
@@ -524,7 +566,7 @@ export function YearEndProgramModal({ identity, onClose }) {
         )}
 
         {/* ADMIN PUBLISH TOGGLE + START TIME CONTROL */}
-        {!loadingConfig && (isAdmin || isCaptain || isPreviewUser) && (
+        {!event && !loadingConfig && (isAdmin || isCaptain || isPreviewUser) && (
           <section
             style={{
               marginTop: "0.85rem",
@@ -648,6 +690,6 @@ export function YearEndProgramModal({ identity, onClose }) {
           Close
         </button>
       </div>
-    </div>
+    </div>, document.body
   );
 }

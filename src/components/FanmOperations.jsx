@@ -1,13 +1,20 @@
 import React, {useEffect, useRef, useState} from "react";
 import OrganizationArchiveControls, {confirmOrganizationArchive} from "./OrganizationArchiveControls.jsx";
 import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
-import {fieldPrompt} from "./FieldDialog.jsx";
+import FieldBibInventory from "./FieldBibInventory.jsx";
+import "./FieldBibHire.css";
+import "./FanmOperations.css";
 
 const roles = {operations_manager:"Operations manager",referee:"Referee",camera_operator:"Camera operator",support_staff:"Support staff"};
 
-export default function FanmOperations({user,onClose,onChallenge,onOrganizationsChanged}) {
-  const [tab,setTab] = useState("Challenges");
+export default function FanmOperations({user,director,onClose,onChallenge,onOrganizationsChanged}) {
+  const [tab,setTab] = useState(director?"Challenges":"Clubs & Fields");
   const [data,setData] = useState(null);
+  const [city,setCity]=useState("");
+  const [cityInput,setCityInput]=useState("");
+  const [reservationFixture,setReservationFixture]=useState("");
+  const [reserveCounts,setReserveCounts]=useState({});
+  const [stock,setStock] = useState([]);
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState("");
   const [kind,setKind] = useState("field");
@@ -18,7 +25,7 @@ export default function FanmOperations({user,onClose,onChallenge,onOrganizations
     setBusy(true);setMessage("");
     try {await operation();} catch(error) {setMessage(error.message);} finally {setBusy(false);}
   }
-  async function refresh() {setData(await fieldLogoStudioRequest({action:"operationsView"}));}
+  async function refresh(selectedCity=city) {const next=await fieldLogoStudioRequest({action:"operationsView",city:selectedCity});setData(next);setStock(next.stock);}
   function submit(action, transform = value=>value) {
     return event => {
       event.preventDefault();
@@ -32,28 +39,89 @@ export default function FanmOperations({user,onClose,onChallenge,onOrganizations
       });
     };
   }
-  return <div className="hub-challenge-backdrop">
-    <section ref={dialog} tabIndex={-1} className="hub-challenge-modal fanm-operations" role="dialog" aria-modal="true" aria-label="FANM Operations">
-      <button type="button" className="hub-challenge-modal__close" aria-label="Close Operations" onClick={onClose}>×</button>
+  const owned=data?.stock.reduce((sum,row)=>sum+row.quantity,0)||0;
+  const committed=data?.committed.reduce((sum,row)=>sum+row.committed,0)||0;
+  return <main ref={dialog} tabIndex={-1} className="fanm-operations" aria-label="FANM Operations">
+    <header className="fanm-operations-header">
+      <button type="button" className="secondary-btn" onClick={onClose}>‹ Club Hub</button>
       <span className="hub-challenge-modal__kicker">Platform management</span>
-      <h2>FANM Operations</h2>
-      <nav className="hub-challenge-format-grid" aria-label="Operations sections">
-        {["Challenges","Bib stock","Staff","Clubs & Fields","Videos"].map(name=><button key={name} type="button"
+      <h1>FANM Operations</h1>
+    </header>
+      <nav className="fanm-operations-tabs" aria-label="Operations sections">
+        {(director?["Challenges","Bib stock","Staff","Clubs & Fields"]:["Clubs & Fields"]).map(name=><button key={name} type="button"
           aria-pressed={tab===name} className={tab===name?"is-selected":""} disabled={busy}
           onClick={()=>{setTab(name);setMessage("");if(!data&&["Bib stock","Staff"].includes(name))void run(refresh);}}>{name}</button>)}
       </nav>
       {tab==="Challenges" && <p><button type="button" className="primary-btn" onClick={onChallenge} disabled={!onChallenge}>Create FANM Challenge</button></p>}
-      {tab==="Bib stock" && <>
-        <h3>Numbered bib stocktake</h3>
-        <form className="hub-challenge-form-grid" onSubmit={submit("operationsCountBibs",v=>({...v,number:Number(v.number),quantity:Number(v.quantity)}))}>
-          <label>Colour<input name="colour" required maxLength={24}/></label>
-          <label>Bib number<input name="number" type="number" min="1" max="99" required/></label>
-          <label>Count on hand<input name="quantity" type="number" min="0" max="999" required/></label>
-          <button className="primary-btn" disabled={busy}>Record count</button>
+      {tab==="Bib stock" && data && <section className="fanm-operations-panel">
+        <form className="fanm-stock-city" onSubmit={event=>{
+          event.preventDefault();
+          const next=cityInput.trim();if(!next)return;
+          void run(async()=>{await refresh(next);setCity(next);setReservationFixture("");setReserveCounts({});});
+        }}>
+          <label>Stock city<input className="text-input" required list="fanm-stock-cities" value={cityInput}
+            onChange={event=>setCityInput(event.target.value)} placeholder="e.g. Cape Town" maxLength={60}/></label>
+          <datalist id="fanm-stock-cities">{data.cities.map(name=><option key={name} value={name}/>)}</datalist>
+          <button className="primary-btn" disabled={busy}>Open city stock</button>
         </form>
-        {data && <ul>{[...data.stock].sort((a,b)=>a.colour.localeCompare(b.colour)||a.number-b.number).map(row=>
-          <li key={`${row.colour}-${row.number}`}>{row.colour} #{row.number}: <strong>{row.quantity}</strong></li>)}</ul>}
-      </>}
+        {city&&<>
+          <h2>{city}</h2>
+          <div className="fanm-stock-summary">
+            <div><span>Owned</span><strong>{owned}</strong></div>
+            <div><span>Committed</span><strong>{committed}</strong></div>
+            <div><span>Available</span><strong>{owned-committed}</strong></div>
+          </div>
+          {!data.unassignedMoved&&!data.stock.length&&data.unassignedStock.length>0&&
+            <button className="secondary-btn" disabled={busy} onClick={()=>void run(async()=>{
+              await fieldLogoStudioRequest({action:"operationsCountBibs",city,stock:data.unassignedStock,revision:data.revision,moveUnassigned:true});
+              await refresh();setMessage("Unassigned stock moved to "+city+".");
+            })}>Move unassigned stock to {city}</button>}
+          <FieldBibInventory key={city} inventoryOnly
+            data={{manager:true,config:{stock:data.stock,confirmedAtMs:data.confirmedAtMs}}}
+            stock={stock} setStock={setStock} busy={busy} onSave={async()=>{
+              let saved=false;
+              await run(async()=>{
+                await fieldLogoStudioRequest({action:"operationsCountBibs",city,stock,revision:data.revision});
+                await refresh();saved=true;setMessage("Stocktake saved.");
+              });
+              return saved;
+            }}/>
+          <h3>Fixture commitments</h3>
+          {data.reservations.length===0&&<p>No bibs committed in this city.</p>}
+          {data.reservations.map(item=><div className="fanm-commitment" key={item.fixtureId}>
+            <strong>{item.label}</strong><span>{item.rows.map(row=>`${row.color} #${row.number} × ${row.quantity}`).join(" · ")}</span>
+            <button className="secondary-btn" disabled={busy} onClick={()=>void run(async()=>{
+              await fieldLogoStudioRequest({action:"operationsReleaseBibs",city,fixtureId:item.fixtureId,revision:data.revision});
+              await refresh();setMessage("Bibs released.");
+            })}>Release bibs</button>
+          </div>)}
+          {data.stock.length>0&&<form onSubmit={event=>{
+            event.preventDefault();
+            void run(async()=>{
+              const rows=data.stock.map(row=>({...row,quantity:Number(reserveCounts[`${row.color}:${row.number}`]||0)})).filter(row=>row.quantity>0);
+              await fieldLogoStudioRequest({action:"operationsReserveBibs",city,fixtureId:reservationFixture,revision:data.revision,rows});
+              await refresh();setReserveCounts({});setReservationFixture("");setMessage("Bibs committed.");
+            });
+          }}>
+            <label>Commit bibs to a FANM fixture<select className="text-input" required value={reservationFixture} onChange={event=>{
+              const id=event.target.value;setReservationFixture(id);
+              setReserveCounts(Object.fromEntries((data.reservations.find(item=>item.fixtureId===id)?.rows||[]).map(row=>[`${row.color}:${row.number}`,row.quantity])));
+            }}>
+              <option value="">Choose fixture</option>{data.fixtures.filter(item=>!item.city||item.city===city.toLowerCase()).map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
+            </select></label>
+            <div className="bib-inventory-scroll"><table className="bib-inventory-table"><thead><tr>
+              <th>Bib</th><th>Owned</th><th>Committed</th><th>Available</th>{reservationFixture&&<th>For this fixture</th>}
+            </tr></thead><tbody>{data.committed.map(row=>{
+              const key=`${row.color}:${row.number}`;
+              const held=data.reservations.find(item=>item.fixtureId===reservationFixture)?.rows.find(item=>item.color===row.color&&item.number===row.number)?.quantity||0;
+              return <tr key={key}><th>{row.color} #{row.number}</th><td>{row.quantity}</td><td>{row.committed}</td>
+                <td>{row.quantity-row.committed}</td>{reservationFixture&&<td><input type="number" min="0" max={row.quantity-row.committed+held}
+                  aria-label={key} value={reserveCounts[key]||""} onChange={event=>setReserveCounts({...reserveCounts,[key]:event.target.value})}/></td>}</tr>;
+            })}</tbody></table></div>
+            {reservationFixture&&<button className="primary-btn" disabled={busy}>Save fixture commitment</button>}
+          </form>}
+        </>}
+      </section>}
       {tab==="Staff" && <>
         <p><strong>Director:</strong> {user.displayName || user.email}</p>
         <form className="hub-challenge-form-grid" onSubmit={submit("operationsStaff")}>
@@ -63,6 +131,16 @@ export default function FanmOperations({user,onClose,onChallenge,onOrganizations
           <button className="primary-btn" disabled={busy}>Save staff member</button>
         </form>
         {data && <ul>{data.staff.map(person=><li key={person.uid}>{person.name} · {roles[person.role]} · {person.status}</li>)}</ul>}
+        {data?.staff.some(person=>person.status==="active"&&["referee","camera_operator"].includes(person.role)) &&
+          <form className="hub-challenge-form-grid" onSubmit={submit("operationsAssignOfficial",v=>{
+            const [role,uid]=v.official.split(":");return {role,uid,fixtureId:v.fixtureId.trim()};
+          })}>
+            <label>FANM fixture ID<input name="fixtureId" required pattern="[a-f0-9]{64}"/></label>
+            <label>Assign official<select name="official" required>{data.staff.filter(person=>person.status==="active"&&["referee","camera_operator"].includes(person.role)).map(person=>
+              <option key={person.uid} value={`${person.role}:${person.uid}`}>{person.name} · {roles[person.role]}</option>)}</select></label>
+            <button className="primary-btn" disabled={busy}>Assign to fixture</button>
+          </form>}
+
       </>}
       {tab==="Clubs & Fields" && <>
         <form className="hub-challenge-form-grid" onSubmit={event=>{
@@ -74,27 +152,10 @@ export default function FanmOperations({user,onClose,onChallenge,onOrganizations
           <label>Organisation ID<input name="id" required pattern="[A-Za-z0-9_\\-]+" maxLength={150}/></label>
           <button className="secondary-btn" disabled={busy}>Archive organisation</button>
         </form>
-        <OrganizationArchiveControls kind="field" user={user} onRestored={onOrganizationsChanged} onDeleted={onOrganizationsChanged}/>
-        <OrganizationArchiveControls kind="club" user={user} onRestored={onOrganizationsChanged}/>
+        <OrganizationArchiveControls kind="field" user={user} operationsManager={!director} onRestored={onOrganizationsChanged} onDeleted={onOrganizationsChanged}/>
+        <OrganizationArchiveControls kind="club" user={user} operationsManager={!director} onRestored={onOrganizationsChanged}/>
       </>}
-      {tab==="Videos" && <form className="hub-challenge-form-grid" onSubmit={event=>{
-        event.preventDefault();const values=Object.fromEntries(new FormData(event.currentTarget));
-        void run(async()=>{
-          const confirmation=await fieldPrompt(`Permanently delete this video? Type DELETE ${values.clipId} to confirm.`, "", {title:"Delete video",action:"Delete video"});
-          if(confirmation==null)return;
-          const result=await fieldLogoStudioRequest({action:"operationsDeleteVideo",...values,confirmation:confirmation.trim()});
-          if(result.deleted)setMessage("Video and its library records deleted.");
-        });
-      }}>
-        <label>Library<select name="kind"><option value="field">Field</option><option value="club">Club</option></select></label>
-        <label>Field or Club ID<input name="ownerId" required/></label>
-        <label>Match ID<input name="matchId" required/></label>
-        <label>Clip ID<input name="clipId" required/></label>
-        <label className="hub-challenge-form-grid__wide">Audit reason<input name="reason" required minLength={10} maxLength={500}/></label>
-        <button className="secondary-btn" disabled={busy}>Confirm permanent deletion</button>
-      </form>}
       {message && <p role="status">{message}</p>}
       {busy && <p role="status">Working…</p>}
-    </section>
-  </div>;
+  </main>;
 }

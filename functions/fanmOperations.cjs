@@ -1,5 +1,4 @@
 const {randomUUID} = require("node:crypto");
-const {canonicalVideoPath} = require("./highlightRetentionPolicy.cjs");
 const ROLES = new Set(["operations_manager","referee","camera_operator","support_staff"]);
 const validId = value => typeof value === "string" && /^[A-Za-z0-9_-]{1,150}$/.test(value);
 const clean = value => typeof value === "string" ? value.trim() : "";
@@ -12,23 +11,91 @@ async function manageFanmOperations({body, user, admin, db, fail}) {
   const root = db.doc("fanmOperations/main");
   const stock = root.collection("bibStock");
   const staff = root.collection("staff");
+  const stockConfig = root.collection("config").doc("bibs");
   const stamp = admin.firestore.FieldValue.serverTimestamp;
   const log = (tx, action, details) => tx.create(root.collection("audit").doc(randomUUID()),
     {action, details, actorUid:user.uid, at:stamp()});
-  if (body.action === "operationsView") {
-    const [items, people] = await Promise.all([stock.get(), staff.get()]);
-    return {stock:items.docs.map(doc=>doc.data()), staff:people.docs.map(doc=>doc.data())};
+  const cities=root.collection("cityBibs");
+  const city=clean(body.city).replace(/\s+/g," ");
+  const cityId=/^[\p{L}\p{N} .'-]{2,60}$/u.test(city)?city.toLowerCase():"";
+  const inventory=require("./fieldBibHire.cjs").inventory;
+  const bibKey=row=>JSON.stringify([row.color,row.number]);
+  function totals(rows,reservations){
+    const used=new Map();
+    for(const reservation of Object.values(reservations||{}))for(const row of reservation.rows){
+      const key=bibKey(row);used.set(key,(used.get(key)||0)+row.quantity);
+    }
+    return rows.map(row=>({...row,committed:used.get(bibKey(row))||0}));
   }
-  if (body.action === "operationsCountBibs") {
-    const colour = clean(body.colour).toLowerCase();
-    const {number, quantity} = body;
-    if (!/^[a-z]{2,24}$/.test(colour) || !Number.isInteger(number) || number < 1 || number > 99 ||
-        !Number.isInteger(quantity) || quantity < 0 || quantity > 999) fail("Enter a colour, bib number (1–99) and count (0–999).");
-    const ref = stock.doc(`${colour}-${number}`);
+  if (body.action === "operationsView") {
+    const [items,people,config,cityList,fixtures] = await Promise.all([stock.get(),staff.get(),stockConfig.get(),cities.get(),
+      db.collection("clubChallengeMatches").where("instigated","==",true).get()]);
+    const local=cityId?cityList.docs.find(doc=>doc.id===cityId)?.data():null;
+    return {cities:cityList.docs.map(doc=>doc.data().city).sort(),stock:local?.stock||[],
+      unassignedStock:config.data()?.stock ?? items.docs.map(doc=>{
+        const {colour,number,quantity}=doc.data();return {color:colour,number,quantity};
+      }), unassignedMoved:config.data()?.cityMigrationComplete===true,
+      revision:local?.revision||0, confirmedAtMs:local?.confirmedAtMs||0,
+      committed:totals(local?.stock||[],local?.reservations),reservations:Object.values(local?.reservations||{}),
+      fixtures:fixtures.docs.flatMap(doc=>{
+        const f=doc.data();return ["pending","accepted","live"].includes(f.status)?
+          [{id:doc.id,label:`${f.home?.name} vs ${f.away?.name} · ${f.venue}`,city:f.fanmBibCity||""}]:[];
+      }), staff:people.docs.map(doc=>doc.data())};
+  }
+  if (["operationsCountBibs","operationsReserveBibs","operationsReleaseBibs"].includes(body.action)) {
+    if(!cityId)fail("Select or enter a stock city.");
+    const ref=cities.doc(cityId);
     await db.runTransaction(async tx => {
-      const previous = (await tx.get(ref)).data()?.quantity ?? null;
-      tx.set(ref,{colour,number,quantity,updatedAt:stamp()});
-      log(tx,"count_bibs",{colour,number,previous,quantity});
+      const local=(await tx.get(ref)).data()||{stock:[],reservations:{},revision:0};
+      if (body.revision !== local.revision) fail("The inventory changed. Reload before saving.",409);
+      const reservations={...(local.reservations||{})};
+      let rows=local.stock;
+      if(body.action==="operationsCountBibs"){
+        rows=inventory(body.stock);
+        if(body.moveUnassigned===true){
+          const config=(await tx.get(stockConfig)).data()||{};
+          if(config.cityMigrationComplete)fail("Unassigned stock has already been moved.",409);
+          if(local.stock.length)fail("Move unassigned stock into a city without recorded stock.");
+          tx.set(stockConfig,{cityMigrationComplete:true},{merge:true});
+        }
+      }else{
+        const {fixtureId}=body;
+        if(typeof fixtureId!=="string"||!/^[a-f0-9]{64}$/.test(fixtureId))fail("Choose a FANM fixture.");
+        const fixtureRef=db.collection("clubChallengeMatches").doc(fixtureId);
+        const match=(await tx.get(fixtureRef)).data();
+        if(body.action==="operationsReleaseBibs"){
+          if(!reservations[fixtureId])fail("This city has no reservation for that fixture.");
+          delete reservations[fixtureId];
+        }else{
+          if(!match?.instigated||!["pending","accepted","live"].includes(match.status))fail("Choose an upcoming FANM fixture.");
+          if(match.fanmBibCity&&match.fanmBibCity!==cityId)fail("Release the reservation in the other city first.");
+          const reserved=inventory(body.rows).filter(row=>row.quantity>0);
+          if(!reserved.length)fail("Enter at least one bib quantity.");
+          reservations[fixtureId]={fixtureId,label:`${match.home?.name} vs ${match.away?.name} · ${match.venue}`,rows:reserved};
+        }
+        if(match)tx.update(fixtureRef,{fanmBibCity:body.action==="operationsReleaseBibs"?"":cityId});
+      }
+      const counted=totals(rows,reservations);
+      if(counted.some(row=>row.quantity<row.committed)||
+        Object.values(reservations).some(r=>r.rows.some(row=>!rows.some(s=>bibKey(s)===bibKey(row)))))
+        fail("The city does not have enough stock for those commitments.",409);
+      tx.set(ref,{city:local.city||city,stock:rows,reservations,revision:local.revision+1,confirmedAtMs:Date.now(),confirmedBy:user.uid});
+      log(tx,body.action,{city,fixtureId:body.fixtureId||"",revision:local.revision+1});
+    });
+    return {};
+  }
+  if (body.action === "operationsAssignOfficial") {
+    const {fixtureId,role,uid}=body;
+    if (!/^[a-f0-9]{64}$/.test(fixtureId)||!["referee","camera_operator"].includes(role)||!validId(uid)) fail("Choose a FANM fixture and registered official.");
+    const ref=db.collection("clubChallengeMatches").doc(fixtureId);
+    await db.runTransaction(async tx=>{
+      const [fixture,official]=await tx.getAll(ref,staff.doc(uid));
+      const match=fixture.data(), person=official.data();
+      if(!match?.instigated||!["pending","accepted"].includes(match.status))fail("Choose an upcoming FANM challenge.");
+      if(person?.status!=="active"||person.role!==role)fail("That staff member is not active in this role.");
+      const key=role==="referee"?"refereeUid":"cameraUid";
+      tx.update(ref,{[`fanmOfficials.${key}`]:uid});
+      log(tx,"assign_official",{fixtureId,role,uid});
     });
     return {};
   }
@@ -44,36 +111,6 @@ async function manageFanmOperations({body, user, admin, db, fail}) {
       log(tx,"update_staff",{uid:account.uid,role:body.role,status:body.status});
     });
     return {};
-  }
-  if (body.action === "operationsDeleteVideo") {
-    const {kind, ownerId, matchId, clipId} = body;
-    const reason = clean(body.reason);
-    if (!["club","field"].includes(kind) || ![ownerId,matchId,clipId].every(validId) ||
-        body.confirmation !== `DELETE ${clipId}` || reason.length < 10 || reason.length > 500) {
-      fail("Enter the exact video reference, confirmation and audit reason.");
-    }
-    const match = db.doc(`${kind==="field"?"leagueVenues":"clubs"}/${ownerId}/video_highlights/${matchId}`);
-    const refs = ["raw","archived","cleanup_queue"].map(name => match.collection(name).doc(clipId));
-    const copies = (await Promise.all(refs.slice(0,2).map(ref=>ref.get()))).filter(snap=>snap.exists);
-    if (!copies.length) fail("No video with that exact reference was found.", 404);
-    const bucket = admin.storage().bucket();
-    const paths = copies.map(snap=>{
-      const clip = snap.data();
-      if (clip.storagePath) return clip.storagePath;
-      try {
-        const url = new URL(clip.mediaUrl || clip.videoUrl || clip.downloadUrl || "");
-        const location = url.pathname.match(/^\/v0\/b\/([^/]+)\/o\/(.+)$/);
-        return url.origin === "https://firebasestorage.googleapis.com" && location?.[1] === bucket.name
-          ? decodeURIComponent(location[2]) : "";
-      } catch {return "";}
-    });
-    if (paths.some(path=>!canonicalVideoPath(path,{kind,ownerId,matchId}))) fail("The stored file does not match this video. The records were kept.", 409);
-    await Promise.all([...new Set(paths)].map(path=>bucket.file(path).delete({ignoreNotFound:true})));
-    const batch = db.batch();
-    refs.forEach(ref=>batch.delete(ref));
-    log(batch,"delete_video",{kind,ownerId,matchId,clipId,reason});
-    await batch.commit();
-    return {deleted:true};
   }
   fail("Choose a valid FANM Operations action.");
 }
