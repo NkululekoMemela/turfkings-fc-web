@@ -358,7 +358,7 @@ export default function VenueMarketingFooter({helpTools} = {}) {
             </div>
             {infoModal === INFO.help && helpTools}
             {infoModal === INFO.terms &&
-              <LegalSignature scope="field" />}
+              <><a href="/terms.html">Open public Terms and Conditions</a><LegalSignature scope="field" /></>}
           </section>
         </div>
       ) : null}

@@ -209,20 +209,34 @@ async function listChallengeClubs({db, user}) {
   return {clubs: clubs.sort((a, b) => a.name.localeCompare(b.name))};
 }
 
+async function assertChallengeRosterSize(tx, db, format, clubs) {
+  const required = Number(format.split("v")[0]);
+  const rosters = await Promise.all(clubs.map(({id}) =>
+    tx.get(db.collection(`clubs/${id}/members`).where("status", "==", "active"))));
+  clubs.forEach(({id, name}, index) => {
+    const players = new Set(rosters[index].docs.flatMap(doc => {
+      const member = doc.data();
+      if (!text(member.shortName || member.fullName || member.displayName || member.name) ||
+          ["spectator", "viewer", "supporter"].includes(text(member.role).toLowerCase())) return [];
+      return [member.playerId || member.uid || normaliseEmail(member.email) || doc.id];
+    }));
+    if (players.size < required) throw new ChallengeError("failed-precondition",
+      `${name || id} has ${players.size} active players. ${format} requires at least ${required} per Club.`);
+  });
+}
+
 async function sendClubChallenge({db, user, data, now = Date.now()}, instigated = false) {
   if (instigated) requireChallengeSuperAdmin(user);
   else requireVerifiedUser(user);
   const homeId = clubId(data?.homeClubId);
   const awayId = clubId(data?.awayClubId);
   if (homeId === awayId) throw invalid("Choose another Club to challenge.");
-  const terms = fixtureTerms(data, now);
+  const terms = fixtureTerms(instigated && data.format === "11v11"
+    ? {...data, clubTotalCents: data.clubTotalCents ?? 220000} : data, now);
   const hostedPackage = instigated && terms.format === "11v11" ? {
     rosterPerClub: 15, waterPerClub: 24, waterMl: 500,
-    fieldBooking: true, referee: true, cameraOperator: true,
+    fieldBooking: true, referee: true, cameraOperator: true, numberedBibs: true,
   } : null;
-  if (hostedPackage && terms.clubTotalCents !== 220000) {
-    throw invalid("The FANM 11-a-side package is R2,200 per Club.");
-  }
   if (instigated && terms.clubTotalCents <= 0) throw invalid("Enter a FANM package quote per Club.");
   const colours = {homeColour: instigated ? null : declaredKit(data.homeColour), awayColour: null};
   const pair = [homeId, awayId].sort();
@@ -247,6 +261,7 @@ async function sendClubChallenge({db, user, data, now = Date.now()}, instigated 
       if (identical) return {fixtureId, status: existing.status};
       throw new ChallengeError("already-exists", "These Clubs already have a challenge at this kickoff.");
     }
+    await assertChallengeRosterSize(tx, db, terms.format, [clubDisplay(homeId, home), clubDisplay(awayId, away)]);
     tx.create(ref, {
       ...terms, ...colours, ...(hostedPackage ? {hostedPackage} : {}), fixtureId, source: "club_challenge", revision: 1,
       status: "pending", instigated, kitDeclarations: true, acceptances: {home: !instigated, away: false}, home: clubDisplay(homeId, home), away: clubDisplay(awayId, away),
@@ -287,6 +302,7 @@ async function respondToClubChallenge({db, user, data, now = Date.now()}) {
     let status = decision;
     const extra = {};
     if (decision === "accepted") {
+      await assertChallengeRosterSize(tx, db, match.format, [match.home, match.away]);
       const ownKey = `${side}Colour`;
       const opponentKey = side === "home" ? "awayColour" : "homeColour";
       // Kit agreement belongs to Squads; accepting an invitation never assigns the opponent’s kit.

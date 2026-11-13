@@ -172,8 +172,8 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
             {photo ? <img src={photo} alt="" /> : <span>{(draft.fullName || "P").slice(0,1).toUpperCase()}</span>}
           </div>
           <h2 id="profile-attendance-title">Summary</h2>
-          <div className="profile-attendance-badge">
-            <span>Attendance badge</span>
+          <div className="signup-attendance-badge profile-attendance-badge">
+            <span className="signup-attendance-badge-label">Attendance Badge 🛡️</span>
             <strong>{attendance.loading ? "Loading…" : attendance.error || attendance.percent === null ? "Not available" : `${attendance.percent}%`}</strong>
           </div>
         </header>

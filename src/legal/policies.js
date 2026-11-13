@@ -1,3 +1,5 @@
+import { BOOKING_TERMS } from "./bookingTerms.js";
+
 export const OPERATOR = {
   name: "5 Asides Near Me",
   email: "support@5asidesnearme.com",
@@ -13,7 +15,7 @@ const privacy = [
 
 export const LEGAL = {
   club: {
-    version: "club-2026-09-29-1",
+    version: "club-2026-11-13-1",
     title: "Club Terms of Service and Privacy Notice",
     sections: [
       ["Operator and agreement", `Your Club agreement is with ${OPERATOR.name}. Contact: ${OPERATOR.email}. By signing, you accept the Club terms for your account and acknowledge this Privacy Notice. The Field agreement is presented separately when you enter a Field.`],
@@ -23,11 +25,12 @@ export const LEGAL = {
       ["Conduct and moderation", "Club admins may moderate their Club chat. The platform may restrict accounts or content for abuse, fraud, impersonation, or safety concerns. Contact support to challenge a restriction. We may preserve relevant records when reasonably needed for a complaint or lawful investigation."],
       ["Sport and service limits", "Football carries a risk of injury. Follow venue rules, use suitable equipment, and seek medical advice where appropriate. This notice does not waive rights that cannot lawfully be excluded. Availability and third-party services may vary; we will not exclude liability where the law forbids it."],
       ["Changes and disputes", "Material changes will be presented for fresh acceptance before they apply to your continued Club use. Contact support first about complaints. South African law applies, subject to mandatory consumer and privacy rights."],
+      ...BOOKING_TERMS,
       ...privacy,
     ],
   },
   field: {
-    version: "field-2026-09-29-1",
+    version: "field-2026-11-13-1",
     title: "Field Terms of Service and Privacy Notice",
     sections: [
       ["Operator and agreement", `Your Field agreement is with ${OPERATOR.name}. Contact: ${OPERATOR.email}. By signing, you accept the Field terms for your role and acknowledge this Privacy Notice. Club terms remain separate.`],
@@ -37,6 +40,7 @@ export const LEGAL = {
       ["Venue services and money", "The Field operator is responsible for the accuracy of its location, availability, prices, venue rules, and any Field-specific booking terms it offers. Any checkout must identify the seller and show price and cancellation terms. The platform does not silently assume a Field's obligations."],
       ["Safety and service limits", "Football and attendance at a venue can involve injury. Fields must disclose unusual risks and maintain legally required safety measures. This notice does not waive rights that cannot lawfully be excluded. Availability may vary; liability limits are subject to South African law."],
       ["Changes and disputes", "Material changes will be presented for fresh acceptance before continued Field use. Contact support first about complaints. South African law applies, subject to mandatory consumer and privacy rights."],
+      ...BOOKING_TERMS,
       ...privacy,
     ],
   },

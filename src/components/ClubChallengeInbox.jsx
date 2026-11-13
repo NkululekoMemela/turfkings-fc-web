@@ -246,7 +246,7 @@ export default function ClubChallengeInbox({clubId, userId, promptOnly = false, 
           <div><span>Entry per Club</span><strong>{selected.clubTotalCents > 0 ? `R${(selected.clubTotalCents / 100).toFixed(2)}` : "Free to play"}</strong></div>
         </div>
         {selected.hostedPackage && <p className="exhibition-hosted-package">
-          <strong>FANM package:</strong> {selected.hostedPackage.rosterPerClub} players and {selected.hostedPackage.waterPerClub} × {selected.hostedPackage.waterMl} mL waters per Club. Field booking, referee and camera operator included.
+          <strong>FANM package:</strong> {selected.hostedPackage.rosterPerClub} players and {selected.hostedPackage.waterPerClub} × {selected.hostedPackage.waterMl} mL waters per Club. Field booking, referee and camera operator{selected.hostedPackage.numberedBibs ? " and numbered bibs" : ""} included.
         </p>}
         {selected.message && <blockquote className="challenge-captain-note">
           <strong>{selected.revisedBy || !selected.instigated ? `From the ${messageClub?.name} captain` : "A note from FANM"}</strong>

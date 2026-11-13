@@ -26,7 +26,7 @@ async function loadSeasonStartSquad({transaction, db, scope, includeRegistered =
   }
 
   const companyMode=club.clubType==="company";
-  const sponsored=await require("./companyClubs.cjs").sponsoredMembers({db,tx:transaction,club,scope,squad});
+  const sponsored=includeRegistered ? [] : await require("./companyClubs.cjs").sponsoredMembers({db,tx:transaction,club,scope,squad});
   const {seasonPaymentExpired} = await import("./fieldSeasonSquadPolicy.mjs");
   const manifest = includeRegistered
     ? Object.values(squad.entries || {}).filter(p => p.invitationStatus === "accepted" && (companyMode || !seasonPaymentExpired(p))).map(p => ({...p, clubId}))
@@ -41,13 +41,13 @@ async function loadSeasonStartSquad({transaction, db, scope, includeRegistered =
   const playerRefs = manifest.flatMap(player => [
     clubRef.collection("members").doc(player.memberId),
     clubRef.collection("players").doc(player.sourcePlayerId),
-    squadRef.collection("paymentConfirmations").doc(player.memberId),
+    ...(includeRegistered ? [] : [squadRef.collection("paymentConfirmations").doc(player.memberId)]),
   ]);
   const playerSnapshots = playerRefs.length
     ? await transaction.getAll(...playerRefs) : [];
   for (const [index, player] of manifest.entries()) {
     const [memberSnap, profileSnap, receiptSnap] =
-      playerSnapshots.slice(index * 3, index * 3 + 3);
+      playerSnapshots.slice(index * (includeRegistered ? 2 : 3), (index + 1) * (includeRegistered ? 2 : 3));
     const member = memberSnap.data();
     const profile = profileSnap.data();
     if ((!member || (member.status || "active") !== "active") ||
@@ -55,7 +55,7 @@ async function loadSeasonStartSquad({transaction, db, scope, includeRegistered =
         !profile || String(profile.status || "active").toLowerCase() !== "active") {
       continue;
     }
-    const receipt = receiptSnap.data();
+    const receipt = receiptSnap?.data();
     const entry = squad.entries[player.memberId];
     if (!includeRegistered && player.fundingType!=="company" && (!entry || !receipt ||
         ["venueId", "seasonId", "clubId"].some(key => receipt[key] !== scope[key]) ||

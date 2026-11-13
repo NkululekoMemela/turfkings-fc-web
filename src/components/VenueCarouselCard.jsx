@@ -4,6 +4,7 @@ import {onAuthStateChanged} from "firebase/auth";
 import {auth} from "../firebaseConfig.js";
 import HomePage_HUB_ClubCard from "./HomePage_HUB/HomePage_HUB_ClubCard.jsx";
 import "./VenueCarouselCard.css";
+import {renderFieldLogo, svgDataUrl, validSpec} from "../../functions/fieldLogoDesigns.mjs";
 import {canManageOrganizationArchive, confirmOrganizationArchive} from "./OrganizationArchiveControls.jsx";
 
 export default function VenueCarouselCard({venue, onEnter}) {
@@ -20,9 +21,11 @@ export default function VenueCarouselCard({venue, onEnter}) {
   }
   const location = [venue.location?.suburb, venue.location?.city].filter(Boolean).join(", ");
   const clubCount = venue.league?.activeSeason?.clubIds?.length;
+  const stockLogo = ["exclusive_stock", "local_designer"].includes(venue.branding?.logoSource) &&
+    validSpec(venue.branding?.spec) ? svgDataUrl(renderFieldLogo(venue.branding.spec, venue.name)) : "";
   const profile = {
     ...venue,
-    image: venue.branding?.logoUrl || venue.logoUrl || venue.image || "",
+    image: stockLogo || venue.branding?.carouselLogo || venue.branding?.logoUrl || venue.logoUrl || venue.image || "",
     accent: venue.branding?.accent || "#16a34a",
     locationDetails: {suburb: location},
     weeklyPlayTime: venue.operatingHoursSummary || venue.schedule?.operatingHoursSummary || "Contact Field for opening hours",

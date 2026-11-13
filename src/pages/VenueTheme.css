@@ -378,3 +378,17 @@
   padding: .55rem .65rem; border-radius: .55rem; background: #182339; color: #eff5ff;
 }
 .field-day-outstanding { padding: .65rem; border: 1px solid #a87a3a; border-radius: .6rem; background: #342919; color: #ffe3ad; }
+
+.field-day-summary li {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  gap: .55rem;
+  padding: .65rem;
+  border: 1px solid #8cbff140;
+  border-radius: .9rem;
+  background: linear-gradient(135deg,#173454,#101c32);
+}
+.field-day-club { display: flex; align-items: center; gap: .4rem; min-width: 0; overflow-wrap: anywhere; }
+.field-day-club:last-child { flex-direction: row-reverse; text-align: right; }
+.field-day-club img { border-radius: 50%; object-fit: contain; background: #fff; flex: 0 0 auto; }
+.field-day-summary li > strong { align-self: center; text-align: center; color: #b8f3ff; }

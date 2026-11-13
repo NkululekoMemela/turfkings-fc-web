@@ -1,7 +1,6 @@
 import FacebookHighlightReview from "../components/FacebookHighlightReview.jsx";
 import PoolTablePage from "./PoolTablePage.jsx";
 import { buildClubIdentity } from "../core/clubIdentity.js";
-import FiveAsideLoadingPitch from "../components/FiveAsideLoadingPitch.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig";
@@ -9,6 +8,20 @@ import HomePage_HUB_ClubCard from "../components/HomePage_HUB/HomePage_HUB_ClubC
 import "../styles/HomePage_HUB.css";
 import { createPortal } from "react-dom";
 import "./WelcomeHero.css";
+
+function NearbyFootballFootage() {
+  const [motion, setMotion] = useState(() => !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setMotion(!preference.matches);
+    preference.addEventListener("change", update);
+    return () => preference.removeEventListener("change", update);
+  }, []);
+  return <div className="fanm-nearby-footage" aria-hidden="true">
+    {motion && <video src="/nearby-football.mp4" poster="/nearby-football.webp"
+      autoPlay loop muted playsInline disablePictureInPicture preload="none" />}
+  </div>;
+}
 
 function WelcomeIcon({kind}) {
   return <svg viewBox="0 0 24 24" width="24" height="24" fill="none"
@@ -311,7 +324,7 @@ export default function WelcomePage({
 
               {pickerStatus === "loading" && (
                 <div className="fanm-nearby-loading" role="status">
-                  <FiveAsideLoadingPitch />
+                  <NearbyFootballFootage />
                   <strong>
                     {loadPhase === "location"
                       ? "Finding your position"

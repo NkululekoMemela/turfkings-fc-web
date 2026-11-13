@@ -179,7 +179,7 @@ export default function HomePage_HUB_VenueProfileEditorModal({
       const result = await fieldLogoStudioRequest({
         action:"update", venueId:clubId, draft:clubDraft, bankingDraft,
         logo:{unchanged:!logoDraft.logoChanged, spec:logoDraft.localDesignSpec,
-          stockId:logoDraft.stockDesignId || "", uploadDataUrl:logoDraft.preparedUploadDataUrl || ""},
+          stockId:logoDraft.stockDesignId || "", carouselLogo: logoDraft.carouselLogo || "", uploadDataUrl:logoDraft.preparedUploadDataUrl || ""},
       });
       const updatedClub = result.venue;
 

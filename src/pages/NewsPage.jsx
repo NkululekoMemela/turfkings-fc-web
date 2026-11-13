@@ -270,6 +270,25 @@ function makeVoterId(identity) {
   );
 }
 
+function YearEndInvitationDraft({onPrepare}) {
+  const [draft,setDraft]=useState({date:"",time:"18:00",venue:"",player:"100",guest:"75",cooler:"180",bottle:"80"});
+  const fields=[["date","Event date","date"],["time","Arrival time","time"],["venue","Venue","text"],
+    ["player","Player (R)","number"],["guest","Guest (R)","number"],["cooler","Coolerbox (R)","number"],["bottle","Bottle (R)","number"]];
+  return <form className="card" onSubmit={event=>{
+    event.preventDefault();
+    if (!draft.venue.trim()) return;
+    onPrepare({...draft,venue:draft.venue.trim()});
+  }}>
+    <h3>Bring back the Year-End Function</h3>
+    <p>Set this year’s prices and prepare a new Club News invitation.</p>
+    {fields.map(([key,label,type])=><label key={key} style={{display:"grid",gap:4,marginBottom:8}}>{label}
+      <input className="text-input" type={type} required min={type==="number"?0:undefined} step={type==="number"?".01":undefined}
+        value={draft[key]} onChange={event=>setDraft({...draft,[key]:event.target.value})}/>
+    </label>)}
+    <button type="submit" className="primary-btn">Prepare invitation</button>
+  </form>;
+}
+
 export function NewsPage({
   matchType = "LEAGUE",
   teams,
@@ -3236,7 +3255,7 @@ Votes for this poll will no longer be shown.`
           )}
 
           {showCreateStoryForm && (
-            <div
+            <div id="club-story-composer"
               style={{
                 marginTop: "1rem",
                 padding: "1rem",
@@ -4208,6 +4227,13 @@ Votes for this poll will no longer be shown.`
             ✨ Year-End Function (tap to expand)
           </summary>
 
+          {canManageCustomStories && <YearEndInvitationDraft onPrepare={({date,time,venue,player,guest,cooler,bottle}) => {
+            resetStoryDraft();
+            setStoryDraft({...createEmptyStoryDraft(),title:`Turf Kings Year-End Function ${date.slice(0,4)}`,tag:"Special Event",
+              body:`Join us for our year-end function!\n\n${date} · ${time} SAST\nVenue: ${venue}\nPlayer: R${player} · Guest: R${guest}\nCoolerbox: R${cooler} · Bottle: R${bottle}\n\nContact your captain to RSVP.`});
+            setShowCreateStoryForm(true);
+            requestAnimationFrame(()=>document.getElementById("club-story-composer")?.scrollIntoView({block:"start",behavior:"smooth"}));
+          }}/>}
           <section className="card year-end-premium-card" style={yearEndCardStyle}>
             <div style={{ minWidth: 0 }}>
               <div style={yearEndPillStyle}>

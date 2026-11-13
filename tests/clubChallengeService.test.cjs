@@ -22,6 +22,11 @@ function setup() {
     ["clubStateOperators/away/users/away-captain", {memberId: "member"}],
     ["clubs/away/members/member", {uid: away.uid, email: away.email, status: "active", role: "captain", fullName: "Away Captain"}],
   ]);
+  for (const id of ["home", "away"]) {
+    for (let i = 0; i < 11; i++) records.set(`clubs/${id}/members/roster-${i}`, {
+      status:"active", fullName:`Roster player ${i}`, uid:`${id}-roster-${i}`,
+    });
+  }
   const snapshot = (path) => ({id: path.split("/").at(-1), data: () => records.get(path)});
   const db = {
     doc: (path) => path,
@@ -42,7 +47,7 @@ function setup() {
           return direction || (comparator === "array-contains" ? item?.includes(value) : item === value);
         });
         if (direction) docs.sort((a,b)=>(records.get(a)[field]-records.get(b)[field])*(direction==="desc"?-1:1));
-        return {docs:docs.slice(0,count).map(snapshot)};
+        return {docs:docs.slice(0,count ?? docs.length).map(snapshot)};
       },
       create(path, data) {
         assert.equal(records.has(path), false);
@@ -259,7 +264,7 @@ test("bulk cash signup is scoped to a Club, reconciles self signups, and survive
   records.set("clubs/away/members/b", {status: "active", fullName: "Player Two"});
   const book = (user, extra = {}) => manageExhibitionBookings({db, user, now, data: {clubId: "away", fixtureId, ...extra}});
   await assert.rejects(book(home, {memberIds: ["a"]}), {code: "permission-denied"});
-  assert.equal((await book(away)).players.length, 3);
+  assert.equal((await book(away)).players.length, 14);
   await book(away, {memberIds: ["a", "b"], cashPaid: true});
   await book(away, {memberIds: ["a"], cashPaid: true});
   await bookExhibition({db, user: player, now, data: {clubId: "away", fixtureId, expectedPriceCents: 14667}});
@@ -405,16 +410,18 @@ test("cancellation deadlines allow twelve hours or protect four hours before kic
   assert.equal(records.get(`${COLLECTION}/${second.fixtureId}`).status,"withdrawn");
 });
 
-test("FANM 11-a-side offers lock the premium package and price for both captains", async () => {
+test("FANM 11-a-side offers offer an editable quote and retain the premium package for both captains", async () => {
   const {db, records} = setup();
   const user = {...captain("superuser"), email: "nkululekolerato@gmail.com"};
   const data = {...terms, format:"11v11"};
-  await assert.rejects(instigateClubChallenge({db,user,now,data:{...data,clubTotalCents:10000}}), /R2,200 per Club/);
-  const {fixtureId} = await instigateClubChallenge({db,user,now,data});
+  await assert.rejects(instigateClubChallenge({db,user,now,data:{...data,clubTotalCents:0}}), /quote per Club/);
+  const {fixtureId} = await instigateClubChallenge({db,user,now,data:{...data,clubTotalCents:195000}});
+  const fallback = await instigateClubChallenge({db,user,now,data:{...data,proposedDate:"2026-11-16",clubTotalCents:undefined}});
+  assert.equal(records.get(`${COLLECTION}/${fallback.fixtureId}`).clubTotalCents,220000);
   const match = records.get(`${COLLECTION}/${fixtureId}`);
-  assert.equal(match.clubTotalCents, 220000);
+  assert.equal(match.clubTotalCents, 195000);
   assert.deepEqual(match.acceptances,{home:false,away:false});
-  assert.deepEqual(match.hostedPackage,{rosterPerClub:15,waterPerClub:24,waterMl:500,fieldBooking:true,referee:true,cameraOperator:true});
+  assert.deepEqual(match.hostedPackage,{rosterPerClub:15,waterPerClub:24,waterMl:500,fieldBooking:true,referee:true,cameraOperator:true,numberedBibs:true});
 });
 
 test("exhibition starts through lineup verification and the other captain can recover the same booth", async () => {
@@ -554,4 +561,17 @@ test("a distant challenge requires acknowledgement and neither captain can decla
   assert.equal(match().awayColour, null);
   await changeExhibitionKit({db,user:away,data:{clubId:"away",fixtureId,colour:"#dc2626"},now});
   assert.equal(match().awayColour,"#dc2626");
+});
+
+test("challenges enforce both roster sizes for each format and recheck at acceptance", async () => {
+  for (const size of [5, 6, 7, 11]) {
+    const {records, send, respond} = setup();
+    for (let i = size - 1; i < 11; i++) records.delete(`clubs/home/members/roster-${i}`);
+    const proposal = {...terms, format: `${size}v${size}`};
+    await assert.rejects(send(home, proposal), new RegExp(`requires at least ${size}`));
+    records.set("clubs/home/members/replacement", {status:"active",fullName:"Replacement"});
+    const {fixtureId} = await send(home, proposal);
+    records.delete("clubs/home/members/replacement");
+    await assert.rejects(respond(away, fixtureId, "accepted"), new RegExp(`requires at least ${size}`));
+  }
 });

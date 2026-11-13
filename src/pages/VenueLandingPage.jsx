@@ -312,6 +312,7 @@ export default function VenueLandingPage({
   onTakeoverMatch,
   nextFixtureLabel = "",
   previewFixture = null,
+  replayReady = false,
   takeoverFixtureLabel = "",
   startTeamIds = [],
   practiceStartColours,
@@ -362,6 +363,7 @@ export default function VenueLandingPage({
   pendingFieldStaffCount = 0,
   onReady,
 }) {
+  const [startingMatch, setStartingMatch] = useState(false);
   const [showSeasonCue,setShowSeasonCue]=useState(false);
   useEffect(()=>{
     if(seasonActionLabel!=="Start Season"){setShowSeasonCue(false);return;}
@@ -645,12 +647,15 @@ export default function VenueLandingPage({
   const activeGameFormatOption =
     GAME_FORMAT_OPTIONS.find((option) => option.value === resolvedGameFormat) ||
     GAME_FORMAT_OPTIONS[0];
+  const localDate = () => new Date(Date.now() + 7200000).toISOString().slice(0, 10);
+  const [today, setToday] = useState(localDate);
+  const previewOnMatchDay = fieldFixturePreview({season: fieldSeason, fixture: previewFixture, today})?.isMatchDay;
   const [startKits, setStartKits] = useState(null);
   useEffect(() => {
-    if (!activeClubId || !startKitSeasonId || !startKitMatchDayId || !startKitFixtureId) return;
+    if (!canStartMatch || !previewOnMatchDay || !activeClubId || !startKitSeasonId || !startKitMatchDayId || !startKitFixtureId) return;
     let active = true;
     const load = () => getFieldMatchDaySquads({
-      venueId:activeClubId, seasonId:startKitSeasonId, matchDayId:startKitMatchDayId,
+      venueId:activeClubId, seasonId:startKitSeasonId, matchDayId:startKitMatchDayId, previewFixtureId:startKitFixtureId,
     }).then(result => {
       if (!active) return;
       const colours = Object.fromEntries((result.clubs || [])
@@ -661,9 +666,7 @@ export default function VenueLandingPage({
     load();
     window.addEventListener("focus",load);
     return () => {active = false;window.removeEventListener("focus",load);};
-  }, [activeClubId, startKitSeasonId, startKitMatchDayId, startKitFixtureId]);
-  const localDate = () => new Date(Date.now() + 7200000).toISOString().slice(0, 10);
-  const [today, setToday] = useState(localDate);
+  }, [canStartMatch, previewOnMatchDay, activeClubId, startKitSeasonId, startKitMatchDayId, startKitFixtureId]);
   useEffect(() => {
     const timer = window.setInterval(() => setToday(localDate()), 30000);
     return () => window.clearInterval(timer);
@@ -1203,44 +1206,19 @@ export default function VenueLandingPage({
     onGoToLiveAsSpectator();
   };
 
-  const handleStartMatchClick = async (event) => {
-    const button = event.currentTarget;
-    console.info("[Field Start Trace] tap", JSON.stringify({
-      canStartMatch: Boolean(canStartMatch),
-      hasLiveMatch: Boolean(hasLiveMatch),
-      handlerType: typeof onStartMatch,
-    }));
-
-    if (!canStartMatch) {
-      (await fieldAlert(startMatchDeniedMessage));
+  const handleStartMatchClick = async () => {
+    if (startingMatch) return;
+    if (!canStartMatch || typeof onStartMatch !== "function") {
+      await fieldAlert(startMatchDeniedMessage);
       return;
     }
-    if (typeof onStartMatch !== "function") {
-      (await fieldAlert("The Field match start handler is missing."));
-      return;
-    }
-
-    const originalLabel = button.innerHTML;
-    button.disabled = true;
-    button.setAttribute("aria-busy", "true");
-    button.textContent = "Starting…";
-    const timer = window.setTimeout(() => {
-      console.warn("[Field Start Trace] still waiting after 15 seconds");
-      button.textContent = "Still starting…";
-    }, 15000);
-
+    setStartingMatch(true);
     try {
       await onStartMatch();
-      console.info("[Field Start Trace] handler completed");
     } catch (error) {
-      console.error("[Field Start Trace] failed",
-        error?.code || "", error?.message || String(error));
-      (await fieldAlert(error?.message || "The Field match could not start."));
+      await fieldAlert(error?.message || "The Field match could not start.");
     } finally {
-      window.clearTimeout(timer);
-      button.disabled = false;
-      button.removeAttribute("aria-busy");
-      button.innerHTML = originalLabel;
+      setStartingMatch(false);
     }
   };
 
@@ -1770,7 +1748,9 @@ export default function VenueLandingPage({
               className="primary-btn"
               style={tileButtonStyle(isMobile, activePrimaryStyle)}
               data-practice-guide="field-match-start"
-              aria-label={nextFixtureLabel ? `Start Match: ${nextFixtureLabel}` : undefined}
+              aria-label={startingMatch ? "Opening referee booth" : `${replayReady ? "Replay Match" : "Start Match"}${nextFixtureLabel ? `: ${nextFixtureLabel}` : ""}`}
+              aria-busy={startingMatch}
+              disabled={startingMatch}
               onClick={handleStartMatchClick}
               type="button"
             >
@@ -1782,8 +1762,8 @@ export default function VenueLandingPage({
                     <span className="field-start-crests"><FieldTileCrests ids={startTeamIds} teams={teams} colours={fixtureToday ? startColours : undefined} /></span>
                   </span>
                 ) : showTakeover ? null : "⚽",
-                desktopLines: ["Start Match"],
-                mobileLines: ["Start", "Match"],
+                desktopLines: [startingMatch ? "Opening referee booth…" : replayReady ? "Replay Match" : "Start Match"],
+                mobileLines: startingMatch ? ["Opening", "booth…"] : [replayReady ? "Replay" : "Start", "Match"],
               })}
             </button>
             {startTeamIds.length !== 2 && hasLiveMatch && (
@@ -1804,15 +1784,15 @@ export default function VenueLandingPage({
 
 <button
               className="secondary-btn"
-              onClick={() => onGoToStats()}
+              onClick={onGoToNews}
               type="button"
               style={tileButtonStyle(isMobile)}
             >
               {renderTileContent({
                 isMobile,
-                icon: "📊",
-                desktopLines: ["View Stats"],
-                mobileLines: ["View", "Stats"],
+                icon: "📰",
+                desktopLines: ["News & Polls"],
+                mobileLines: ["News", "& Polls"],
               })}
             </button>
 
@@ -2013,14 +1993,14 @@ export default function VenueLandingPage({
               <button
                 className="secondary-btn"
                 type="button"
-                onClick={() => onGoToStats()}
+                onClick={onGoToNews}
                 style={tileButtonStyle(isMobile)}
               >
                 {renderTileContent({
                   isMobile,
-                  icon: "📊",
-                  desktopLines: ["View Stats"],
-                  mobileLines: ["View", "Stats"],
+                  icon: "📰",
+                  desktopLines: ["News & Polls"],
+                  mobileLines: ["News", "& Polls"],
                 })}
               </button>
 

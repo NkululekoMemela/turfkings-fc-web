@@ -425,8 +425,8 @@ export function FieldSeasonEndModal({
         } finally { setBusy(false); }
       }}>
         <p>{cancelling
-          ? practice ? "Discard this unplayed Practice season and start fresh." : "No play is recorded. Cancel this season with an explanation, such as insufficient Club signups."
-          : "Archive the completed season. End every completed Match Day first."
+          ? practice ? "Discard this unplayed Practice season and start fresh." : "No games played. Add a cancellation reason."
+          : "Save each Match Day before ending the season."
         }</p>
         {!cancelling && <section className="field-season-closure-review">
           <div className="field-season-closure-count"><span aria-hidden="true">🏆</span><div>
@@ -441,9 +441,8 @@ export function FieldSeasonEndModal({
               <small>{fixture.scheduledLocal?.replace("T"," · ")||"Date to be arranged"} · {fixture.status==="completed" ? "Result missing" : fixture.status||"Unplayed"}</small>
             </li>)}</ul>
           </details>}
-          {premature && <p role="status" className="field-season-premature-warning">You are ending this tournament early. Unplayed fixtures stay in the archive. A table leader will not be announced as champion.</p>}
+          {premature && <p role="status" className="field-season-premature-warning">Ending early archives unplayed fixtures. No champion is announced.</p>}
         </section>}
-        <p>{practice && cancelling ? "No season archive is kept. A new draft is created." : "An audit record is kept and a new draft season is created."}</p>
         {cancelling && !practice && (
           <label style={{ display: "grid", gap: ".4rem", margin: "1rem 0" }}>
             Cancellation reason

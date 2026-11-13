@@ -5905,6 +5905,7 @@ export default function VenueEntryPage({
         }
         nextFixtureLabel={fieldMatchLabel(nextFixture)}
         previewFixture={previewFixture}
+        replayReady={Boolean(nextFixture?.replayRequestedAtMs)}
         startKitSeasonId={currentUser?.uid ? venueSeason?.id : ""}
         startKitMatchDayId={previewFixture?.matchDayId}
         startKitFixtureId={previewFixture?.id || previewFixture?.fixtureId}
@@ -5969,9 +5970,6 @@ export default function VenueEntryPage({
                 user: auth.currentUser || currentUser,
                 role: effectiveRole,
               }),
-              teams,
-              matchSeconds: Number(venueSeason?.matchSeconds) || 3600,
-              currentMatchNo: Number(venueSeason?.currentMatchNo) || 1,
             });
 
             setOfficialFixture({...started, venueId:venue.id, seasonId:venueSeason.id});
@@ -6231,7 +6229,7 @@ export default function VenueEntryPage({
       />
 
       {showEndMatchDayModal && canEndFieldMatchDay && (
-        <FieldEndMatchDay venue={venue} season={venueSeason}
+        <FieldEndMatchDay venue={venue} season={venueSeason} teams={teams}
           canDiscard={Boolean(currentUser?.uid) && venue?.ownerUid === currentUser.uid}
           onClose={() => setShowEndMatchDayModal(false)}/>
       )}

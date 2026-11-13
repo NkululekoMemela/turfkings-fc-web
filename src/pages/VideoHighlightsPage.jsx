@@ -2004,7 +2004,7 @@ export function VideoHighlightsPage({
   const [showStickyCategories, setShowStickyCategories] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(true);
   const [clipPreviewsReady, setClipPreviewsReady] = useState(false);
-  const [splashDismissed, setSplashDismissed] = useState(false);
+  const [splashDismissed, setSplashDismissed] = useState(true);
   const [previewLoadStatus, setPreviewLoadStatus] = useState(
     "Loading match clips…"
   );
@@ -2347,7 +2347,7 @@ export function VideoHighlightsPage({
   }, [votesByUser]);
 
   useEffect(() => {
-    setSplashDismissed(false);
+    setSplashDismissed(true);
     setClipPreviewsReady(false);
     setPreviewLoadStatus("Loading match clips…");
     loadHighlights();

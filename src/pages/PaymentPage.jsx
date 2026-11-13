@@ -1,3 +1,4 @@
+import { BOOKING_TERMS, BOOKING_TERMS_PATH } from "../legal/bookingTerms.js";
 import { calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
 import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 // src/pages/PaymentPage.jsx
@@ -280,6 +281,7 @@ export default function PaymentPage({
 
   const [signup, setSignup] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [bookingTermsAccepted, setBookingTermsAccepted] = useState(false);
   const [creatingCheckout, setCreatingCheckout] = useState(false);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [error, setError] = useState("");
@@ -627,6 +629,11 @@ export default function PaymentPage({
         setSlowPaymentMessage("");
       }
 
+      return;
+    }
+
+    if (!bookingTermsAccepted) {
+      setError("Review and accept the booking terms before paying.");
       return;
     }
 
@@ -984,6 +991,22 @@ export default function PaymentPage({
                 </div>
               ) : null}
 
+              {!isPracticeMode && isTurfKingsYoco && !isFullyPaid && (
+                <section className="payment-help-text" aria-label="Booking terms">
+                  <details>
+                    <summary>Booking, cancellation, refund and delivery terms</summary>
+                    {BOOKING_TERMS.map(([heading, detail]) => (
+                      <p key={heading}><strong>{heading}:</strong> {detail}</p>
+                    ))}
+                    <a href={BOOKING_TERMS_PATH} target="_blank" rel="noopener noreferrer">Open Terms and Conditions</a>
+                  </details>
+                  <label>
+                    <input type="checkbox" checked={bookingTermsAccepted}
+                      onChange={event => setBookingTermsAccepted(event.target.checked)} />
+                    {" "}I accept the booking terms, including the cancellation, refund and delivery policies.
+                  </label>
+                </section>
+              )}
               {!isFullyPaid ? (
                 <button
                   type="button"
@@ -992,7 +1015,7 @@ export default function PaymentPage({
                   disabled={
                     creatingCheckout ||
                     amountToPayNow <= 0 ||
-                    (!isPracticeMode && !isTurfKingsYoco)
+                    (!isPracticeMode && (!isTurfKingsYoco || !bookingTermsAccepted))
                   }
                   onClick={handlePayNow}
                 >

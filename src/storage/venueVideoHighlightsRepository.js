@@ -673,7 +673,15 @@ export async function loadArchivedHighlightsFromFirebase(
 }
 
 
-async function loadVenueVideoFeed(venueId, kind = "all") {
+const inFlightVenueFeeds = new Map();
+function loadVenueVideoFeed(venueId, kind = "all") {
+  const key = JSON.stringify([auth.currentUser?.uid, venueId, kind]);
+  if (!inFlightVenueFeeds.has(key)) {
+    inFlightVenueFeeds.set(key, fetchVenueVideoFeed(venueId, kind).finally(() => inFlightVenueFeeds.delete(key)));
+  }
+  return inFlightVenueFeeds.get(key);
+}
+async function fetchVenueVideoFeed(venueId, kind) {
   const safeVenueId = String(venueId || "").trim();
   if (!safeVenueId || safeVenueId === DEFAULT_CLUB_ID) {
     throw new Error("A Field venue ID is required for video discovery.");

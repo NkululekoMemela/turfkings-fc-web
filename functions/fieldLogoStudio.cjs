@@ -41,6 +41,11 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
       try { user = await admin.auth().verifyIdToken(bearer[1], true); }
       catch { fail("Your sign-in expired. Sign in again.", 401); }
       if (user.cameraSession === true) fail("Use your Field administrator account.", 403);
+      if (typeof req.body?.action === "string" && req.body.action.startsWith("operations")) {
+        const {manageFanmOperations} = require("./fanmOperations.cjs");
+        const result = await manageFanmOperations({body:req.body,user,admin,db,fail});
+        return res.json({ok:true,...result});
+      }
       if (req.body?.action === "update") {
         const {updateFieldProfile} = require("./fieldProfileUpdate.cjs");
         const venue = await updateFieldProfile({body:req.body,user,admin,db,fail,replenish});
@@ -131,7 +136,8 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
         creatorRole: draft.creatorRole, adminUids: [user.uid], adminEmails: [String(user.email || email).toLowerCase()],
         location: {city, suburb: input(draft.suburb), address: input(draft.address, 300), province: input(draft.province), country, latitude, longitude, googlePlaceId: input(draft.googlePlaceId, 200)},
         websiteUrl: website, managerContact: {firstName, surname, name: `${firstName} ${surname}`, email, whatsappNumber: whatsapp},
-        branding: {logoUrl, accent: catalog.PALETTES[spec.palette][1], logoSource: logo.uploadDataUrl ? "uploaded_file" : stockId ? "exclusive_stock" : "local_designer", spec, stockId},
+        branding: {logoUrl, carouselLogo: logo.uploadDataUrl && typeof logo.carouselLogo === "string" &&
+          logo.carouselLogo.length <= 24000 && /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(logo.carouselLogo) ? logo.carouselLogo : "", accent: catalog.PALETTES[spec.palette][1], logoSource: logo.uploadDataUrl ? "uploaded_file" : stockId ? "exclusive_stock" : "local_designer", spec, stockId},
         logoUrl, image: logoUrl, visibility: {listed: true}, status: "active",
         createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(), setupCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
       };

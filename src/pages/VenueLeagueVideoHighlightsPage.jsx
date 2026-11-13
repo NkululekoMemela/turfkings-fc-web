@@ -2004,7 +2004,7 @@ export function VideoHighlightsPage({
   const [showStickyCategories, setShowStickyCategories] = useState(false);
   const [loadingHighlights, setLoadingHighlights] = useState(true);
   const [clipPreviewsReady, setClipPreviewsReady] = useState(false);
-  const [splashDismissed, setSplashDismissed] = useState(false);
+  const [splashDismissed, setSplashDismissed] = useState(true);
   const [previewLoadStatus, setPreviewLoadStatus] = useState(
     "Loading match clips…"
   );
@@ -2203,12 +2203,12 @@ export function VideoHighlightsPage({
   const feedGeneration=useRef(0);
   const loadHighlights = async () => {
     const generation=++feedGeneration.current;
-    if(!resolvedMatchId){setLoadingHighlights(false);return;}
+    if(!activeClubId){setLoadingHighlights(false);return;}
     setLoadingHighlights(true);setLoadError("");
     const dedupe=clips=>[...new Map(clips.map(c=>[`${c.matchId||resolvedMatchId}:${c.clipId||c.id||c.videoUrl}`,c])).values()];
     // Current-match metadata can paint while older clips load in the background.
     let activeClips = [];
-    const current=VideoHighlightsRepository.loadRawHighlightsFromFirebase(resolvedMatchId,activeClubId).then(clips=>{
+    const current=(resolvedMatchId ? VideoHighlightsRepository.loadRawHighlightsFromFirebase(resolvedMatchId,activeClubId) : Promise.resolve([])).then(clips=>{
       if(generation!==feedGeneration.current)return;
       activeClips = Array.isArray(clips) ? clips : [];
       setFirebaseHighlights(dedupe(activeClips));setLoadingHighlights(false);
@@ -2230,7 +2230,7 @@ export function VideoHighlightsPage({
   }, [votesByUser]);
 
   useEffect(() => {
-    setSplashDismissed(false);
+    setSplashDismissed(true);
     setClipPreviewsReady(false);
     setPreviewLoadStatus("Loading match clips…");
     loadHighlights();

@@ -2,6 +2,7 @@ const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const {getFirestore, Timestamp, FieldValue, FieldPath} = require("firebase-admin/firestore");
 const {clubsAlreadyPlaying} = require("./fieldMatchDocuments.cjs");
+const {cacheFieldReads} = require("./fieldReadCache.cjs");
 const {randomUUID} = require("node:crypto");
 
 exports.approvalHandler = async (req, res, dependencies = {}) => {
@@ -33,9 +34,9 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
 
       let startedMatch = null;
       await db.runTransaction(async transaction => {
-        const venueSnap = await transaction.get(venueRef);
-        const staffSnap = await transaction.get(
-          venueRef.collection("staff").doc(user.uid)
+        const reads = cacheFieldReads(transaction);
+        const [venueSnap, staffSnap] = await reads.getAll(
+          venueRef, venueRef.collection("staff").doc(user.uid)
         );
         if (!venueSnap.exists) throw new Error("Field no longer exists.");
         const venue = venueSnap.data();
@@ -56,11 +57,12 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
             season.scheduleVersion !== 1) {
           throw new Error("This fixture is unavailable in the current Field season.");
         }
-        let savedMatchRef = venueRef.collection("seasons").doc(seasonId).collection("matches").doc(fixtureId);
-        let savedMatchSnapshot = await transaction.get(savedMatchRef);
+        const matches = venueRef.collection("seasons").doc(seasonId).collection("matches");
+        let savedMatchRef = matches.doc(fixtureId);
+        const legacyRef = matches.doc("current");
+        const [canonicalSnapshot, legacySnapshot] = await reads.getAll(savedMatchRef, legacyRef);
+        let savedMatchSnapshot = canonicalSnapshot;
         if (!savedMatchSnapshot.exists) {
-          const legacyRef = venueRef.collection("seasons").doc(seasonId).collection("matches").doc("current");
-          const legacySnapshot = await transaction.get(legacyRef);
           if (legacySnapshot.data()?.fixtureId === fixtureId) {
             savedMatchRef = legacyRef;
             savedMatchSnapshot = legacySnapshot;
@@ -79,9 +81,22 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
         let reversal = null;
         if (fixture.status === "scheduled" && savedMatch &&
             (savedMatch.status === "completed" || savedMatch.isFinished || savedMatch.finalSummary)) {
-          const audits = await transaction.get(venueRef.collection("matchReversals").where("fixtureId", "==", fixtureId));
-          reversal = audits.docs.map(item => ({...item.data(),venueId}))
-            .filter(item => item.seasonId === seasonId)
+          const [audits, legacyDiscards] = await Promise.all([
+            transaction.get(venueRef.collection("matchReversals").where("fixtureId", "==", fixtureId)),
+            transaction.get(venueRef.collection("actionLog").where("action", "==", "match_day_discarded")),
+          ]);
+          const candidates = audits.docs.map(item => ({...item.data(),venueId}));
+          // Earlier bulk deletions recorded a manager action but no per-match audit.
+          for (const item of legacyDiscards.docs) {
+            const log = item.data();
+            const ids = /^\d+ completed match\(es\) removed: (.+)$/.exec(log.details || "")?.[1];
+            if (log.venueId === venueId && log.seasonId === seasonId &&
+                log.actorUid === venue.ownerUid && ids?.split(", ").includes(fixtureId)) {
+              candidates.push({venueId, seasonId, fixtureId, actorUid:log.actorUid,
+                at:log.at, reason:"Verified manager match-day deletion", result:{fixtureId}, fixture});
+            }
+          }
+          reversal = candidates.filter(item => item.seasonId === seasonId)
             .sort((a,b) => Number(b.at?.toMillis?.() || 0) - Number(a.at?.toMillis?.() || 0))[0] || null;
         }
         const {fieldFixtureStartRecovery, recoveredFieldMatchSummary} = await import("./fieldFixtureStartRecovery.mjs");
@@ -143,22 +158,26 @@ exports.approvalHandler = async (req, res, dependencies = {}) => {
           throw new Error("The referee device or start request is missing. Reopen the fixture.");
         }
         const {loadFieldMatchRoster} = require("./fieldMatchRoster.js");
-        const {squads, bookingVersions, squadVersions, squadFingerprints} =
-          await loadFieldMatchRoster({
-            transaction, db, venueId, season:startSeason, fixture,
-            supersededUnstartedFixtureId:replacing ? fixtureId : "",
-          });
-        const {startingLineups, sourceFormations} =
-          await require("./fieldStartingFormation").build({
-            season, fixture, squads, squadFingerprints,
-          });
-        const stockConfig=(await transaction.get(venueRef.collection("bibHireConfig").doc("stock"))).data()||{};
         if (commitStart && ((season.clubIds||[]).length < Math.max(3,Number(season.minimumClubs)||3) ||
             (season.clubIds||[]).length > 100)) {
           throw new Error("Register the required number of Clubs before starting this league fixture.");
         }
-        const serverClubs = commitStart ? await Promise.all((season.clubIds || []).map(id =>
-          transaction.get(db.doc(`clubs/${id}`)))) : [];
+        // Only these three snapshots are embedded in the live match.
+        const matchClubIds = [fixture.clubAId, fixture.clubBId,
+          (season.clubIds || []).find(id => id !== fixture.clubAId && id !== fixture.clubBId)].filter(Boolean);
+        const [clubSnapshots, stockSnapshot, roster] = await Promise.all([
+          commitStart ? reads.getAll(...matchClubIds.map(id => db.doc(`clubs/${id}`))) : [],
+          reads.get(venueRef.collection("bibHireConfig").doc("stock")),
+          loadFieldMatchRoster({
+            transaction: reads, db, venueId, season:startSeason, fixture,
+            supersededUnstartedFixtureId:replacing ? fixtureId : "",
+          }),
+        ]);
+        const serverClubs = Object.fromEntries(clubSnapshots.map(snapshot => [snapshot.id, snapshot.data()]));
+        const stockConfig = stockSnapshot.data() || {};
+        const {squads, bookingVersions, squadVersions, squadFingerprints} = roster;
+        const {startingLineups, sourceFormations} =
+          await require("./fieldStartingFormation").build({season, fixture, squads, squadFingerprints});
         if (commitStart) {
           const {buildFieldInitialMatch} = await import("./fieldInitialMatch.mjs");
           const match = prepareApprovedFieldStart({season:startSeason, fixture, user, staff, serverClubs, deviceId, requestId});
@@ -269,8 +288,8 @@ function prepareApprovedFieldStart({season,fixture,user,staff,serverClubs,device
   if(!standbyId)throw new Error("Three registered Clubs are required to start a Field league fixture.");
   const prior=Object.values(season.liveMatches||{}).filter(item=>item.status==="live");
   const matchNo=Math.max(Number(season.currentMatchNo)||1,...prior.map(item=>(Number(item.matchNo)||0)+1));
-  const teams=(season.clubIds||[]).map((id,index)=>{
-    const club=serverClubs[index]?.data()||{};
+  const teams=[fixture.clubAId,fixture.clubBId,standbyId].map(id=>{
+    const club=serverClubs[id]||{};
     const name=String(club.name||season.invitations?.[id]?.clubName||id);
     return {id,name,label:name,players:[],logoUrl:String(club.transparentLogoUrl||club.logoUrl||club.branding?.logoUrl||""),
       captain:typeof club.captain==="string"?club.captain:String(club.captain?.fullName||club.captainName||"")};

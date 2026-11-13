@@ -1112,6 +1112,10 @@ export async function discardVenueMatchDay({ scope = null, venueId, seasonId }) 
   if (scope && (scope.venueId !== venueId || scope.seasonId !== seasonId)) {
     throw new Error("Discard session scope mismatch.");
   }
+  if (!practice) {
+    const result = await requestRecordedMatchReversal({venueId, seasonId, discardUnarchived: true});
+    return result.count;
+  }
   const root = scope ? venueLeagueRootPath(scope) : `leagueVenues/${venueId}`;
   const venueRef = doc(db, root);
   const liveRef = doc(db, `${root}/seasons/${seasonId}/matches/current`);
@@ -1425,8 +1429,12 @@ export async function deleteCurrentEmptyVenueSeason({
 }
 
 export async function deleteVenueRecordedMatch({venueId,seasonId,fixtureId,reason}) {
+ return requestRecordedMatchReversal({venueId,seasonId,fixtureId,reason});
+}
+
+async function requestRecordedMatchReversal(body) {
  const user=auth.currentUser;if(!user?.uid||!user.emailVerified)throw Error('Sign in as the Field Manager.');
- const response=await fetch(`${startFunctionsUrl()}/reverseFieldRecordedMatch`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({venueId,seasonId,fixtureId,reason}),signal:AbortSignal.timeout(30000)});
+ const response=await fetch(`${startFunctionsUrl()}/reverseFieldRecordedMatch`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});
  const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'Could not reverse this result.');return result;
 }
 

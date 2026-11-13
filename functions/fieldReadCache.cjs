@@ -1,5 +1,7 @@
 // Request-local document reuse for read-only Field views. No cross-user cache.
+const fieldReadCaches=new WeakSet();
 function cacheFieldReads(transaction){
+ if(fieldReadCaches.has(transaction))return transaction;
  const pending=new Map();
  function get(ref){
   if(!ref.path)return transaction.get(ref);
@@ -14,6 +16,8 @@ function cacheFieldReads(transaction){
   }
   return Promise.all(refs.map(ref=>pending.get(ref.path)));
  }
- return {get,getAll};
+ const cache={get,getAll};
+ fieldReadCaches.add(cache);
+ return cache;
 }
 module.exports={cacheFieldReads};

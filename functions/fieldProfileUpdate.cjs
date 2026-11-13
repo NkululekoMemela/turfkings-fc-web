@@ -70,7 +70,8 @@ async function updateFieldProfile({body,user,admin,db,fail,replenish}) {
       const token=crypto.randomUUID();uploaded=admin.storage().bucket().file(`leagueVenues/${id}/branding/${token}.${ext}`);
       await uploaded.save(bytes,{resumable:false,metadata:{contentType,cacheControl:"public,max-age=31536000,immutable",metadata:{firebaseStorageDownloadTokens:token}}});
       logoUrl=`https://firebasestorage.googleapis.com/v0/b/${uploaded.bucket.name}/o/${encodeURIComponent(uploaded.name)}?alt=media&token=${token}`;
-      branding={logoUrl,accent:catalog.PALETTES[spec.palette][1],spec,stockId:stockRef ? logo.stockId : "",logoSource:logo.uploadDataUrl ? "uploaded_file" : stockRef ? "exclusive_stock" : "local_designer"};
+      branding={logoUrl, carouselLogo: logo.uploadDataUrl && typeof logo.carouselLogo === "string" &&
+          logo.carouselLogo.length <= 24000 && /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/.test(logo.carouselLogo) ? logo.carouselLogo : "", accent:catalog.PALETTES[spec.palette][1],spec,stockId:stockRef ? logo.stockId : "",logoSource:logo.uploadDataUrl ? "uploaded_file" : stockRef ? "exclusive_stock" : "local_designer"};
     }
     const result=await db.runTransaction(async tx=>{
       const snap=await tx.get(ref),existing=snap.data();

@@ -488,3 +488,53 @@ test("deleting an archived result clears and archives its canonical document and
   const result=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("deleted-canonical"));
   assert.equal(result.status,200,result.body?.error);
 });
+
+test("bulk deletion reopens every unarchived fixture and each can start again", async () => {
+  await permitThreeClubs();
+  const venueRef=db.doc(venuePath);
+  const {fixtures:[fixture],matchDays:[day]}=(await venueRef.get()).data().league.activeSeason;
+  const other={...fixture,id:"fixture-two",matchDayId:"day-two"};
+  const results=[fixture,other].map(({id},index)=>({fixtureId:id,status:"completed",matchNo:index+1,teamAId:"club-a",teamBId:"club-b",goalsA:1,goalsB:0}));
+  await venueRef.update({
+    "league.activeSeason.fixtures":[fixture,other].map(item=>({...item,status:"completed"})),
+    "league.activeSeason.matchDays":[day,{...day,id:"day-two",fixtureIds:["fixture-two"]}],
+    "league.activeSeason.results":results,
+    "league.activeSeason.currentMatchNo":3,
+  });
+  const refs=[fixture,other].map(({id})=>db.doc(`${venuePath}/seasons/season-one/matches/${id}`));
+  await Promise.all(refs.map((ref,index)=>ref.set({...orphanedLineup(),fixtureId:results[index].fixtureId,status:"completed"})));
+  let status=200,body;
+  await require("../functions/fieldResultReversal.cjs").reversalHandler({method:"POST",headers:{authorization:"Bearer test"},
+    body:{venueId:"field-one",seasonId:"season-one",discardUnarchived:true}},
+    {status(code){status=code;return this;},json(value){body=value;return this;}},
+    {db,verifyToken:async()=>({uid:"creator",email_verified:true})});
+  assert.equal(status,200,body?.error);
+  assert.equal(body.count,2);
+  const next=(await venueRef.get()).data().league.activeSeason;
+  assert.equal(next.currentMatchNo,3);
+  assert.equal(next.results.length,0);
+  assert.ok(next.fixtures.every(item=>item.status==="scheduled"&&item.replayRequestedAtMs));
+  assert.ok((await db.getAll(...refs)).every(snapshot=>!snapshot.exists));
+  assert.equal((await db.collection(`${venuePath}/matchReversals`).get()).size,2);
+  const response=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("bulk-replay"));
+  assert.equal(response.status,200,response.body?.error);
+  assert.equal(response.body.match.matchNo,3);
+});
+
+test("a fixture left behind by the old bulk delete can replay with a matching manager audit", async () => {
+  await permitThreeClubs();
+  const ref=db.doc(`${venuePath}/seasons/season-one/matches/fixture-one`);
+  await ref.set({...orphanedLineup(),status:"completed",completedAtMs:1000});
+  const log=db.doc(`${venuePath}/actionLog/legacy-discard`);
+  const entry={venueId:"field-one",seasonId:"season-one",action:"match_day_discarded",
+    actorUid:"referee",details:"2 completed match(es) removed: fixture-two, fixture-one",
+    at:admin.firestore.Timestamp.fromMillis(2000)};
+  await log.set(entry);
+  const denied=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("nonowner-discard"));
+  assert.equal(denied.status,400);
+  assert.equal((await ref.get()).data().status,"completed");
+  await log.update({actorUid:"creator"});
+  const replay=await request("referee",{authorization:"Bearer test"},true,kickoffRequest("old-discard"));
+  assert.equal(replay.status,200,replay.body?.error);
+  assert.equal((await ref.get()).data().awaitingKitVerification,true);
+});

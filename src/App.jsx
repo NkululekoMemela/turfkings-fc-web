@@ -5476,11 +5476,11 @@ function MainApp() {
     ? exhibition.nextMatch : null;
   const isBrowsingPublishedMode = browseMatchType === publishedMatchType;
   const browsedExhibition = exhibitionInClubBrowse({exhibition:nextExhibition,published:publishedMatchType,browsing:browseMatchType});
-  const exhibitionSignupHint = exhibition.fixtures.some((fixture) => fixture.canBook) ? "Exhibition signups open" : "";
+  const exhibitionSignupHint = exhibition.fixtures.some((fixture) => fixture.canBook) ? "Book challenge" : "";
   const exhibitionPrep = exhibition.canManage && exhibition.fixtures
     .filter((fixture) => !fixture.squadPublished).sort((a, b) => b.count - a.count)[0];
   const exhibitionSquadsHint = exhibitionPrep
-    ? `${exhibitionPrep.count}/${exhibitionPrep.capacity} signed${exhibitionPrep.count >= exhibitionPrep.readyCount ? " · Make squads" : ""}` : "";
+    ? exhibitionPrep.count >= exhibitionPrep.readyCount ? "Set squads" : `${exhibitionPrep.count}/${exhibitionPrep.capacity} signed` : "";
 
 
   const handleGoToMatchSignup = () => {
