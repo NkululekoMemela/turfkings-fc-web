@@ -46,7 +46,7 @@ function installFieldLogoStudio(exportsObject, {admin, db, onRequest, region}) {
         const result = await manageFanmOperations({body:req.body,user,admin,db,fail});
         return res.json({ok:true,...result});
       }
-      if (["yearEndView","yearEndPublish","yearEndArchive"].includes(req.body?.action)) {
+      if (["yearEndView","yearEndPublish","yearEndArchive","yearEndProgramme"].includes(req.body?.action)) {
         const result=await require("./yearEndEvent.cjs").eventAction({db,user,body:req.body});
         return res.json({ok:true,...result});
       }

@@ -15,21 +15,72 @@ async function manageFanmOperations({body, user, admin, db, fail}) {
   const stamp = admin.firestore.FieldValue.serverTimestamp;
   const log = (tx, action, details) => tx.create(root.collection("audit").doc(randomUUID()),
     {action, details, actorUid:user.uid, at:stamp()});
-  if (body.action === "operationsView") {
-    const [items, people, config] = await Promise.all([stock.get(), staff.get(), stockConfig.get()]);
-    return {stock:config.data()?.stock ?? items.docs.map(doc=>{
-      const {colour,number,quantity}=doc.data();
-      return {color:colour,number,quantity};
-    }), revision:config.data()?.revision||0, confirmedAtMs:config.data()?.confirmedAtMs||0,
-      staff:people.docs.map(doc=>doc.data())};
+  const cities=root.collection("cityBibs");
+  const city=clean(body.city).replace(/\s+/g," ");
+  const cityId=/^[\p{L}\p{N} .'-]{2,60}$/u.test(city)?city.toLowerCase():"";
+  const inventory=require("./fieldBibHire.cjs").inventory;
+  const bibKey=row=>JSON.stringify([row.color,row.number]);
+  function totals(rows,reservations){
+    const used=new Map();
+    for(const reservation of Object.values(reservations||{}))for(const row of reservation.rows){
+      const key=bibKey(row);used.set(key,(used.get(key)||0)+row.quantity);
+    }
+    return rows.map(row=>({...row,committed:used.get(bibKey(row))||0}));
   }
-  if (body.action === "operationsCountBibs") {
-    const rows = require("./fieldBibHire.cjs").inventory(body.stock);
+  if (body.action === "operationsView") {
+    const [items,people,config,cityList,fixtures] = await Promise.all([stock.get(),staff.get(),stockConfig.get(),cities.get(),
+      db.collection("clubChallengeMatches").where("instigated","==",true).get()]);
+    const local=cityId?cityList.docs.find(doc=>doc.id===cityId)?.data():null;
+    return {cities:cityList.docs.map(doc=>doc.data().city).sort(),stock:local?.stock||[],
+      unassignedStock:config.data()?.stock ?? items.docs.map(doc=>{
+        const {colour,number,quantity}=doc.data();return {color:colour,number,quantity};
+      }), unassignedMoved:config.data()?.cityMigrationComplete===true,
+      revision:local?.revision||0, confirmedAtMs:local?.confirmedAtMs||0,
+      committed:totals(local?.stock||[],local?.reservations),reservations:Object.values(local?.reservations||{}),
+      fixtures:fixtures.docs.flatMap(doc=>{
+        const f=doc.data();return ["pending","accepted","live"].includes(f.status)?
+          [{id:doc.id,label:`${f.home?.name} vs ${f.away?.name} · ${f.venue}`,city:f.fanmBibCity||""}]:[];
+      }), staff:people.docs.map(doc=>doc.data())};
+  }
+  if (["operationsCountBibs","operationsReserveBibs","operationsReleaseBibs"].includes(body.action)) {
+    if(!cityId)fail("Select or enter a stock city.");
+    const ref=cities.doc(cityId);
     await db.runTransaction(async tx => {
-      const revision = (await tx.get(stockConfig)).data()?.revision || 0;
-      if (body.revision !== revision) fail("The inventory changed. Reload before saving.",409);
-      tx.set(stockConfig,{stock:rows,revision:revision+1,confirmedAtMs:Date.now(),confirmedBy:user.uid});
-      log(tx,"count_bibs",{rows:rows.length,revision:revision+1});
+      const local=(await tx.get(ref)).data()||{stock:[],reservations:{},revision:0};
+      if (body.revision !== local.revision) fail("The inventory changed. Reload before saving.",409);
+      const reservations={...(local.reservations||{})};
+      let rows=local.stock;
+      if(body.action==="operationsCountBibs"){
+        rows=inventory(body.stock);
+        if(body.moveUnassigned===true){
+          const config=(await tx.get(stockConfig)).data()||{};
+          if(config.cityMigrationComplete)fail("Unassigned stock has already been moved.",409);
+          if(local.stock.length)fail("Move unassigned stock into a city without recorded stock.");
+          tx.set(stockConfig,{cityMigrationComplete:true},{merge:true});
+        }
+      }else{
+        const {fixtureId}=body;
+        if(typeof fixtureId!=="string"||!/^[a-f0-9]{64}$/.test(fixtureId))fail("Choose a FANM fixture.");
+        const fixtureRef=db.collection("clubChallengeMatches").doc(fixtureId);
+        const match=(await tx.get(fixtureRef)).data();
+        if(body.action==="operationsReleaseBibs"){
+          if(!reservations[fixtureId])fail("This city has no reservation for that fixture.");
+          delete reservations[fixtureId];
+        }else{
+          if(!match?.instigated||!["pending","accepted","live"].includes(match.status))fail("Choose an upcoming FANM fixture.");
+          if(match.fanmBibCity&&match.fanmBibCity!==cityId)fail("Release the reservation in the other city first.");
+          const reserved=inventory(body.rows).filter(row=>row.quantity>0);
+          if(!reserved.length)fail("Enter at least one bib quantity.");
+          reservations[fixtureId]={fixtureId,label:`${match.home?.name} vs ${match.away?.name} · ${match.venue}`,rows:reserved};
+        }
+        if(match)tx.update(fixtureRef,{fanmBibCity:body.action==="operationsReleaseBibs"?"":cityId});
+      }
+      const counted=totals(rows,reservations);
+      if(counted.some(row=>row.quantity<row.committed)||
+        Object.values(reservations).some(r=>r.rows.some(row=>!rows.some(s=>bibKey(s)===bibKey(row)))))
+        fail("The city does not have enough stock for those commitments.",409);
+      tx.set(ref,{city:local.city||city,stock:rows,reservations,revision:local.revision+1,confirmedAtMs:Date.now(),confirmedBy:user.uid});
+      log(tx,body.action,{city,fixtureId:body.fixtureId||"",revision:local.revision+1});
     });
     return {};
   }

@@ -6,6 +6,7 @@ const originSet=new Set(["https://five-asides-near-me-staging.web.app","https://
 const integer=(x,min,max)=>Number.isSafeInteger(x)&&x>=min&&x<=max;
 const text=(x,max)=>typeof x==="string"&&x.trim().length<=max?x.trim():"";
 const eventId=x=>typeof x==="string"&&/^[a-f0-9-]{36}$/.test(x);
+const slots=new Set(["top","after-jersey","after-hero","after-headlines","after-mvp","after-streak","before-old-stories","before-recap"]);
 function settings(input={}){
  const {date,arrival,program,player,guest,cooler,bottle,maxGuests,capacity}=input;
  const venue=text(input.venue,180),dress=text(input.dress,120);
@@ -15,24 +16,51 @@ function settings(input={}){
     ![arrival,program].every(x=>typeof x==="string"&&/^([01]\d|2[0-3]):[0-5]\d$/.test(x))||
     startsAt<=Date.now()||!venue||!dress||![player,guest,cooler,bottle].every(x=>integer(x,0,10000000))||
     !integer(maxGuests,0,20)||!integer(capacity,1,500))throw Error("Check the event date, time, venue, prices and capacity.");
- return {date,arrival,program,venue,dress,player,guest,cooler,bottle,maxGuests,capacity,startsAt};
+ return {date,arrival,program,venue,dress,player,guest,cooler,bottle,maxGuests,capacity,startsAt,
+  slotKey:slots.has(input.slotKey)?input.slotKey:"before-old-stories",
+  title:text(input.title,120),intro:text(input.intro,1000),drinksCopy:text(input.drinksCopy,1000),coverCopy:text(input.coverCopy,1000)};
 }
 async function eventAction({db,user,body}){
  const ref=db.doc(ROOT);
  if(body.action==="yearEndView"){
   const event=(await ref.get()).data()||null;
   if(!event)return {event:null};
-  if(event.archived){
-   const ctx=await context(db,user,"turf-kings");
-   if(!ctx.captain)return {event:null};
+  let manager=false;
+  if(event.archived || !event.programPublished){
+   manager=(await context(db,user,"turf-kings").catch(()=>null))?.captain===true;
+   if(event.archived&&!manager)return {event:null};
   }
   const booking=(await ref.collection("editions").doc(event.id).collection("bookings").doc(user.uid).get()).data();
-  return {event,booking:booking?{status:booking.status,guests:booking.guests,coolers:booking.coolers,bottles:booking.bottles,amount:booking.amount}:null};
+  const {programItems,...publicEvent}=event;
+  let attendees;
+  if(body.includeAttendees===true && !event.archived){
+   const {members}=await context(db,user,"turf-kings");
+   const roster=new Map(members.map(member=>[member.uid,member.fullName||member.shortName]));
+   const snapshot=await ref.collection("editions").doc(event.id).collection("bookings").get();
+   attendees=snapshot.docs.flatMap((doc,index)=>{
+    const row=doc.data();
+    if(!["paid","confirmed","pending"].includes(row.status))return [];
+    return [{id:doc.id===user.uid?"self":String(index),name:row.displayName||roster.get(doc.id)||"Club player",friends:row.seats-1,amount:row.amount,status:row.status,paid:row.status==="paid"}];
+   });
+  }
+  return {attendees,event:manager||event.programPublished?event:publicEvent,booking:booking?{status:booking.status,guests:booking.guests,coolers:booking.coolers,bottles:booking.bottles,amount:booking.amount}:null};
  }
  return db.runTransaction(async tx=>{
   const ctx=await context(db,user,"turf-kings",tx);
   if(!ctx.captain)throw Error("Only a Turf Kings administrator or captain can edit the event.");
   const current=(await tx.get(ref)).data();
+  if(body.action==="yearEndProgramme"){
+   if(!current || body.eventId!==current.id)throw Error("Reopen the current event.");
+   const items=body.items;
+   if(!Array.isArray(items)||!items.length||items.length>30||items.some(item=>!item||
+     !text(item.title,100)||!integer(item.offsetStart,0,720)||!integer(item.offsetEnd,item.offsetStart+1,720)))
+     throw Error("Each programme item needs a title and valid start and end minutes.");
+   tx.update(ref,{programPublished:body.published===true,programItems:items.map(item=>({
+     title:text(item.title,100),speaker:text(item.speaker,100),desc:text(item.desc,2000),icon:text(item.icon,16)||"🎤",
+     offsetStart:item.offsetStart,offsetEnd:item.offsetEnd,
+   })).sort((a,b)=>a.offsetStart-b.offsetStart)});
+   return {};
+  }
   if(body.action==="yearEndArchive"){
    if(!current||current.archived)return {};
    tx.update(ref,{archived:true});return {};
@@ -43,6 +71,7 @@ async function eventAction({db,user,body}){
   if(current&&!current.archived&&current.reserved>0&&values.date!==current.date)throw Error("Archive this edition before starting a different date.");
   const newEdition=!current||current.archived&&current.date!==values.date;
   tx.set(ref,{...values,id:newEdition?randomUUID():current.id,reserved:newEdition?0:current.reserved||0,
+    programPublished:newEdition?false:current?.programPublished===true,programItems:current?.programItems||[],
     archived:false,updatedBy:user.uid,updatedAtMs:Date.now()});
   return {};
  });
@@ -56,7 +85,7 @@ async function checkout({db,user,body,secret,request=fetch}){
  if(!guests||guests.some(x=>!x)||new Set(guests.map(x=>x.toLowerCase())).size!==guests.length||!integer(body.coolers,0,20)||!integer(body.bottles,0,20))throw Error("Enter unique guest names and valid quantities.");
  const ref=db.doc(ROOT),bookingRef=ref.collection("editions").doc(body.eventId).collection("bookings").doc(user.uid);
  const payment=await db.runTransaction(async tx=>{
-  await context(db,user,"turf-kings",tx);
+  const {member}=await context(db,user,"turf-kings",tx);
   const [eventSnap,bookingSnap]=await tx.getAll(ref,bookingRef);
   const event=eventSnap.data(),old=bookingSnap.data();
   if(old?.status==="paid"||old?.status==="confirmed")return {confirmed:true};
@@ -73,7 +102,7 @@ async function checkout({db,user,body,secret,request=fetch}){
   const amount=event.player+event.guest*guests.length+event.cooler*body.coolers+event.bottle*body.bottles;
   const id=randomUUID(),status=amount?"pending":"confirmed";
   tx.update(ref,{reserved:event.reserved+seats});
-  tx.set(bookingRef,{status,guests,coolers:body.coolers,bottles:body.bottles,seats,amount,paymentId:id,createdAtMs:Date.now()});
+  tx.set(bookingRef,{displayName:member.fullName||member.shortName||user.name||"Club player",status,guests,coolers:body.coolers,bottles:body.bottles,seats,amount,paymentId:id,createdAtMs:Date.now()});
   if(!amount)return {confirmed:true};
   const payment={id,eventId:event.id,uid:user.uid,amount,status,mode:secret.startsWith("sk_test_")?"test":"live"};
   tx.create(db.collection(PAYMENT).doc(id),payment);

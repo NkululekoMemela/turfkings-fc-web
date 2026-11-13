@@ -1,4 +1,4 @@
-import YearEndBooking from "../components/YearEndBooking.jsx";
+import "../components/YearEndOverlay.css";
 import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
 import ClubPageRibbon from '../components/ClubPageRibbon.jsx';
 import PremiumSelect from "../components/PremiumSelect.jsx";
@@ -272,10 +272,13 @@ function makeVoterId(identity) {
   );
 }
 
-const ORIGINAL_YEAR_END={date:"2025-12-05",arrival:"18:00",program:"19:30",venue:"Haveva · Lower Main Road · Observatory",
+const YEAR_END_COPY={title:"TurfKings Year-End Function",intro:"We’re closing off the season in proper TurfKings style – full squad night out. 🏆",
+  drinksCopy:"Bring your own drinks and keep the vibe relaxed for the whole night.",
+  coverCopy:"Use the RSVP list to confirm your spot and who you’re bringing."};
+const ORIGINAL_YEAR_END={...YEAR_END_COPY,slotKey:"before-old-stories",date:"2025-12-05",arrival:"18:00",program:"19:30",venue:"Haveva · Lower Main Road · Observatory",
   dress:"Suits & Smart Fits",player:10000,guest:7500,cooler:18000,bottle:8000,maxGuests:3,capacity:60,archived:true};
 function YearEndEditor({event,onSave}) {
-  const [draft,setDraft]=useState(()=>({...event,...Object.fromEntries(["player","guest","cooler","bottle"].map(key=>[key,event[key]/100]))}));
+  const [draft,setDraft]=useState(()=>({...YEAR_END_COPY,...event,...Object.fromEntries(["player","guest","cooler","bottle"].map(key=>[key,event[key]/100]))}));
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
   const fields=[["date","Event date","date"],["arrival","Arrival","time"],["program","Programme starts","time"],
     ["venue","Venue","text"],["dress","Dress code","text"],["player","Player (R)","number"],
@@ -290,6 +293,14 @@ function YearEndEditor({event,onSave}) {
     {fields.map(([key,label,type])=><label key={key}>{label}<input className="text-input" type={type} required
       min={key==="capacity"?1:type==="number"?0:undefined} step={["player","guest","cooler","bottle"].includes(key)?".01":undefined}
       value={draft[key]} onChange={e=>setDraft({...draft,[key]:e.target.value})}/></label>)}
+    <label>Story placement<PremiumSelect value={draft.slotKey||"before-old-stories"} onChange={e=>setDraft({...draft,slotKey:e.target.value})}>
+      <option value="top">Top of Club News</option>
+      {CUSTOM_STORY_SLOT_OPTIONS.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+    </PremiumSelect></label>
+    <label>Advert title<input className="text-input" maxLength={120} value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/></label>
+    {[["intro","Opening text"],["drinksCopy","Drinks text"],["coverCopy","Booking text"]].map(([key,label])=>
+      <label className="hub-challenge-form-grid__wide" key={key}>{label}<textarea className="text-input" rows={3} maxLength={1000}
+        value={draft[key]} onChange={e=>setDraft({...draft,[key]:e.target.value})}/></label>)}
     {error&&<p role="alert">{error}</p>}
     <button className="primary-btn" disabled={busy}>{busy?"Saving…":event.archived?"Restore poster to Club News":"Save event details"}</button>
   </form>;
@@ -1689,14 +1700,13 @@ This will remove it from live news and archives for everyone.`
   // RSVP modal state
   const [showRSVP, setShowRSVP] = useState(false);
   const [yearEnd,setYearEnd]=useState(null);
-  const [yearEndBooking,setYearEndBooking]=useState(null);
   const [yearEndEditing,setYearEndEditing]=useState(false);
   const [yearEndError,setYearEndError]=useState("");
   const event=yearEnd||ORIGINAL_YEAR_END;
   const refreshYearEnd=useCallback(async()=>{
     if(!isTurfKingsClub||!auth.currentUser)return;
     const result=await fieldLogoStudioRequest({action:"yearEndView"});
-    setYearEnd(result.event);setYearEndBooking(result.booking);
+    setYearEnd(result.event);
   },[isTurfKingsClub]);
   useEffect(()=>{
     refreshYearEnd().catch(()=>{});
@@ -1956,17 +1966,16 @@ This will remove it from live news and archives for everyone.`
 
 
   const renderYearEndPoster = () => (
-          <section className="card year-end-premium-card" style={yearEndCardStyle}>
+          <section className="card year-end-premium-card year-end-in-canvas" style={yearEndCardStyle}>
             <div style={{ minWidth: 0 }}>
               <div style={yearEndPillStyle}>
                 <span>✨ Special Event</span>
                 <span style={{ fontSize: "0.9rem" }}>• Year-End Function</span>
               </div>
 
-              <h2 style={yearEndHeadingStyle}>TurfKings Year-End Function</h2>
+              <h2 style={yearEndHeadingStyle}>{event.title || YEAR_END_COPY.title}</h2>
               <p style={yearEndSubStyle}>
-                We&apos;re closing off the season in proper TurfKings style – full
-                squad night out. 🏆
+                {event.intro || YEAR_END_COPY.intro}
               </p>
 
               <div style={yearEndMetaRowStyle}>
@@ -1980,19 +1989,14 @@ This will remove it from live news and archives for everyone.`
               </ul>
 
               <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
-                🧊 <strong>Coolerboxes &amp; bottles are encouraged</strong> – bring
-                your own drinks. There&apos;s a small fee for walking in with them,
-                but it works out cheaper and keeps the vibe relaxed for the whole
-                night. (<strong>{eventPrice("cooler")}</strong> per coolerbox) and (
+                🧊 <strong>Coolerboxes &amp; bottles:</strong> {event.drinksCopy || YEAR_END_COPY.drinksCopy}
+                (<strong>{eventPrice("cooler")}</strong> per coolerbox) and (
                 <strong>{eventPrice("bottle")}</strong> per whisky/brandy/gin bottle).
               </p>
 
               <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
                 💰 <strong>Cover charge:</strong> <strong>{eventPrice("player")}</strong> per player +{" "}
-                <strong>{eventPrice("guest")}</strong> per friend (max {event.maxGuests}) for food/bites. Use the RSVP
-                list to confirm your spot and who you&apos;re bringing. If you&apos;re
-                not drinking and you&apos;re coming solo, it&apos;s basically{" "}
-                <strong>{eventPrice("player")}</strong> for a full night out with the squad.
+                <strong>{eventPrice("guest")}</strong> per friend (max {event.maxGuests}). {event.coverCopy || YEAR_END_COPY.coverCopy}
               </p>
 
               <div
@@ -2018,7 +2022,7 @@ This will remove it from live news and archives for everyone.`
                   onClick={() => setShowProgramModal(true)}
                   style={{ padding: "0.65rem 1.1rem", fontSize: "0.9rem" }}
                 >
-                  📋 View Program
+                  📋 {canManageCustomStories && yearEnd ? "View / edit programme" : "View programme"}
                 </button>
               </div>
 
@@ -3330,8 +3334,10 @@ Votes for this poll will no longer be shown.`
 
   const renderCustomStoriesAt = (slotKey) => {
     const stories = sortedActiveCustomStories.filter((story) => story?.slotKey === slotKey);
-    if (!stories.length) return null;
-    return stories.map((story) => renderCustomStoryCard(story));
+    return <>
+      {isTurfKingsClub && !event.archived && (event.slotKey||"before-old-stories")===slotKey && renderYearEndPoster()}
+      {stories.map((story) => renderCustomStoryCard(story))}
+    </>;
   };
 
   // ---------- RENDER ----------
@@ -3355,6 +3361,8 @@ Votes for this poll will no longer be shown.`
           {newsSeasonContext.shouldUsePreviousSeasonNews ? "Previous-season stories stay here until the new season kicks off." : "Automatic recap built from this club's full match history."}
         </p>
       </header>
+
+      {renderCustomStoriesAt("top")}
 
       {canManageCustomStories && (
         <section ref={storyStudioRef} className="card" style={{ overflow: "hidden" }}>
@@ -4198,7 +4206,7 @@ Votes for this poll will no longer be shown.`
       {renderCustomStoriesAt("after-streak")}
 
       {renderCustomStoriesAt("before-old-stories")}
-      {isTurfKingsClub && !event.archived && renderYearEndPoster()}
+
 
       {canManageCustomStories && (
       /* OLD STORIES FOLDER */
@@ -4445,19 +4453,18 @@ Votes for this poll will no longer be shown.`
         )}
       </details>
 
-      {isTurfKingsClub && showRSVP && yearEnd && !event.archived && <YearEndBooking
-        key={event.id} event={event} booking={yearEndBooking}
-        onClose={()=>setShowRSVP(false)} onConfirmed={refreshYearEnd}/>}
-      {isTurfKingsClub && showRSVP && !yearEnd && (
-        <RSVPModal
-          identity={identity}
+      {isTurfKingsClub && showRSVP && (!yearEnd || !event.archived) && (
+        <RSVPModal key={yearEnd?.id || "legacy"}
+          identity={identity} event={yearEnd}
           onClose={() => setShowRSVP(false)}
         />
       )}
 
       {isTurfKingsClub && showProgramModal && (
         <YearEndProgramModal
-          identity={identity}
+          identity={identity} event={yearEnd}
+          canEditEvent={canManageCustomStories}
+          onSaved={refreshYearEnd}
           onClose={() => setShowProgramModal(false)}
         />
       )}

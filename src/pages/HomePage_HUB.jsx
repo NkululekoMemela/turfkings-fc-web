@@ -1329,6 +1329,14 @@ export default function HomePage_HUB({
     return [...logos].sort(() => Math.random() - 0.5);
   }, []);
 
+  if (operationsOpen && !isPracticeMode && (canManageOrganizationArchive(currentUser) ||
+      (currentUser?.uid && operationsManagerUid===currentUser.uid))) {
+    return <FanmOperations director={canManageOrganizationArchive(currentUser)} user={currentUser}
+      onClose={()=>setOperationsOpen(false)}
+      onChallenge={canInstigate?()=>{setOperationsOpen(false);openInstigateMatch();}:null}
+      onOrganizationsChanged={()=>setArchiveRefresh(count=>count+1)}/>;
+  }
+
   return (
     <main className="homepage-hub-shell homepage-hub-shell--clubs-first">
       {startupVisible ? (
@@ -1612,9 +1620,7 @@ export default function HomePage_HUB({
         <button type="button" className="fanm-operations-entry" onClick={() => setOperationsOpen(true)}>
           <span aria-hidden="true">◈</span><span><strong>FANM Operations</strong><small>Management desk</small></span><span aria-hidden="true">›</span>
         </button>
-        {operationsOpen && <FanmOperations director={canManageOrganizationArchive(currentUser)} user={currentUser} onClose={() => setOperationsOpen(false)}
-          onChallenge={canInstigate ? () => {setOperationsOpen(false); openInstigateMatch();} : null}
-          onOrganizationsChanged={() => setArchiveRefresh(count => count + 1)}/>}
+
       </>}
       <footer className="hub-footer-brand hub-footer-brand--flush-photo club-marketing-footer fanm-marketing-split">
         <div className="hub-footer-logo-stage">
