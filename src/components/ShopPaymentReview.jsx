@@ -16,6 +16,7 @@ export default function ShopPaymentReview({title,lines,total,onBack,onPay,busy,e
     </div>
     <BookingTermsDetails/>
     <label><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/> I accept the booking and refund terms.</label>
+    {!accepted&&<p className="muted small">Accept the booking terms above to continue.</p>}
     {error&&<p role="alert">{error}</p>}
     <button type="button" className="primary-btn" disabled={!accepted||busy} onClick={onPay}>{busy?"Opening payment…":"Pay securely with Yoco"}</button>
   </section></div>,document.body);

@@ -1093,7 +1093,7 @@ exports.createYocoCheckout = onRequest(
       });
     }
 
-    if (!hasYocoConfig) {
+    if (req.body?.purpose !== "year_end" && !hasYocoConfig) {
       return res.status(500).json({
         ok: false,
         error: "Yoco configuration is missing on the server.",
