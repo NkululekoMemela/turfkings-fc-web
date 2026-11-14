@@ -10271,8 +10271,8 @@ function MainApp() {
         <CompanyWeeklySignup leagueSeasonEntry={!isPracticeMode && <ClubLeagueSeasonEntry key={activeClubId} clubId={activeClubId} onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}/>} key={activeClubId} clubId={activeClubId} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
       {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (!isCompanyClub || isPracticeMode) && (
         <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
-        {!isPracticeMode && <ClubLeagueSeasonEntry key={activeClubId} clubId={activeClubId} onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}/>}
         <MatchSignupPage
+          leagueSeasonEntry={!isPracticeMode && <ClubLeagueSeasonEntry key={activeClubId} clubId={activeClubId} onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}/>}
           exhibition={exhibition}
           clubModeLabel={matchType===MATCH_TYPE.LEAGUE?"Mini-league":"Friendly"}
           gameFormat={gameFormat}

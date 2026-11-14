@@ -725,6 +725,7 @@ export default function MatchSignupPage({
   onProceedToPayment,
   practiceCompanyFunding = false,
   initialTicketOpen=null,
+  leagueSeasonEntry=null,
 }) {
   const exhibitionFixtures = isPracticeMode ? [] : exhibition?.fixtures || [];
   const activeClubName = String(activeClub?.name || activeClub?.clubName || activeClubId || "This club").trim();
@@ -5092,6 +5093,7 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
       className="page match-signup-page"
       style={{ maxWidth: contentMaxWidth, margin: "0 auto" }}
     >
+      {leagueSeasonEntry}
       <SignupHeroHeader
         photoData={photoData}
         beneficiary={beneficiary}
