@@ -245,9 +245,6 @@ export async function ensureVenueCreatorStaffProfile({
   const creatorUids = [
     venue?.ownerUid,
     venue?.createdByUid,
-    ...(Array.isArray(venue?.adminUids)
-      ? venue.adminUids
-      : []),
   ]
     .map(clean)
     .filter(Boolean);

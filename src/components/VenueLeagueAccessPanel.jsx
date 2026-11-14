@@ -578,8 +578,10 @@ export default function VenueLeagueAccessPanel({
     setError("");
     setStatus("Verifying your Field staff access…");
 
+    let step = "Google sign-in";
     try {
       const user = await googleUser();
+      step = "Field staff profile verification";
       const uid = normalize(user.uid);
 
       const managerUids = [
@@ -599,6 +601,7 @@ export default function VenueLeagueAccessPanel({
       if (
         selectedProfile?.isLegacyCreatorFallback === true
       ) {
+        step = "Field creator profile recovery";
         const staff =
           await ensureVenueCreatorStaffProfile({
             venue,
@@ -620,6 +623,7 @@ export default function VenueLeagueAccessPanel({
         selectedProfile &&
         selectedProfile.status === "active"
       ) {
+        step = "approved Field staff profile verification";
         const staff =
           await claimApprovedVenueStaffProfile({
             venueId: venue?.id,
@@ -677,7 +681,9 @@ export default function VenueLeagueAccessPanel({
     } catch (signInError) {
       setStatus("");
       setError(
-        signInError?.message ||
+        signInError?.code === "permission-denied"
+          ? `Access denied during ${step}. Verify the registered Google account and the Firestore rules for this Field’s Firebase project.`
+          : signInError?.message ||
         "Could not verify Field staff access."
       );
     } finally {
