@@ -1744,17 +1744,17 @@ service cloud.firestore {
 
           return isSignedIn()
             && (
-              venue.ownerUid == request.auth.uid
-              || venue.createdByUid == request.auth.uid
+              venue.get("ownerUid", "") == request.auth.uid
+              || venue.get("createdByUid", "") == request.auth.uid
               || (
                 request.auth.token.email != null
                 && (
-                  venue.createdByEmail
+                  venue.get("createdByEmail", "")
                     == request.auth.token.email
-                  || venue.ownerEmail
+                  || venue.get("ownerEmail", "")
                     == request.auth.token.email
                   || request.auth.token.email
-                    in venue.adminEmails
+                    in venue.get("adminEmails", [])
                 )
               )
             );

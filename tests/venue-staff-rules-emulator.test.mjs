@@ -278,3 +278,22 @@ test(
     );
   }
 );
+
+test("legacy Field owner can recover their profile when optional ownership fields are absent", async () => {
+  const legacyId = "legacy-email-only-field";
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "leagueVenues", legacyId), {
+      name: "Legacy Field",
+      ownerEmail: "owner@example.com",
+    });
+  });
+
+  const profile = (db, uid) => doc(db, "leagueVenues", legacyId, "staff", uid);
+  const stranger = env.authenticatedContext("stranger", {email: "stranger@example.com"}).firestore();
+  await assertFails(setDoc(profile(stranger, "stranger"), {
+    ...ownerStaff, uid: "stranger", email: "stranger@example.com",
+  }));
+
+  const owner = env.authenticatedContext("owner", {email: "owner@example.com"}).firestore();
+  await assertSucceeds(setDoc(profile(owner, "owner"), ownerStaff));
+});
