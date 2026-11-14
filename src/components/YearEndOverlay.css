@@ -7,3 +7,52 @@
 .year-end-program-editor label { display:block; }
 .year-end-in-canvas { scroll-margin-block:8rem 6rem; overflow-wrap:anywhere; }
 @media(max-width:760px){.news-page { padding-bottom:calc(96px + env(safe-area-inset-bottom))!important; }}
+.shop-payment-review { width:min(100%,520px); padding:1.25rem; background:#101c30; }
+.shop-payment-review label { display:block; color:#ecf7ff; margin:1rem 0; }
+.shop-payment-review a { color:#91e6f6; }
+.shop-payment-review .primary-btn { width:100%; }
+
+.card.year-end-premium-card {
+  display:grid;
+  gap:.65rem;
+  padding:.7rem;
+  border-radius:1.2rem;
+  color:#eff6ff;
+  background:linear-gradient(145deg,#151e30,#0b1324);
+}
+.year-end-poster-copy { min-width:0; display:grid; gap:.36rem; justify-items:start; }
+.year-end-poster-copy h2 { color:#fff; margin:0; font-size:clamp(1rem,4.4vw,1.5rem); }
+.year-end-poster-copy p { margin:0; font-size:.79rem; line-height:1.35; }
+.year-end-poster-copy > a { padding:.28rem .5rem !important; font-size:.76rem; }
+.year-end-poster-date { font-weight:650; color:#ffe4aa; }
+.year-end-poster-actions { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.25rem; }
+.year-end-poster-actions > button { min-height:40px; padding:.42rem .75rem; font-size:.8rem; }
+.year-end-poster-details,.year-end-admin { color:#c9d7e9; font-size:.78rem; }
+.year-end-poster-details p { margin-top:.35rem; }
+html:has(.year-end-overlay), body:has(.year-end-overlay) { overflow:hidden; }
+.year-end-rsvp-dietary { padding:.65rem .85rem; margin-bottom:.7rem; border:1px solid #536278; border-radius:.9rem; }
+.year-end-rsvp-dietary label { display:block; margin-top:.4rem; }
+.year-end-rsvp-dietary :is(select,textarea) { width:100%; }
+
+.year-end-overlay-panel[aria-label="Year-end RSVP"] :is(input.text-input,select.text-input,textarea.text-input) {
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+.year-end-overlay-panel[aria-label="Year-end RSVP"] {
+  background:radial-gradient(ellipse at top left,#22364a,#0b1425 55%) !important;
+  padding:clamp(.9rem,4vw,1.4rem) !important;
+  border:1px solid #63758c;
+}
+.rsvp-eyebrow {
+  display:inline-block;
+  padding:.2rem .5rem;
+  border-radius:999px;
+  background:#362918;
+  color:#ffdb97;
+  font-size:.68rem;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}

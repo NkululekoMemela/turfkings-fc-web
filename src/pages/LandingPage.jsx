@@ -298,6 +298,7 @@ export function LandingPage({
   onGoToHighlights,
   onGoToEntryDev,
   onGoToPayments,
+  companyBookings=false,
   leagueSeasonEntry = null,
   nextExhibition = null,
   onOpenExhibition,
@@ -662,6 +663,20 @@ export function LandingPage({
         .slice(0, 12),
     [scheduledFixtures]
   );
+
+  const [matchDayClock, setMatchDayClock] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setMatchDayClock(Date.now()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
+  const sastNow = new Date(matchDayClock + 7200000);
+  const scheduledDate = nextExhibition?.proposedDate ||
+    (fixturedMode ? nextTwelveFixtures[0]?.dateLocal || nextTwelveFixtures[0]?.scheduledLocal || nextTwelveFixtures[0]?.date : "");
+  const weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+  const scheduledDay = weekdays.findIndex(day => String(clubWeeklyPlayTime).toLowerCase().includes(day));
+  const fixtureToday = scheduledDate
+    ? String(scheduledDate).slice(0,10) === sastNow.toISOString().slice(0,10)
+    : scheduledDay === sastNow.getUTCDay();
 
   const handleDownloadNextTwelveFixtures = async () => {
     if (
@@ -1102,6 +1117,7 @@ export function LandingPage({
   };
 
   const canSeeCaptainStyleControls = isCaptain || isAdmin;
+  const showPairingHint = Boolean(fixtureToday && isThreeTeamLeague && !fixturedMode && canSeeCaptainStyleControls && (isAdmin || activeRole === "referee"));
   const formatHasLiveRisk = Boolean(hasLiveMatch || hasRecordedMatchDayState);
   const isFormatLocked = formatSwitchLocked || formatHasLiveRisk;
 
@@ -2009,6 +2025,7 @@ export function LandingPage({
                 <span className="field-tile-crest" style={{borderColor: (index ? nextExhibition.awayColour : nextExhibition.homeColour) || undefined}}>
                   {club.logoUrl ? <img src={club.logoUrl} alt="" /> : club.name.slice(0, 3)}
                 </span>
+                {fixtureToday && <small>On-field Team {index+1}</small>}
                 <strong>{club.name}</strong>
               </div>
             </React.Fragment>)}
@@ -2016,7 +2033,7 @@ export function LandingPage({
           <p className="exhibition-landing-kickoff">{new Intl.DateTimeFormat("en-ZA",{weekday:"short",day:"numeric",month:"short",timeZone:"UTC"}).format(new Date(`${nextExhibition.proposedDate}T12:00:00Z`))} · {nextExhibition.proposedKickoff} SAST · {nextExhibition.venue}</p>
         </>}
 
-        {isThreeTeamLeague && !nextExhibition && (
+        {!nextExhibition && (isThreeTeamLeague || (teamAId && teamBId)) && (
           <div
             className={`match-setup-row ${
               fixturedMode
@@ -2028,9 +2045,10 @@ export function LandingPage({
               label="On-field Team 1"
               value={teamAId || ""}
               teams={optionsForTeamA}
-              renderLabel={renderOptionLabel}
+              compactFixture={!fixtureToday} dayPairingRole={showPairingHint}
+              renderLabel={fixtureToday && showPairingHint ? renderOptionLabel : undefined}
               onChange={handleTeamAChange}
-              disabled={!canSeeCaptainStyleControls || fixturedMode}
+              disabled={!isThreeTeamLeague || !canSeeCaptainStyleControls || fixturedMode}
               side="a"
             />
 
@@ -2040,9 +2058,10 @@ export function LandingPage({
               label="On-field Team 2"
               value={teamBId || ""}
               teams={optionsForTeamB}
-              renderLabel={renderOptionLabel}
+              compactFixture={!fixtureToday} dayPairingRole={showPairingHint}
+              renderLabel={fixtureToday && showPairingHint ? renderOptionLabel : undefined}
               onChange={handleTeamBChange}
-              disabled={!canSeeCaptainStyleControls || fixturedMode}
+              disabled={!isThreeTeamLeague || !canSeeCaptainStyleControls || fixturedMode}
               side="b"
             />
           </div>
@@ -2279,7 +2298,7 @@ export function LandingPage({
           </div>
         ) : (
           <>
-            {isSpectator && <p className="muted landing-spectator-note">You can follow the live game.</p>}
+
 
             <div
               className="actions-row landing-actions landing-actions--viewer"
@@ -2299,6 +2318,7 @@ export function LandingPage({
                 type="button"
                 onClick={handleSpectatorLiveClick}
               >
+                {fixtureToday && (isPlayer || isSpectator) && <small className="fixture-follow-label">Follow live game</small>}
                 {renderTileContent({
                   isMobile,
                   icon: "⚽",
@@ -2601,9 +2621,9 @@ export function LandingPage({
                   flex: "0 0 22px",
                 }}
               >
-                💳
+                {companyBookings ? "📅" : "💳"}
               </span>
-              <span>Book your next games</span>
+              <span>Book your next matches</span>
             </span>
           </button>
 

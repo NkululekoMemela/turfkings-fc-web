@@ -17,7 +17,8 @@ async function manageFanmOperations({body, user, admin, db, fail}) {
     {action, details, actorUid:user.uid, at:stamp()});
   const cities=root.collection("cityBibs");
   const city=clean(body.city).replace(/\s+/g," ");
-  const cityId=/^[\p{L}\p{N} .'-]{2,60}$/u.test(city)?city.toLowerCase():"";
+  const cityKey = value => /^[\p{L}\p{N} .'-]{2,60}$/u.test(value) ? value.toLowerCase() : "";
+  const cityId=cityKey(city);
   const inventory=require("./fieldBibHire.cjs").inventory;
   const bibKey=row=>JSON.stringify([row.color,row.number]);
   function totals(rows,reservations){
@@ -28,10 +29,18 @@ async function manageFanmOperations({body, user, admin, db, fail}) {
     return rows.map(row=>({...row,committed:used.get(bibKey(row))||0}));
   }
   if (body.action === "operationsView") {
-    const [items,people,config,cityList,fixtures] = await Promise.all([stock.get(),staff.get(),stockConfig.get(),cities.get(),
-      db.collection("clubChallengeMatches").where("instigated","==",true).get()]);
+    const [items,people,config,cityList,fixtures,clubs] = await Promise.all([stock.get(),staff.get(),stockConfig.get(),cities.get(),
+      db.collection("clubChallengeMatches").where("instigated","==",true).get(), db.collection("clubs").get()]);
     const local=cityId?cityList.docs.find(doc=>doc.id===cityId)?.data():null;
-    return {cities:cityList.docs.map(doc=>doc.data().city).sort(),stock:local?.stock||[],
+    const knownCities=new Map();
+    for(const doc of clubs.docs){
+      const club=doc.data();
+      if(club.archived||club.deleted||club.organizationArchive?.active||["archived","deleted","draft","inactive"].includes(club.status))continue;
+      const name=clean(club.locationDetails?.city||club.city).replace(/\s+/g," ");
+      if(cityKey(name))knownCities.set(cityKey(name),name);
+    }
+    for(const doc of cityList.docs)knownCities.set(doc.id,doc.data().city);
+    return {cities:[...knownCities.values()].sort((a,b)=>a.localeCompare(b)),stock:local?.stock||[],
       unassignedStock:config.data()?.stock ?? items.docs.map(doc=>{
         const {colour,number,quantity}=doc.data();return {color:colour,number,quantity};
       }), unassignedMoved:config.data()?.cityMigrationComplete===true,
@@ -103,11 +112,12 @@ async function manageFanmOperations({body, user, admin, db, fail}) {
     const email = clean(body.email).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 ||
         !ROLES.has(body.role) || !["active","inactive"].includes(body.status)) fail("Choose a staff role and a valid account email.");
+    if (["referee","camera_operator"].includes(body.role) && !cityId) fail("Choose the city where this official works.");
     const account = await admin.auth().getUserByEmail(email).catch(() => null);
     if (!account?.emailVerified || account.disabled || account.uid === user.uid) fail("Choose another active, verified FANM account.");
     const ref = staff.doc(account.uid);
     await db.runTransaction(async tx => {
-      tx.set(ref,{uid:account.uid,email,name:account.displayName||email,role:body.role,status:body.status,updatedAt:stamp()});
+      tx.set(ref,{uid:account.uid,email,name:account.displayName||email,role:body.role,status:body.status,city:cityId?city:"",updatedAt:stamp()});
       log(tx,"update_staff",{uid:account.uid,role:body.role,status:body.status});
     });
     return {};

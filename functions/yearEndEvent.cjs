@@ -20,6 +20,7 @@ function settings(input={}){
   slotKey:slots.has(input.slotKey)?input.slotKey:"before-old-stories",
   title:text(input.title,120),intro:text(input.intro,1000),drinksCopy:text(input.drinksCopy,1000),coverCopy:text(input.coverCopy,1000)};
 }
+const bookingGuestCount=booking=>booking.guestCount??booking.guests?.length??(booking.seats-1);
 async function eventAction({db,user,body}){
  const ref=db.doc(ROOT);
  if(body.action==="yearEndView"){
@@ -32,18 +33,19 @@ async function eventAction({db,user,body}){
   }
   const booking=(await ref.collection("editions").doc(event.id).collection("bookings").doc(user.uid).get()).data();
   const {programItems,...publicEvent}=event;
-  let attendees;
+  let attendees,dietaryRequests;
   if(body.includeAttendees===true && !event.archived){
-   const {members}=await context(db,user,"turf-kings");
+   const {members,captain}=await context(db,user,"turf-kings");
    const roster=new Map(members.map(member=>[member.uid,member.fullName||member.shortName]));
    const snapshot=await ref.collection("editions").doc(event.id).collection("bookings").get();
+   if(captain)dietaryRequests=snapshot.docs.map(doc=>doc.data()).filter(row=>["paid","confirmed"].includes(row.status)&&(row.dietary||row.dietaryNotes)).map(row=>({name:row.displayName||"Club player",dietary:row.dietary||"",notes:row.dietaryNotes||""}));
    attendees=snapshot.docs.flatMap((doc,index)=>{
     const row=doc.data();
     if(!["paid","confirmed","pending"].includes(row.status))return [];
     return [{id:doc.id===user.uid?"self":String(index),name:row.displayName||roster.get(doc.id)||"Club player",friends:row.seats-1,amount:row.amount,status:row.status,paid:row.status==="paid"}];
    });
   }
-  return {attendees,event:manager||event.programPublished?event:publicEvent,booking:booking?{status:booking.status,guests:booking.guests,coolers:booking.coolers,bottles:booking.bottles,amount:booking.amount}:null};
+  return {attendees,dietaryRequests,event:manager||event.programPublished?event:publicEvent,booking:booking?{status:booking.status,guestCount:bookingGuestCount(booking),dietary:booking.dietary||"",dietaryNotes:booking.dietaryNotes||"",amount:booking.amount}:null};
  }
  return db.runTransaction(async tx=>{
   const ctx=await context(db,user,"turf-kings",tx);
@@ -81,8 +83,8 @@ async function checkout({db,user,body,secret,request=fetch}){
  if(!/^sk_(test|live)_/.test(secret||"")||(project!=="five-asides-near-me"&&!secret.startsWith("sk_test_")))throw Error("This environment needs a Yoco test key.");
  if(body.accepted!==true||!eventId(body.eventId)||!integer(body.eventVersion,1,Number.MAX_SAFE_INTEGER))throw Error("Review the RSVP and accept the payment terms.");
  const origin=originSet.has(body.origin)?body.origin:"https://five-asides-near-me-staging.web.app";
- const guests=Array.isArray(body.guests)?body.guests.map(x=>text(x,80)):null;
- if(!guests||guests.some(x=>!x)||new Set(guests.map(x=>x.toLowerCase())).size!==guests.length||!integer(body.coolers,0,20)||!integer(body.bottles,0,20))throw Error("Enter unique guest names and valid quantities.");
+ const guestCount=body.guestCount??(Array.isArray(body.guests)?body.guests.length:null);
+ if(!integer(guestCount,0,20))throw Error("Choose a valid guest count.");
  const ref=db.doc(ROOT),bookingRef=ref.collection("editions").doc(body.eventId).collection("bookings").doc(user.uid);
  const payment=await db.runTransaction(async tx=>{
   const {member}=await context(db,user,"turf-kings",tx);
@@ -92,17 +94,18 @@ async function checkout({db,user,body,secret,request=fetch}){
   if(old?.status==="pending"){
    const pending=(await tx.get(db.collection(PAYMENT).doc(old.paymentId))).data();
    if(!pending)throw Error("Contact support to verify your pending RSVP.");
-   if(JSON.stringify(old.guests)!==JSON.stringify(guests)||old.coolers!==body.coolers||old.bottles!==body.bottles)throw Error("An RSVP payment is already pending. Resume that payment before changing the booking.");
+   if(bookingGuestCount(old)!==guestCount)throw Error("An RSVP payment is already pending. Resume that payment before changing the booking.");
+   if(old.coolers>0||old.bottles>0)throw Error("This older checkout includes corkage. Contact the organiser to reconcile it before paying.");
    return pending;
   }
   if(!event||event.id!==body.eventId||event.archived||event.startsAt<=Date.now()||event.updatedAtMs!==body.eventVersion)throw Error("The event changed. Refresh and review it.");
-  if(guests.length>event.maxGuests)throw Error("Too many guests for this event.");
-  const seats=1+guests.length;
+  if(guestCount>event.maxGuests)throw Error("Too many guests for this event.");
+  const seats=1+guestCount;
   if(event.reserved+seats>event.capacity)throw Error("There are not enough seats left.");
-  const amount=event.player+event.guest*guests.length+event.cooler*body.coolers+event.bottle*body.bottles;
+  const amount=event.player+event.guest*guestCount;
   const id=randomUUID(),status=amount?"pending":"confirmed";
   tx.update(ref,{reserved:event.reserved+seats});
-  tx.set(bookingRef,{displayName:member.fullName||member.shortName||user.name||"Club player",status,guests,coolers:body.coolers,bottles:body.bottles,seats,amount,paymentId:id,createdAtMs:Date.now()});
+  tx.set(bookingRef,{displayName:member.fullName||member.shortName||user.name||"Club player",status,guestCount,dietary:["Vegetarian","Vegan","Halal","Gluten-free","Allergy or other"].includes(body.dietary)?body.dietary:"",dietaryNotes:text(body.dietaryNotes,240),seats,amount,paymentId:id,createdAtMs:Date.now()});
   if(!amount)return {confirmed:true};
   const payment={id,eventId:event.id,uid:user.uid,amount,status,mode:secret.startsWith("sk_test_")?"test":"live"};
   tx.create(db.collection(PAYMENT).doc(id),payment);

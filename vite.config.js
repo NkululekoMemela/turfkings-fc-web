@@ -1,4 +1,5 @@
 // vite.config.js
+import { publicTermsPage } from "./scripts/publicTerms.mjs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
@@ -11,6 +12,12 @@ export default defineConfig(() => {
   return {
     plugins: [
       react(),
+      {
+        name: "fanm-public-terms",
+        generateBundle() {
+          this.emitFile({type:"asset",fileName:"terms.html",source:publicTermsPage()});
+        },
+      },
       !isNativeBuild &&
         VitePWA({
           registerType: "autoUpdate",

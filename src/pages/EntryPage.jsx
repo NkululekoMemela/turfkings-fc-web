@@ -1,3 +1,4 @@
+import {fieldAlert} from "../components/FieldDialog.jsx";
 import ClubAdminNoticeHeader from "../components/ClubAdminNoticeHeader.jsx";
 import ClubChallengeInbox from "../components/ClubChallengeInbox.jsx";
 import {clubChallengesEnabled} from "../storage/clubChallengeGateway.js";
@@ -2732,13 +2733,8 @@ export function EntryPage({
     setVerifyError("");
     setVerifyStatus("");
 
-    setSigninProgress(8);
-    setSigninStatus("Preparing your football profile...");
-    setShowSigninLoading(true);
-
-
     if (!selectedMember) {
-      setVerifyError(`Please select your name on the ${activeClubName} list.`);
+      await fieldAlert(`Choose your name in the ${activeClubName} player list above, then continue with the Google account linked to that profile.`);
       return;
     }
 
@@ -2755,6 +2751,10 @@ export function EntryPage({
       );
       return;
     }
+
+    setSigninProgress(8);
+    setSigninStatus("Preparing your football profile...");
+    setShowSigninLoading(true);
 
     let u = auth.currentUser;
     if (!u) {

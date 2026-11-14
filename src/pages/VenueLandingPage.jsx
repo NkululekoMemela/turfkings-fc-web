@@ -675,7 +675,7 @@ export default function VenueLandingPage({
   const showFieldFixture = Boolean(fixturePreview);
   const fixtureToday = fixturePreview?.isMatchDay;
   const previewDate = fixturePreview?.date || "";
-  const canChangeFixture = canStartMatch && !hasLiveMatch;
+  const canChangeFixture = isThreeTeamLeague && canStartMatch && !hasLiveMatch;
   const fixtureDateLabel = /^\d{4}-\d{2}-\d{2}$/.test(previewDate)
     ? new Intl.DateTimeFormat("en-ZA", {weekday:"short", day:"numeric", month:"short", timeZone:"UTC"})
       .format(new Date(`${previewDate}T12:00:00Z`)) : "";
@@ -1675,16 +1675,16 @@ export default function VenueLandingPage({
           <div className="match-setup-row field-landing-pair">
             <MatchTeamChooser label="On-field Team 1" roundCrest
               value={previewFixture.clubAId} teams={optionsForTeamA}
-              renderLabel={fixtureToday ? renderOptionLabel : undefined}
+              renderLabel={fixtureToday && (isAdmin || activeRole === "referee") ? renderOptionLabel : undefined}
               onChange={handleTeamAChange} disabled={!canChangeFixture} side="a"
-              compactFixture={!fixtureToday} hideReadOnlyHint
+              compactFixture={!fixtureToday} dayPairingRole={Boolean(fixtureToday && canChangeFixture && (isAdmin || activeRole === "referee"))}
               ringColour={fixtureRing(previewFixture.clubAId, "home")} />
             <span className="vs-label match-team-versus">VS</span>
             <MatchTeamChooser label="On-field Team 2" roundCrest
               value={previewFixture.clubBId} teams={optionsForTeamB}
-              renderLabel={fixtureToday ? renderOptionLabel : undefined}
+              renderLabel={fixtureToday && (isAdmin || activeRole === "referee") ? renderOptionLabel : undefined}
               onChange={handleTeamBChange} disabled={!canChangeFixture} side="b"
-              compactFixture={!fixtureToday} hideReadOnlyHint
+              compactFixture={!fixtureToday} dayPairingRole={Boolean(fixtureToday && canChangeFixture && (isAdmin || activeRole === "referee"))}
               ringColour={fixtureRing(previewFixture.clubBId, "away")} />
           </div>
           {!fixtureToday && <p className="field-landing-kickoff">{[
@@ -1952,18 +1952,6 @@ export default function VenueLandingPage({
           </div>
         ) : (
           <>
-            <p
-              className={
-                isPlayer
-                  ? "muted"
-                  : "muted landing-spectator-note"
-              }
-            >
-              {isPlayer
-                ? "Match start: captains and admins only."
-                : "You can follow the live game."}
-            </p>
-
             <div
               className="actions-row landing-actions landing-actions--viewer"
               style={{
@@ -1982,6 +1970,7 @@ export default function VenueLandingPage({
                 type="button"
                 onClick={handleSpectatorLiveClick}
               >
+                {fixtureToday && (isPlayer || isSpectator) && <small className="fixture-follow-label">Follow live game</small>}
                 {renderTileContent({
                   isMobile,
                   icon: "⚽",

@@ -1,3 +1,4 @@
+import CompanyWeeklyInvoices from "./CompanyWeeklyInvoices.jsx";
 import CompanyClubSetupForm from "./CompanyClubSetupForm.jsx";
 import React,{useEffect,useRef,useState} from 'react';
 import {onAuthStateChanged} from 'firebase/auth';
@@ -31,7 +32,8 @@ function CompanyAccount({company,operator,busy,run}){
  {season&&<p>{season.fieldName} · {season.seasonName} · {season.accepted} accepted · {season.authorised} funding authorised</p>}
  {operator&&season&&<button className="primary-btn" disabled={busy||!season.invited} onClick={()=>run(async()=>{await companyClubsRequest({action:'authoriseSeason',clubId});setSeason(await companyClubsRequest({action:'seasonView',clubId}));})}>Authorise season squad</button>}
  {operator&&company.funding.commitments?.length>0&&<details><summary>Review committed funding</summary><p>Withdrawing funding removes sponsored eligibility and releases the allowance. A live match must finish first.</p><label>Reason<input maxLength={400} value={withdrawReason} onChange={e=>setWithdrawReason(e.target.value)}/></label>{company.funding.commitments.map(grant=><p key={grant.id}>{grant.label} · {money(grant.amountMinor)} <button className="secondary-btn" disabled={busy||!withdrawReason.trim()} onClick={()=>run(()=>companyClubsRequest({action:'revokeSeason',companyId:company.id,grantId:grant.id,reason:withdrawReason}))}>Withdraw authorisation</button></p>)}</details>}
- <small style={{display:'block'}}>Funding authorisation reserves the agreed company allowance. It is not an invoice or payment receipt. Company booking fulfilment and invoicing follow in the next rollout.</small>
+ <small style={{display:'block'}}>Funding authorisation reserves the agreed company allowance. It is not an invoice or payment receipt.</small>
+ {clubId&&<CompanyWeeklyInvoices clubId={clubId} operator={operator}/>}
  </article>;
 }
 

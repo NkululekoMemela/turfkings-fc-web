@@ -12,7 +12,8 @@ import {
   getPlayerPhotosCollection,
 } from "../core/clubFirestorePaths";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { toPng } from "html-to-image";
+import { toBlob } from "html-to-image";
+import {saveFieldExport} from "../core/saveFieldExport.js";
 import { buildClubIdentity } from "../core/clubIdentity.js";
 import {
   FANM_PRO_CLUBS,
@@ -1761,6 +1762,8 @@ export function PlayerCardPage({
 
   const cardRefs = useRef({});
   const longPressTimers = useRef({});
+  const pressOrigin = useRef(null);
+  useEffect(() => () => Object.values(longPressTimers.current).forEach(window.clearTimeout), []);
   const didHandlePhoneBackRef = useRef(false);
   const canonicalNameCacheRef = useRef({});
 
@@ -2886,20 +2889,16 @@ export function PlayerCardPage({
   async function saveCardImage(player) {
     try {
       const node = cardRefs.current[player.id];
-      if (!node) return;
+      if (!node || savingCardId) return;
 
       setSavingCardId(player.id);
 
-      const dataUrl = await toPng(node, {
-        cacheBust: true,
-        pixelRatio: 4,
+      const blob = await toBlob(node, {
+        pixelRatio: 3,
         backgroundColor: "#0b1220",
       });
-
-      const link = document.createElement("a");
-      link.download = `${slugFromName(player.displayName || player.name)}_card.png`;
-      link.href = dataUrl;
-      link.click();
+      if (!blob) throw Error("Could not prepare the card.");
+      await saveFieldExport(blob, `${slugFromName(player.displayName || player.name)}_card.png`, "Player card");
     } catch (err) {
       console.error("Failed to save card:", err);
       window.alert("Could not save this card as an image.");
@@ -2908,7 +2907,10 @@ export function PlayerCardPage({
     }
   }
 
-  function startLongPress(player) {
+  function startLongPress(player, event) {
+    if (event.pointerType === "mouse" || !event.isPrimary || event.target.closest("button,a")) return;
+    const {clientX:x,clientY:y}=event;
+    pressOrigin.current = {id:player.id,x,y};
     clearLongPress(player.id);
     longPressTimers.current[player.id] = window.setTimeout(() => {
       saveCardImage(player);
@@ -3114,10 +3116,15 @@ export function PlayerCardPage({
                     if (el) cardRefs.current[p.id] = el;
                   }}
                   onDoubleClick={() => saveCardImage(p)}
-                  onTouchStart={() => startLongPress(p)}
-                  onTouchEnd={() => clearLongPress(p.id)}
-                  onTouchMove={() => clearLongPress(p.id)}
-                  onTouchCancel={() => clearLongPress(p.id)}
+                  onPointerDown={event => startLongPress(p,event)}
+                  onPointerUp={() => clearLongPress(p.id)}
+                  onPointerLeave={() => clearLongPress(p.id)}
+                  onPointerCancel={() => clearLongPress(p.id)}
+                  onPointerMove={event => {
+                    const start=pressOrigin.current;
+                    if (start?.id===p.id && Math.hypot(event.clientX-start.x,event.clientY-start.y)>10) clearLongPress(p.id);
+                  }}
+                  onContextMenu={event => event.preventDefault()}
                   className={
                     p.isYou
                       ? "player-card fifa-card player-card-you"
@@ -3125,6 +3132,8 @@ export function PlayerCardPage({
                   }
                   style={{
                     cursor: "pointer",
+                    WebkitTouchCallout:"none",
+                    userSelect:"none",
                     position: "relative",
                     opacity: savingCardId === p.id ? 0.88 : 1,
                     overflow: "hidden",

@@ -1,4 +1,4 @@
-import { BOOKING_TERMS, BOOKING_TERMS_PATH } from "../legal/bookingTerms.js";
+import BookingTermsDetails from "../legal/BookingTermsDetails.jsx";
 import { calculateLateBookingFee } from "../../functions/lateBookingPolicy.mjs";
 import { getActiveFirebaseFunctionsBaseUrl } from "../firebaseConfig.js";
 // src/pages/PaymentPage.jsx
@@ -993,13 +993,7 @@ export default function PaymentPage({
 
               {!isPracticeMode && isTurfKingsYoco && !isFullyPaid && (
                 <section className="payment-help-text" aria-label="Booking terms">
-                  <details>
-                    <summary>Booking, cancellation, refund and delivery terms</summary>
-                    {BOOKING_TERMS.map(([heading, detail]) => (
-                      <p key={heading}><strong>{heading}:</strong> {detail}</p>
-                    ))}
-                    <a href={BOOKING_TERMS_PATH} target="_blank" rel="noopener noreferrer">Open Terms and Conditions</a>
-                  </details>
+                  <BookingTermsDetails/>
                   <label>
                     <input type="checkbox" checked={bookingTermsAccepted}
                       onChange={event => setBookingTermsAccepted(event.target.checked)} />

@@ -85,17 +85,19 @@ export default function ClubLeagueSeasonEntry({clubId, onOpen}) {
         }}
       />
     )}
-    <button type="button" className="website-btn" onClick={onOpen}
-      style={{
-        minHeight: 48, width: "100%", display: "flex",
-        alignItems: "center", justifyContent: "center", gap: 10,
-        border: "1px solid rgba(167,139,250,.7)",
-        background: "linear-gradient(135deg, #49307a, #251b43)",
-        color: "#f5f3ff",
-      }}>
-      <span aria-hidden="true">{entry.icon}</span>
-      <span>{entry.label}</span>
-    </button>
+    <div style={{display: "flex", justifyContent: "flex-start", marginBlock: "0.5rem 0.85rem"}}>
+      <button type="button" className="website-btn" onClick={onOpen}
+        style={{
+          minHeight: 44, width: "fit-content", maxWidth: "100%", padding: "0.45rem 0.8rem",
+          display: "inline-flex", alignItems: "center", gap: "0.5rem", borderRadius: "999px",
+          border: "1px solid rgba(167,139,250,.55)",
+          background: "linear-gradient(135deg, #37275a, #251b43)", color: "#f5f3ff",
+        }}>
+        <span aria-hidden="true">{entry.icon}</span>
+        <span>{entry.label}</span>
+        <span aria-hidden="true">›</span>
+      </button>
+    </div>
     </>
   );
 }

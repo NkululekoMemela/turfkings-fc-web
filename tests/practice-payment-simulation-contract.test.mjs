@@ -60,7 +60,7 @@ test("Practice simulation never redirects to Paystack", () => {
 
   const block = payment.slice(start, end);
 
-  assert.doesNotMatch(block, /createPaystackCheckout/);
+  assert.doesNotMatch(block, /create(?:Paystack|Yoco)Checkout/);
   assert.doesNotMatch(block, /postJson\(/);
   assert.doesNotMatch(block, /window\.location\.assign/);
   assert.match(block, /paymentProviderContacted:\s*false/);
@@ -98,7 +98,7 @@ test("Practice simulation is explicitly marked non-financial", () => {
 test("Official Paystack checkout remains present", () => {
   assert.match(
     payment,
-    /createPaystackCheckout/
+    /createYocoCheckout/
   );
   assert.match(
     payment,

@@ -1,3 +1,4 @@
+import CompanyWeeklySignup from "./components/CompanyWeeklySignup.jsx";
 import ExhibitionPlayerNotice, {markExhibitionPushOpened} from "./components/ExhibitionPlayerNotice.jsx";
 import {useClubExhibition} from "./storage/useClubExhibition.js";
 import ClubChallengeInbox from "./components/ClubChallengeInbox.jsx";
@@ -2620,7 +2621,7 @@ function MainApp() {
 
   const [entryPageIntent, setEntryPageIntent] = useState(null);
   const [page, setPage] = useState(() =>
-    Capacitor.isNativePlatform() ? PAGE_ENTRY : PAGE_WELCOME
+    Capacitor.isNativePlatform() || new URLSearchParams(window.location.search).has("yearEndRsvp") ? PAGE_ENTRY : PAGE_WELCOME
   );
   useEffect(() => {
     if (!FANM_ENVIRONMENT_BADGE || typeof document === "undefined" || page === PAGE_WELCOME) {
@@ -3423,6 +3424,11 @@ function MainApp() {
     const shouldChooseSession =
       ["admin", "captain"].includes(nextRole);
 
+    if (safePayload?.clubId === DEFAULT_CLUB_ID && new URLSearchParams(window.location.search).has("yearEndRsvp")) {
+      setShowSessionSelector(false);
+      setPage(PAGE_NEWS);
+      return;
+    }
     setShowSessionSelector(shouldChooseSession);
 
     setPage(
@@ -5483,6 +5489,12 @@ function MainApp() {
   const nextExhibition = !hasLiveMatch && !running && exhibition.nextMatch &&
     (exhibition.nextMatch.status === "live" || exhibition.nextMatch.kickoffMs <= nextClubKickoff(activeClubIdentity?.weeklyPlayTime))
     ? exhibition.nextMatch : null;
+  useEffect(() => {
+    if (!nextExhibition || isAdmin || isCaptain) return;
+    setClubBrowseChoice(current => current || {
+      clubId:activeClubId, uid:authUser?.uid ?? null, published:publishedMatchType, value:MATCH_TYPE.FRIENDLY,
+    });
+  }, [nextExhibition?.fixtureId, activeClubId, authUser?.uid, publishedMatchType, isAdmin, isCaptain]);
   const isBrowsingPublishedMode = browseMatchType === publishedMatchType;
   const browsedExhibition = exhibitionInClubBrowse({exhibition:nextExhibition,published:publishedMatchType,browsing:browseMatchType});
   const exhibitionSignupHint = exhibition.fixtures.some((fixture) => fixture.canBook) ? "Book challenge" : "";
@@ -5498,7 +5510,7 @@ function MainApp() {
     // DataScope; no external payment provider is contacted.
     if (!canAccessMatchSignup) {
       window.alert(
-        "Please sign in as a club player before using payments. This prevents untracked payments."
+        isCompanyClub ? "Sign in as a Company Club player to book a week." : "Please sign in as a club player before using payments. This prevents untracked payments."
       );
       setPage(PAGE_ENTRY);
       return;
@@ -8094,6 +8106,7 @@ function MainApp() {
   };
 
   const handleProceedToPayment = (payload) => {
+    if (isCompanyClub && !isPracticeMode) {setPage(PAGE_MATCH_SIGNUP);return;}
     const safePayload = payload || {};
     console.log("[TK PAYMENTS] proceed to payment payload:", safePayload);
     setPaymentContext(safePayload);
@@ -8630,6 +8643,11 @@ function MainApp() {
     return () => window.clearTimeout(timer);
   }, [isRefereeStatsView]);
 
+  const [clubChromeHidden, setClubChromeHidden] = useState(false);
+  useLayoutEffect(() => {
+    setClubChromeHidden(false);
+  }, [page, activeClubId, showExhibitionDesk]);
+
   const showBottomNav =
     (pagesWithBottomNav.has(page) ||
       (page === PAGE_CLUB_LEAGUE_SEASON && !isPracticeMode)) &&
@@ -8719,7 +8737,7 @@ function MainApp() {
 
   return (
     <ClubRibbonProvider club={activeClubIdentity} mode={browseMatchType===MATCH_TYPE.LEAGUE?'Mini-league':'Friendly'} onHome={handleBackToLanding}><div
-      className={`app-root ${showBottomNav ? "has-bottom-nav" : ""} ${
+      className={`app-root ${showBottomNav && !clubChromeHidden ? "has-bottom-nav" : ""} ${clubChromeHidden ? "app-root--club-chrome-hidden" : ""} ${
         page === PAGE_LANDING ? (showExhibitionDesk ? "app-root--exhibition" : "app-root--landing") : ""
       } ${page === PAGE_VENUE_ENTRY ? "app-root--field" : ""}`}
     >
@@ -10154,15 +10172,7 @@ function MainApp() {
         {!showExhibitionDesk && <LandingPage
           nextExhibition={browsedExhibition}
           onOpenExhibition={(fixtureId, viewerOnly = false) => setExhibitionDesk({fixtureId, clubId: activeClubId, userId: authUser?.uid, viewerOnly})}
-          leagueSeasonEntry={!isPracticeMode ? (
-            <>
-              <ClubLeagueSeasonEntry
-                key={activeClubId}
-                clubId={activeClubId}
-                onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}
-              />
-            </>
-          ) : canManageSquads && (
+          leagueSeasonEntry={isPracticeMode && canManageSquads && (
             <section className="card" aria-label="Practice paths">
               <h3>Choose a Practice path</h3>
               <p>{isCompanyClub ? "Company-funded Club · no personal payments" : "Community Club"}</p>
@@ -10228,6 +10238,7 @@ function MainApp() {
           onOpenHighlightsCamera={handleOpenHighlightsCamera}
           onGoToEntryDev={handleChangeProfile}
           onGoToPayments={handleGoToMatchSignup}
+          companyBookings={isCompanyClub}
           identity={pageIdentity}
           activeRole={activeRole}
           isAdmin={isAdmin}
@@ -10252,13 +10263,16 @@ function MainApp() {
             setSelectedLeagueVenue(field);
             setPage(PAGE_VENUE_ENTRY);
           }}
-          onBack={() => setPage(PAGE_LANDING)}
+          onBack={() => setPage(PAGE_MATCH_SIGNUP)}
         />
       )}
 
+      {isCompanyClub && !isPracticeMode && canAccessMatchSignup && [PAGE_MATCH_SIGNUP,PAGE_PAYMENT].includes(page) &&
+        <CompanyWeeklySignup leagueSeasonEntry={!isPracticeMode && <ClubLeagueSeasonEntry key={activeClubId} clubId={activeClubId} onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}/>} key={activeClubId} clubId={activeClubId} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
       {page === PAGE_MATCH_SIGNUP && canAccessMatchSignup && (!isCompanyClub || isPracticeMode) && (
         <BookingPageBoundary key={activeClubId} onBack={() => setPage(PAGE_LANDING)}>
         <MatchSignupPage
+          leagueSeasonEntry={!isPracticeMode && <ClubLeagueSeasonEntry key={activeClubId} clubId={activeClubId} onOpen={() => setPage(PAGE_CLUB_LEAGUE_SEASON)}/>}
           exhibition={exhibition}
           clubModeLabel={matchType===MATCH_TYPE.LEAGUE?"Mini-league":"Friendly"}
           gameFormat={gameFormat}
@@ -10502,7 +10516,7 @@ function MainApp() {
         />
       )}
 
-      {isCompanyClub&&(page === PAGE_SHOP || (!isPracticeMode && [PAGE_MATCH_SIGNUP,PAGE_PAYMENT].includes(page)))&&<main className="page"><section className="card"><h2>Company-funded football</h2><p>Your company covers approved games and merchandise. Players and captains do not pay personally.</p><p>Company booking fulfilment, merchandise orders and invoices will open in the next rollout. You can accept your Field season invitation and confirm availability now.</p><button className="secondary-btn" onClick={handleBackToLanding}>Back to Club</button></section></main>}
+      {isCompanyClub&&page === PAGE_SHOP&&<main className="page"><section className="card"><h2>Company-funded football</h2><p>Your company covers approved games and merchandise. Players and captains do not pay personally.</p><p>Company merchandise ordering is not available yet. You can accept your Field season invitation and confirm availability now.</p><button className="secondary-btn" onClick={handleBackToLanding}>Back to Club</button></section></main>}
       {page === PAGE_SHOP && !isCompanyClub && <KitShopPage clubId={activeClubId} key={`shop:${activeClubId}:${authUser?.uid || "guest"}`} preferredColor={shopPreference} canCreatePoll={Boolean(authUser && !authUser.isAnonymous && pageIdentity && ["admin","captain"].includes(String(pageIdentity.role||"").toLowerCase()))} onCreatePoll={(merchandiseId)=>{setShopPollDraft({clubId:activeClubId,merchandiseId,requestId:Date.now()});setPage(PAGE_NEWS);window.scrollTo(0,0);}} club={{...activeClubIdentity?.raw,name:activeClubName,logoUrl:activeClubIdentity?.logoUrl}} isPracticeMode={isPracticeMode} onBack={handleBackToLanding}/>}
       {page === PAGE_PLAYER_PROFILE && !canAccessPlayerFeatures && <main className="page"><section className="card"><h1>Player Profile</h1><p>Enter your club as a verified player to open your profile. Spectator mode does not use player details.</p><button type="button" className="primary-btn" onClick={()=>setPage(PAGE_ENTRY)}>Go to club sign-in</button><button type="button" className="secondary-btn" onClick={handleBackToLanding}>Back to Home</button></section></main>}
       {page === PAGE_PLAYER_PROFILE && canAccessPlayerFeatures && (
@@ -11859,6 +11873,8 @@ function MainApp() {
             setNativeChatOpenRequest((pending) => pending === request ? null : pending);
           }}
           onOpenHighlight={handleGoToViewHighlights}
+          navigationHidden={clubChromeHidden}
+          onToggleNavigation={[PAGE_NEWS, PAGE_PLAYER_CARDS].includes(page) ? () => setClubChromeHidden(hidden => !hidden) : undefined}
           variant="launcher"
         />
       ) : null}
@@ -11908,7 +11924,7 @@ function MainApp() {
           exhibitionSquadsHint={exhibitionSquadsHint}
           ticketClubId={activeClubId}
           ticketMemberId={identity?.memberId||""}
-          ticketEnabled={canAccessPlayerFeatures&&!isPracticeMode}
+          ticketEnabled={canAccessPlayerFeatures&&!isPracticeMode&&!isCompanyClub}
           baselineReminder={{
             enabled: Boolean(canAccessPlayerFeatures && canManageSquads && !isPracticeMode && authUser?.uid && !authUser.isAnonymous),
             matchDayHistory, friendlyMatchDayHistory, teams: peerReviewTeams,
@@ -11922,7 +11938,8 @@ function MainApp() {
           canAccessLive={Boolean(canStartMatch || hasLiveMatch || running)}
           canManageSquads={canManageSquads}
           canAccessProfile={canAccessPlayerFeatures}
-          canAccessPayments={canAccessMatchSignup&&(!isCompanyClub||isPracticeMode)}
+          canAccessPayments={canAccessMatchSignup}
+          companyBookings={isCompanyClub}
           canAccessPeerReview={activeRole !== "spectator"}
           locked={isRefereeStatsView}
           lockedMessage="You Are A Referee, have you forgotten? Return to the Game Controls"

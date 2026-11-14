@@ -56,12 +56,12 @@ let legacyTwilioConfig = {};
 let legacyYocoConfig = {};
 try {
   legacyTwilioConfig = functions.config().twilio || {};
-} catch (error) {
+} catch {
   legacyTwilioConfig = {};
 }
 try {
   legacyYocoConfig = functions.config().yoco || {};
-} catch (error) {
+} catch {
   legacyYocoConfig = {};
 }
 
@@ -337,7 +337,7 @@ function isLocalUrl(value = "") {
       host === "127.0.0.1" ||
       host === "0.0.0.0"
     );
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -733,7 +733,7 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
     let data = {};
     try {
       data = text ? JSON.parse(text) : {};
-    } catch (error) {
+    } catch {
       data = {raw: text};
     }
 
@@ -815,7 +815,7 @@ function verifyPaystackWebhookSignature(req) {
       Buffer.from(expected),
       Buffer.from(signature)
     );
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -1093,7 +1093,7 @@ exports.createYocoCheckout = onRequest(
       });
     }
 
-    if (!hasYocoConfig) {
+    if (req.body?.purpose !== "year_end" && !hasYocoConfig) {
       return res.status(500).json({
         ok: false,
         error: "Yoco configuration is missing on the server.",
@@ -6014,4 +6014,8 @@ exports.notifyClubChallengeInvitation = clubChallengeLifecycle.notifyClubChallen
 // Share the archived tournament finale with Field staff and participating Clubs.
 exports.onFieldSeasonCelebration = require("./fieldSeasonCelebration.cjs").buildHandler({
   db, region: REGION, auth: admin.auth(), messaging: admin.messaging(),
+});
+
+exports.yearEndShare = onRequest({region: REGION, invoker: "public"}, async (req, res) => {
+  await require("./yearEndShare.cjs").respond(req, res, db);
 });

@@ -2240,16 +2240,6 @@ export function VideoHighlightsPage({
 
   useEffect(()=>{if(!loadingHighlights){setPreviewLoadStatus("Highlights ready");setClipPreviewsReady(true);}},[loadingHighlights]);
 
-  useEffect(() => {
-    if (splashDismissed) return undefined;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [splashDismissed]);
 
   useEffect(() => {
     return () => {

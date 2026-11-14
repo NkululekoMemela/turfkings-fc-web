@@ -1,3 +1,4 @@
+import {SpectatorPage} from "./SpectatorPage.jsx";
 import React, {useEffect, useMemo, useState} from "react";
 import {onSnapshot} from "firebase/firestore";
 import {db} from "../firebaseConfig.js";
@@ -14,38 +15,7 @@ const clock = seconds => {
   return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(Math.floor(n % 60)).padStart(2, "0")}`;
 };
 const phases = {first_half: "First half", halftime: "Half-time", second_half: "Second half", full_time: "Full time"};
-const events = {goal: ["⚽", "Goal"], red_card: ["🟥", "Red card"], yellow_card: ["🟨", "Yellow card"], injury: ["🩹", "Injury"], foul: ["•", "Foul"]};
 const kickoff = new Intl.DateTimeFormat("en-ZA", {dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Johannesburg"});
-
-function MatchReel({matchId, venueId, fixtureId, seasonId, suppliedClips}) {
-  const [fieldClips, setClips] = useState([]);
-  const clips = suppliedClips || fieldClips;
-  const [selected, select] = useState("");
-  useEffect(() => {
-    if (!matchId) return;
-    let active = true;
-    const stop = subscribeToMatchHighlights({matchId, clubId: venueId, onChange: items => {
-      if (active) setClips(items.filter(clip => clipBelongsToLiveFixture(clip, {matchId, venueId, fixtureId, seasonId})));
-    }, onError: () => { if (active) setClips([]); }});
-    return () => { active = false; stop(); };
-  }, [matchId, venueId, fixtureId, seasonId]);
-
-  if (!clips.length) return null;
-  const current = clips.find(clip => clip.id === selected) || clips[0];
-  const index = clips.indexOf(current);
-  return <section className="field-watch-panel field-watch-reel" aria-label="Match highlights">
-    <header><h2>Match highlights</h2><span>{index + 1} / {clips.length}</span></header>
-    <video key={current.id} controls playsInline preload="metadata"
-      aria-label={current.title || "Match highlight"}
-      poster={current.thumbnailUrl || current.posterUrl || undefined} src={current.playableUrl}/>
-    <footer>
-      <button type="button" aria-label="Previous clip" disabled={!index} onClick={() => select(clips[index - 1].id)}>‹</button>
-      <div><strong>{current.title || current.playerName || current.scorer || "Match clip"}</strong>
-        <small>{current.normalizedType}</small></div>
-      <button type="button" aria-label="Next clip" disabled={index + 1 === clips.length} onClick={() => select(clips[index + 1].id)}>›</button>
-    </footer>
-  </section>;
-}
 
 function Team({team}) {
   const logo = team.transparentLogoUrl || team.logoUrl || team.branding?.logoUrl || team.image;
@@ -60,8 +30,8 @@ export default function VenueLeagueSpectatorPage({venue, season = {}, teams = []
   const seasonId = dataScope?.seasonId || season?.id || "";
   const environment = dataScope?.environment || "official";
   const practiceSessionId = dataScope?.practiceSessionId;
-  const matchSummary = requestedFixtureId ? season.liveMatches?.[requestedFixtureId]
-    : Object.values(season.liveMatches || {}).find(match => match?.status === "live");
+  const matchSummary = requestedFixtureId ? season?.liveMatches?.[requestedFixtureId]
+    : Object.values(season?.liveMatches || {}).find(match => match?.status === "live");
   const liveDocumentId = environment === "practice" ? "current" : matchSummary?.liveDocumentId || "current";
   const scope = useMemo(() => ({kind: "venueLeague", environment, venueId, seasonId, practiceSessionId, liveDocumentId}),
     [environment, venueId, seasonId, practiceSessionId, liveDocumentId]);
@@ -92,6 +62,19 @@ export default function VenueLeagueSpectatorPage({venue, season = {}, teams = []
   }, [live?.status, live?.running, live?.timeUp]);
 
   const {kind, match} = fieldSpectatorView({season, live, now, requestedFixtureId});
+  const fixtureId = match?.fixtureId || match?.id;
+  const matchId = !externalSource && environment !== "practice" && match && kind !== "upcoming"
+    ? fieldHighlightMatchId(venueId, seasonId, fixtureId) : "";
+  const [reel, setReel] = useState(null);
+  useEffect(() => {
+    if (!matchId) return;
+    let active = true;
+    const stop = subscribeToMatchHighlights({matchId, clubId: venueId, onChange: items => {
+      if (active) setReel({matchId, items:items.filter(clip => clipBelongsToLiveFixture(clip, {matchId, venueId, fixtureId, seasonId}))});
+    }, onError: () => { if (active) setReel(null); }});
+    return () => {active = false; stop();};
+  }, [matchId, venueId, fixtureId, seasonId]);
+
   if (!match) return <main className="page live-page field-spectator-page">
     <section className="field-watch-panel"><p>{requestedFixtureId ? "This fixture is unavailable." : "No fixture announced yet."}</p></section>
     {error && <p role="status">{error}</p>}
@@ -99,7 +82,7 @@ export default function VenueLeagueSpectatorPage({venue, season = {}, teams = []
   </main>;
   const score = fieldSpectatorScore(match);
   const team = (side, id) => {
-    const listed = teams.find(entry => String(entry.id) === id);
+    const listed = (teams || []).find(entry => String(entry.id) === id);
     return {...listed, label: listed?.label || listed?.name || match[`team${side}Label`] || id,
       ...match[`team${side}Snapshot`]};
   };
@@ -109,10 +92,23 @@ export default function VenueLeagueSpectatorPage({venue, season = {}, teams = []
   const elapsed = match.running && !match.timeUp && match.clockPhase !== "halftime"
     ? Math.max(0, Math.floor((now - (match._receivedAt || now)) / 1000)) : 0;
   const remaining = Math.max(0, (Number(match.secondsLeft) || 0) - elapsed);
-  const fixtureId = match.fixtureId || match.id;
-  const matchId = !externalSource && environment !== "practice" && kind !== "upcoming" ? fieldHighlightMatchId(venueId, seasonId, fixtureId) : "";
-  const feed = visibleFieldMatchEvents(score.events).sort((a,b) => Number(a.timeSeconds || 0) - Number(b.timeSeconds || 0));
-
+  if (kind !== "upcoming") {
+    const nextAt = (season?.fixtures || []).filter(f => f.status === "scheduled" && f.scheduledLocal)
+      .map(f => Date.parse(/(?:Z|[+-]\d{2}:\d{2})$/i.test(f.scheduledLocal) ? f.scheduledLocal : f.scheduledLocal + "+02:00"))
+      .filter(at => at >= now).sort((a,b) => a-b)[0];
+    const next = Number.isFinite(nextAt) ? kickoff.format(nextAt) : "";
+    return <SpectatorPage key={fixtureId} onBack={onBack || onBackToLanding} nextMatchDaySchedule={next}
+      externalView={{match:{...match, teamAId:score.a, teamBId:score.b,
+        teamASnapshot:team("A",score.a), teamBSnapshot:team("B",score.b),
+        matchNumber:match.matchNumber || match.matchNo,
+        finalSummary:{goalsA:score.goalsA,goalsB:score.goalsB},
+        events:visibleFieldMatchEvents(score.events).map(event=>({...event,teamId:String(event.teamId||""),
+          scorer:event.scorer||event.playerName||event.player})),
+        isFinished:kind==="result" || match.isFinished},
+        clips:suppliedClips || (reel?.matchId===matchId ? reel?.items : []),
+        secondsLeft:match.clockVersion===1?fieldHalfSecondsLeft({...match,secondsLeft:remaining}):remaining,
+        phase:!match.running && kind==="live" ? `${phase} · Paused` : phase, scores:{goalsA:score.goalsA,goalsB:score.goalsB}, backLabel,error}}/>;
+  }
   return <main className="page live-page field-spectator-page">
     <section className="field-watch-panel field-watch-scoreboard" aria-label="Match score">
       <div className="field-watch-status" data-live={kind === "live" && match.running && !match.timeUp}>{phase}</div>
@@ -125,20 +121,6 @@ export default function VenueLeagueSpectatorPage({venue, season = {}, teams = []
       {kind === "live" && !match.timeUp && !match.awaitingKitVerification && match.clockPhase !== "halftime" &&
         <small role="timer">{clock(match.clockVersion === 1 ? fieldHalfSecondsLeft({...match, secondsLeft: remaining}) : remaining)}{!match.running && " · Paused"}</small>}
     </section>
-    {(matchId || suppliedClips?.length > 0) && <MatchReel key={matchId || fixtureId} matchId={matchId} venueId={venueId} fixtureId={fixtureId} seasonId={seasonId} suppliedClips={suppliedClips}/>}
-    {feed.length > 0 && <section className="field-watch-panel field-watch-events">
-      <h2>Match events</h2>
-      <ol>{feed.map((event, i) => {
-        const [symbol, label] = events[event.type] || ["•", "Match event"];
-        return <li key={event.id || i}>
-          <span className="field-watch-minute">{clock(event.timeSeconds)}</span><span aria-label={label} role="img">{symbol}</span>
-          <div><strong>{event.scorer || event.playerName || event.player || label}</strong>
-            {event.assist && <small>Assist: {event.assist}</small>}</div>
-          <span className="field-watch-event-side" aria-label={event.teamId === score.a ? "Home" : "Away"}
-            data-side={event.teamId === score.a ? "home" : event.teamId === score.b ? "away" : undefined}/>
-        </li>;
-      })}</ol>
-    </section>}
     {error && <p role="status">{error}</p>}
     {(onBack || onBackToLanding) && <button className="secondary-btn field-watch-back" onClick={onBack || onBackToLanding}>{backLabel}</button>}
   </main>;

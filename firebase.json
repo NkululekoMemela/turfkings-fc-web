@@ -9,6 +9,7 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        {"source": "/year-end", "function": {"functionId": "yearEndShare", "region": "us-central1"}},
         {
           "source": "**",
           "destination": "/index.html"
@@ -24,6 +25,7 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        {"source": "/year-end", "function": {"functionId": "yearEndShare", "region": "us-central1"}},
         {
           "source": "**",
           "destination": "/index.html"
@@ -39,6 +41,7 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        {"source": "/year-end", "function": {"functionId": "yearEndShare", "region": "us-central1"}},
         {
           "source": "**",
           "destination": "/index.html"
@@ -54,6 +57,7 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        {"source": "/year-end", "function": {"functionId": "yearEndShare", "region": "us-central1"}},
         {
           "source": "**",
           "destination": "/index.html"
@@ -69,6 +73,7 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        {"source": "/year-end", "function": {"functionId": "yearEndShare", "region": "us-central1"}},
         {
           "source": "**",
           "destination": "/index.html"

@@ -127,15 +127,16 @@ function getSpectatorTeamLabel(team = {}, short = false) {
 
 function SpectatorTeamBadge({ team, short = false }) {
   const identity = resolveSpectatorTeamIdentity(team);
+  const logo = team?.transparentLogoUrl || team?.logoUrl || team?.branding?.logoUrl || team?.image || identity?.logo32;
   const label = getSpectatorTeamLabel(team, short);
 
   return (
     <span className="fanm-live-team-badge spectator-team-badge">
       {identity?.type === "national" && identity.flag ? (
         <span className="fanm-live-team-flag">{identity.flag}</span>
-      ) : identity?.logo32 ? (
+      ) : logo ? (
         <img
-          src={identity.logo32}
+          src={logo}
           alt=""
           className="fanm-live-team-logo"
           onError={(event) => {
@@ -486,7 +487,8 @@ export function SpectatorPage(props) {
   const [matchReelOpen, setMatchReelOpen] = useState(false);
   const [matchReelIndex, setMatchReelIndex] = useState(0);
 
-  const displayMatchDoc = matchDoc || matchDaySnapshot;
+  const external = props.externalView;
+  const displayMatchDoc = external ? external.match : matchDoc || matchDaySnapshot;
   const highlightsMatchId = clubFixtureHighlightMatchId(
     displayMatchDoc, dataScope?.seasonId || props.activeSeasonId,
   );
@@ -500,6 +502,7 @@ export function SpectatorPage(props) {
   const [localSecondsLeft, setLocalSecondsLeft] = useState(null);
 
   useEffect(() => {
+    if (external) return;
     const ref = dataScope
       ? getScopedMatchDoc(db, "current", dataScope)
       : getMatchDoc(db, "current", activeClubId);
@@ -547,10 +550,10 @@ export function SpectatorPage(props) {
     );
 
     return () => unsub();
-  }, [expectedMatchType, activeClubId, dataScope]);
+  }, [expectedMatchType, activeClubId, dataScope, Boolean(external)]);
 
   useEffect(() => {
-    if (!highlightsKey || dataScope?.environment === "practice") return;
+    if (external || !highlightsKey || dataScope?.environment === "practice") return;
     let active = true;
     const stop = subscribeToMatchHighlights({
       matchId: highlightsMatchId,
@@ -559,9 +562,10 @@ export function SpectatorPage(props) {
       onError: () => { if (active) setMatchHighlights({key: highlightsKey, items: []}); },
     });
     return () => { active = false; stop(); };
-  }, [highlightsKey, highlightsMatchId, highlightsClubId, dataScope?.environment]);
+  }, [highlightsKey, highlightsMatchId, highlightsClubId, dataScope?.environment, Boolean(external)]);
 
   const orderedMatchHighlights = useMemo(() => {
+    if (external) return external.clips || [];
     const items = matchHighlights.key === highlightsKey ? matchHighlights.items : [];
     return items.filter(clip => clipBelongsToLiveFixture(clip, {matchId: highlightsMatchId, match: displayMatchDoc})).sort((a, b) => {
       const aSeconds = getSpectatorHighlightSeconds(a);
@@ -576,7 +580,7 @@ export function SpectatorPage(props) {
         getSpectatorHighlightCreatedAt(b)
       );
     });
-  }, [matchHighlights, highlightsKey, highlightsMatchId, displayMatchDoc]);
+  }, [matchHighlights, highlightsKey, highlightsMatchId, displayMatchDoc, external]);
 
   useEffect(() => {
     if (!orderedMatchHighlights.length) {
@@ -656,7 +660,7 @@ export function SpectatorPage(props) {
     return { goalsA: 0, goalsB: 0 };
   }, [displayMatchDoc, events, finalSummary, isFinished]);
 
-  const { goalsA, goalsB } = computedScores;
+  const { goalsA, goalsB } = external?.scores || computedScores;
 
   const teamAForDisplay = teamASnapshot || {
     id: teamAId,
@@ -757,14 +761,14 @@ export function SpectatorPage(props) {
     return () => clearInterval(id);
   }, [matchDoc, isFinished, localSecondsLeft]);
 
-  const hasLiveTimer =
-    localSecondsLeft != null && Number.isFinite(localSecondsLeft);
+  const displaySeconds = external ? external.secondsLeft : localSecondsLeft;
+  const hasLiveTimer = Number.isFinite(displaySeconds);
 
-  const timerText = hasLiveTimer ? formatSeconds(localSecondsLeft) : "--:--";
+  const timerText = hasLiveTimer ? formatSeconds(displaySeconds) : "--:--";
   const regulationTimeComplete =
     !isFinished &&
     hasLiveTimer &&
-    Number(localSecondsLeft) <= 0;
+    Number(displaySeconds) <= 0;
 
   const futureMatchDayLabel =
     formatNextSpectatorMatchDay(nextMatchDaySchedule);
@@ -778,7 +782,7 @@ export function SpectatorPage(props) {
           onClick={goBack}
           style={{ marginBottom: "0.75rem" }}
         >
-          ← Back to Home
+          {external?.backLabel || "← Back to Home"}
         </button>
 
         <h1>Spectator View</h1>
@@ -790,7 +794,7 @@ export function SpectatorPage(props) {
       </header>
 
       <section className="card">
-        {loading && (
+        {!external && loading && (
           <p className="muted" style={{ textAlign: "center" }}>
             Connecting to live match…
           </p>
@@ -819,9 +823,9 @@ export function SpectatorPage(props) {
           </div>
         )}
 
-        {errorText && (
+        {(external?.error || errorText) && (
           <p className="error-text" style={{ textAlign: "center" }}>
-            {errorText}
+            {external?.error || errorText}
           </p>
         )}
 
@@ -860,9 +864,10 @@ export function SpectatorPage(props) {
                   </span>
                 </>
               )}
+              {external?.phase && !isFinished && <span className="muted"> · {external.phase}</span>}
             </div>
 
-            {isFinished && (
+            {isFinished && (!external || nextMatchDaySchedule) && (
               <div
                 style={{
                   margin: "0 0 1rem",

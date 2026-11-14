@@ -33,6 +33,7 @@ export default function BottomNav({
   activeClubName = "Club",
   canAccessProfile = false,
   canAccessPayments = true,
+  companyBookings = false,
   canAccessPeerReview = true,
   hidden = false,
   persistent = false,
@@ -145,11 +146,11 @@ export default function BottomNav({
                         draggable="false"
                       />
                     ) : (
-                      <span className="nav-emoji">{item.emoji}</span>
+                      <span className="nav-emoji">{companyBookings && item.key==="match-signup" ? "📅" : item.emoji}</span>
                     )}
                   </span>
 
-                  <span className="nav-label">{item.label}</span>
+                  <span className="nav-label">{companyBookings && item.key==="match-signup" ? "Book" : item.label}</span>
 
                   {isCurrent && <span className="current-indicator" />}
                 </button>

@@ -52,7 +52,7 @@ async function changePlayerGoogleAccount({admin, db, firebase, body, verifyGoogl
     await synchronizePlayerAccountDetails({admin,db,proof,membershipPaths:members.map(member=>member.ref.path),clubPaths:clubs.map(club=>club.ref.path)});
     return {email:proof.newEmail,uid:proof.uid,profileSyncPending:false};
   } catch (error) {
-    try { await jobRef.set({status:"profile_sync_pending",failureCode:error.code || "profile-sync-failed"},{merge:true}); } catch (_) { /* UID ownership remains bound; selected profile can resync on its next save. */ }
+    try { await jobRef.set({status:"profile_sync_pending",failureCode:error.code || "profile-sync-failed"},{merge:true}); } catch { /* UID ownership remains bound; selected profile can resync on its next save. */ }
     return {email:proof.newEmail,uid:proof.uid,profileSyncPending:true};
   }
 }

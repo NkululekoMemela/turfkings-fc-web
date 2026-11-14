@@ -30,13 +30,20 @@ async function handle({db,user,body}){
    if(!saved||saved.revision!==body.expectedRevision||saved.status!=="requested"||saved.paymentStatus==="pending")throw Error("Refresh this request before confirming payment.");
    tx.set(ref,{...saved,paymentStatus:"paid",paymentReference:clean(body.reference),paymentConfirmedBy:user.uid,revision:saved.revision+1,updatedAtMs:Date.now()});return {saved:true};
   }
+  if(body.action==="cancelBib"){
+   if(!["home","away"].includes(body.side))throw Error("Choose a bib request.");
+   const ref=db.doc(root(clubId)+"/requests/"+requestId(ctx.member.id,body.side));
+   const row=(await tx.get(ref)).data();
+   if(!row||row.revision!==body.expectedRevision||row.status!=="requested"||row.paymentStatus!=="unpaid"||row.orderId)throw Error("This request can no longer be cancelled. Refresh to check its status.");
+   tx.set(ref,{...row,status:"cancelled",revision:row.revision+1,updatedAtMs:Date.now()});return {saved:true};
+  }
   if(body.action!=="requestBib")throw Error("Unknown bib operation.");
   if(!["home","away"].includes(body.side)||!valid(body.productId))throw Error("Choose a home or away bib and size.");
   const ref=db.doc(`${root(clubId)}/requests/${requestId(ctx.member.id,body.side)}`);
   const [old,product,counter,all]=await Promise.all([tx.get(ref),tx.get(db.doc(`kitShopProducts/${body.productId}`)),tx.get(db.doc(root(clubId))),tx.get(db.collection(`${root(clubId)}/requests`))]);
   const previous=old.data(),p=product.data();
   if(!p?.active)throw Error("This bib is unavailable.");
-  if(previous&&(previous.status!=="requested"||["paid","pending"].includes(previous.paymentStatus)))throw Error("Ask your captain to review your existing bib order.");
+  if(previous&&(!["requested","cancelled"].includes(previous.status)||["paid","pending"].includes(previous.paymentStatus)))throw Error("Ask your captain to review your existing bib order.");
   if((previous?.revision||0)!==(body.expectedRevision||0))throw Error("This request changed. Refresh before saving.");
   const row={memberId:ctx.member.id,ownerUid:user.uid,side:body.side,productId:body.productId,number:number(body.number),amountMinor:p.priceMinor,status:"requested",paymentStatus:"unpaid",revision:(previous?.revision||0)+1,updatedAtMs:Date.now()};
   const total=all.docs.filter(d=>d.id!==ref.id&&d.data().side===body.side&&d.data().status==="requested").length+1;

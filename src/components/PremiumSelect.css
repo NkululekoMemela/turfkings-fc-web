@@ -4,7 +4,7 @@
 .fanm-premium-select__trigger>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fanm-premium-select__trigger:disabled{opacity:.5;cursor:default}
 .fanm-premium-select__trigger:focus-visible{outline:2px solid #67e8f9;outline-offset:3px}
-.fanm-premium-select__backdrop{position:fixed;inset:0;z-index:31000;display:flex;align-items:center;justify-content:center;padding:16px;background:#020617b8;backdrop-filter:blur(5px);box-sizing:border-box}
+.fanm-premium-select__backdrop{position:fixed;inset:0;z-index:1000300;display:flex;align-items:center;justify-content:center;padding:16px;background:#020617b8;backdrop-filter:blur(5px);box-sizing:border-box}
 .fanm-premium-select__panel{width:min(520px,100%);max-height:85dvh;overflow:auto;box-sizing:border-box;border:1px solid #7dd3fc44;border-radius:22px;padding:16px;background:#0b1524;color:#f8fafc;box-shadow:0 24px 64px #0008}
 .fanm-premium-select__panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .fanm-premium-select__panel>header button{width:36px;height:36px;border:1px solid #7dd3fc44;border-radius:50%;background:#142033;color:white;font-size:22px;cursor:pointer}
