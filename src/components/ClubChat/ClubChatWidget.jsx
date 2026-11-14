@@ -67,6 +67,8 @@ export function ClubChatWidget({
   onNativeOpenRequestHandled,
   onOpenFullChat,
   onOpenHighlight,
+  navigationHidden = false,
+  onToggleNavigation,
 }) {
 
   /*
@@ -176,7 +178,7 @@ export function ClubChatWidget({
       const viewportHeight = window.innerHeight || 720;
       const maximumBottom = Math.max(
         120,
-        viewportHeight - 120
+        viewportHeight - (onToggleNavigation ? 166 : 120)
       );
 
       return Math.min(
@@ -788,7 +790,7 @@ export function ClubChatWidget({
   const clampLauncherBottom = (value) => {
     const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 720;
     const minBottom = 72;
-    const maxBottom = Math.max(120, viewportHeight - 120);
+    const maxBottom = Math.max(120, viewportHeight - (onToggleNavigation ? 166 : 120));
     return Math.min(Math.max(Number(value) || 88, minBottom), maxBottom);
   };
 
@@ -800,6 +802,14 @@ export function ClubChatWidget({
     setLauncherIsDragging(true);
     setLauncherIsIdle(false);
   };
+
+  useEffect(() => {
+    if (!isLauncherOnly || !onToggleNavigation) return;
+    const fit = () => setLauncherBottom(bottom => clampLauncherBottom(bottom));
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [isLauncherOnly, Boolean(onToggleNavigation)]);
 
   useEffect(() => {
     if (!launcherIsDragging) return;
@@ -1448,6 +1458,21 @@ export function ClubChatWidget({
         />
       )}
 
+      {isLauncherOnly && !clubChatOpen && onToggleNavigation && (
+        <button
+          type="button"
+          className="fanm-club-chrome-wand"
+          style={{bottom: launcherBottom + (clubChatTeaseOpen ? 98 : 80)}}
+          aria-pressed={navigationHidden}
+          aria-label={navigationHidden ? "Show navigation" : "Hide navigation"}
+          title={navigationHidden ? "Show navigation" : "Hide navigation"}
+          onClick={onToggleNavigation}
+        >
+          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m3 18 12-12 3 3L6 21zM12 9l3 3M19 2v4m-2-2h4M6 3v6M3 6h6M20 14v4m-2-2h4"/>
+          </svg>
+        </button>
+      )}
       <section
       className={`card fanm-club-chat-card ${clubChatOpen ? "is-open" : "is-collapsed"} ${exhibitionChatActive && clubChatOpen ? "is-exhibition-chat" : ""} ${isLauncherOnly && clubChatOpen ? "is-modal-open" : ""} ${isLauncherOnly && !clubChatOpen && launcherIsIdle ? "is-idle" : ""} ${isLauncherOnly && launcherIsDragging ? "is-dragging" : ""} ${
         !clubChatOpen && clubChatTeaseOpen ? "is-teasing" : ""
@@ -1515,6 +1540,11 @@ export function ClubChatWidget({
                   ? (exhibitionChatActive ? "Club-to-club chat" : "Challenger Chat")
                   : `${activeClubName} Chat`}
               </h2>
+              {exhibitionChatActive && <div className="exhibition-chat-header-pair">
+                <span>{challengerChatFixture.homeClubLogo ? <img src={challengerChatFixture.homeClubLogo} alt={challengerChatFixture.homeClubName}/> : challengerChatFixture.homeClubName}</span>
+                <strong>VS</strong>
+                <span>{challengerChatFixture.awayClubLogo ? <img src={challengerChatFixture.awayClubLogo} alt={challengerChatFixture.awayClubName}/> : challengerChatFixture.awayClubName}</span>
+              </div>}
               <p className="muted small">
                 {activeChatRoom === "challenger"
                   ? `Match chat with ${challengerChatOpponentName}. This room is available only while the fixture is active.`

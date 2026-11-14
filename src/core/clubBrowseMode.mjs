@@ -4,8 +4,13 @@ export function clubBrowseMode({published,choice,clubId,uid,canManage}){
  return ['LEAGUE','FRIENDLY'].includes(choice.value)?choice.value:published;
 }
 
-// The exhibition is the current Club event in the published view. The other
-// tab remains available for browsing that mode's own fixture and teams.
-export function exhibitionInClubBrowse({exhibition,published,browsing}){
- return published===browsing?exhibition:null;
+// Club-to-club fixtures belong to Friendly, regardless of the internal setting.
+export function exhibitionInClubBrowse({exhibition,browsing}){
+ return browsing==="FRIENDLY"?exhibition:null;
+}
+
+export function latestClubMode(league=[],friendly=[]){
+ const latest=days=>Math.max(0,...(days||[]).filter(day=>day.results?.length).map(day=>Date.parse(day.createdAt)||0));
+ const a=latest(league), b=latest(friendly);
+ return a===b?null:a>b?"LEAGUE":"FRIENDLY";
 }

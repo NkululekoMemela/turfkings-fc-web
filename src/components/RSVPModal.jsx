@@ -1,9 +1,9 @@
 import {createPortal} from "react-dom";
 import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
 import {openYearEndCheckout} from "./YearEndBooking.jsx";
-import {BOOKING_TERMS_PATH} from "../legal/bookingTerms.js";
-import "./YearEndOverlay.css";
 import PremiumSelect from "./PremiumSelect.jsx";
+import ShopPaymentReview from "./ShopPaymentReview.jsx";
+import "./YearEndOverlay.css";
 // src/components/RSVPModal.jsx
 import React, { useState, useEffect } from "react";
 import {
@@ -32,15 +32,17 @@ export function RSVPModal({ identity, onClose, event }) {
   const friendFee=event ? event.guest/100 : FRIEND_FEE;
   const maxFriends=event?.maxGuests ?? 3;
   const [booking,setBooking]=useState(null);
-  const [guestNames,setGuestNames]=useState([]);
-  const [coolers,setCoolers]=useState(0);
-  const [bottles,setBottles]=useState(0);
-  const [accepted,setAccepted]=useState(false);
+  const [dietaryRequests,setDietaryRequests]=useState([]);
+  const [dietary,setDietary]=useState("");
+  const [dietaryNotes,setDietaryNotes]=useState("");
+  const [reviewPayment,setReviewPayment]=useState(false);
+  const [paymentError,setPaymentError]=useState("");
   const [busy,setBusy]=useState(false);
   const loadEdition=React.useCallback(async()=>{
     const result=await fieldLogoStudioRequest({action:"yearEndView",includeAttendees:true});
     if(result.event?.id!==event?.id || result.event.archived)throw Error("Reopen the current event.");
     setAttendees(result.attendees||[]);
+    setDietaryRequests(result.dietaryRequests||[]);
     setBooking(result.booking||null);
   },[event?.id]);
   const [attendees, setAttendees] = useState([]);
@@ -51,7 +53,7 @@ export function RSVPModal({ identity, onClose, event }) {
   const [paid, setPaid] = useState(false);
   const [popNote, setPopNote] = useState("");
   const [error, setError] = useState("");
-  const [friendsOpen, setFriendsOpen] = useState(false); // collapsed by default
+  const [friendsOpen, setFriendsOpen] = useState(Boolean(event));
   const [paymentOpen, setPaymentOpen] = useState(false); // collapsed by default
   const [editing, setEditing] = useState(false); // view vs edit mode
 
@@ -63,15 +65,6 @@ export function RSVPModal({ identity, onClose, event }) {
   const isAdmin =
     !!identityEmail &&
     (ADMIN_EMAILS.includes(identityEmail) || identity?.role === "admin");
-
-  // 🔒 Lock background scroll while modal is open
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
 
   // Firestore subscription
   useEffect(() => {
@@ -118,8 +111,7 @@ export function RSVPModal({ identity, onClose, event }) {
   const isFullForNew = remaining <= 0 && !existingActive;
 
   const pending=booking?.status==="pending";
-  const yourAmount = pending ? booking.amount/100 : playerFee + friendFee * friends +
-    (event ? (event.cooler*coolers+event.bottle*bottles)/100 : 0);
+  const yourAmount = pending ? booking.amount/100 : playerFee + friendFee * friends;
 
   // When existing entry changes, sync local form state + default view/edit mode
   useEffect(() => {
@@ -140,9 +132,8 @@ export function RSVPModal({ identity, onClose, event }) {
 
   useEffect(()=>{
     if(!booking)return;
-    setGuestNames(booking.guests||[]);
-    setCoolers(booking.coolers||0);
-    setBottles(booking.bottles||0);
+    setDietary(booking.dietary||"");
+    setDietaryNotes(booking.dietaryNotes||"");
   },[booking]);
 
   // Only layout tweaks, colours come from .primary-btn CSS (same as Start Match)
@@ -151,7 +142,7 @@ export function RSVPModal({ identity, onClose, event }) {
     marginTop: "0.4rem",
   };
 
-  async function handleJoin() {
+  async function handleJoin(accepted = false) {
     setError("");
     if (!currentUser) {
       alert("Please sign in to RSVP.");
@@ -160,14 +151,14 @@ export function RSVPModal({ identity, onClose, event }) {
 
     if(event){
       if(busy)return;
-      if(!accepted){setPaymentOpen(true);setError("Review the payment details and accept the booking terms.");return;}
-      const guests=pending ? booking.guests : Array.from({length:friends},(_,i)=>(guestNames[i]||"").trim());
-      if(guests.some(name=>!name)){setFriendsOpen(true);setError("Enter each guest’s name.");return;}
+      if(!accepted)return;
+      setPaymentError("");
       setBusy(true);
       try {
-        await openYearEndCheckout(event,{guests,coolers:pending?booking.coolers:coolers,bottles:pending?booking.bottles:bottles,accepted});
+        await openYearEndCheckout(event,{guestCount:pending?booking.guestCount:friends,dietary,dietaryNotes,accepted});
         await loadEdition();
-      } catch(e){setError(e.message);} finally{setBusy(false);}
+        setReviewPayment(false);
+      } catch(e){setPaymentError(e.message);} finally{setBusy(false);}
       return;
     }
 
@@ -335,9 +326,8 @@ export function RSVPModal({ identity, onClose, event }) {
       >
         {/* HEADER (simple text, no cards) */}
         <header style={{ marginBottom: "0.9rem" }}>
-          <h2 style={{ marginBottom: "0.3rem" }}>
-            🎉 RSVP – Year-End Function
-          </h2>
+          <span className="rsvp-eyebrow">Turf Kings · Year-End</span>
+          <h2 style={{ marginBottom: "0.3rem" }}>Your RSVP</h2>
           <p
             style={{
               margin: 0,
@@ -345,11 +335,10 @@ export function RSVPModal({ identity, onClose, event }) {
               opacity: 0.85,
             }}
           >
-            Capacity:{" "}
+            Places booked:{" "}
             <strong>
               {totalPeople} / {capacity}
             </strong>{" "}
-            people (players + friends)
           </p>
           <p
             style={{
@@ -381,7 +370,7 @@ export function RSVPModal({ identity, onClose, event }) {
               }}
             >
               <p style={{ margin: 0, fontSize: "0.9rem" }}>
-                You are signed in as:{" "}
+                Booking for{" "}
                 <strong>{currentUser || "Not signed in"}</strong>
               </p>
               {currentEmail && (
@@ -392,7 +381,7 @@ export function RSVPModal({ identity, onClose, event }) {
                     opacity: 0.85,
                   }}
                 >
-                  Email for invite: <strong>{currentEmail}</strong>
+                  <strong>{currentEmail}</strong>
                 </p>
               )}
 
@@ -439,7 +428,7 @@ export function RSVPModal({ identity, onClose, event }) {
                     }}
                   >
                     <span style={{ fontWeight: 600 }}>
-                      Friends &amp; amount
+                      Guests
                     </span>
                     <span
                       style={{
@@ -459,10 +448,10 @@ export function RSVPModal({ identity, onClose, event }) {
                           fontSize: "0.83rem",
                         }}
                       >
-                        Friends you are bringing (max {maxFriends}):
+                        Guests (up to {maxFriends})
                       </p>
 
-                      <PremiumSelect
+                      <PremiumSelect aria-label="Number of guests"
                         className="text-input"
                         value={friends}
                         disabled={pending}
@@ -474,13 +463,8 @@ export function RSVPModal({ identity, onClose, event }) {
                           fontSize: "0.85rem",
                         }}
                       >
-                        {Array.from({length:maxFriends+1},(_,count)=><option key={count} value={count}>{count} {count===1?"friend":"friends"}</option>)}
+                        {Array.from({length:maxFriends+1},(_,count)=><option key={count} value={count}>{count===0?"Myself alone":count===1?"Me + 1 friend or partner":`Me + ${count} friends`}</option>)}
                       </PremiumSelect>
-                      {event && Array.from({length:friends},(_,i)=><label key={i} style={{display:"block"}}>
-                        Guest {i+1}<input className="text-input" maxLength={80} disabled={pending} value={guestNames[i]||""}
-                          onChange={e=>{const value=e.target.value;setGuestNames(previous=>Object.assign([...previous],{[i]:value}));}}/>
-                      </label>)}
-
                       <p
                         style={{
                           margin: "0.2rem 0",
@@ -488,19 +472,37 @@ export function RSVPModal({ identity, onClose, event }) {
                           opacity: 0.9,
                         }}
                       >
-                        Your entry counts as{" "}
+                        Booking:{" "}
                         <strong>
                           1 player + {friends} friend
                           {friends === 1 ? "" : "s"}
                         </strong>
-                        . You&apos;ll be paying{" "}
+                        . Total:{" "}
                         <strong>R{yourAmount.toFixed(2)}</strong>{event ? "." : " on the night."}
                       </p>
+                      {event && <>
+                        {pending && <p>Resume your existing checkout.</p>}
+                        <details className="year-end-rsvp-dietary">
+                          <summary>Dietary requirements</summary>
+                          <label>Dietary preference <select className="text-input" value={dietary} disabled={pending} onChange={e=>setDietary(e.target.value)}>
+                            {["","Vegetarian","Vegan","Halal","Allergy or other"].map(option=><option key={option} value={option}>{option||"None"}</option>)}
+                          </select></label>
+                          <label>Notes (optional) <textarea className="text-input" maxLength={240} value={dietaryNotes} disabled={pending} onChange={e=>setDietaryNotes(e.target.value)}/></label>
+                        </details>
+                        <button type="button" className="primary-btn" onClick={()=>{setPaymentError("");setReviewPayment(true);}} disabled={busy||isFullForNew} style={primaryBtnStyle}>
+                          {pending?"Resume payment":yourAmount?"Continue to payment":"Review RSVP"}
+                        </button>
+                        {reviewPayment&&<ShopPaymentReview title="Year-End Function" context="RSVP"
+                          lines={pending?[["Reserved places",booking.amount]]:[["Your place",event.player],...(friends?[[`${friends} guest${friends===1?"":"s"}`,event.guest*friends]]:[])]}
+                          total={Math.round(yourAmount*100)} busy={busy} error={paymentError}
+                          onBack={()=>setReviewPayment(false)} onPay={()=>handleJoin(true)}/>}
+                      </>}
+
                     </div>
                   )}
                 </section>
 
-                {/* Payment details accordion */}
+                {!event && (
                 <section
                   style={{
                     borderRadius: "0.9rem",
@@ -546,13 +548,6 @@ export function RSVPModal({ identity, onClose, event }) {
                         fontSize: "0.84rem",
                       }}
                     >
-                      {event ? <>
-                        {pending && <p>Payment pending. Resume your existing checkout.</p>}
-                        <label style={{display:"block"}}>Coolerboxes <input type="number" min="0" max="20" className="text-input" disabled={pending} value={coolers} onChange={e=>setCoolers(Number(e.target.value))}/></label>
-                        <label style={{display:"block"}}>Bottles <input type="number" min="0" max="20" className="text-input" disabled={pending} value={bottles} onChange={e=>setBottles(Number(e.target.value))}/></label>
-                        <p>Total: <strong>R{yourAmount.toFixed(2)}</strong></p>
-                        <label><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/> I accept the <a href={BOOKING_TERMS_PATH} target="_blank" rel="noreferrer">booking and refund terms</a>.</label>
-                      </> : <>
                       <p style={{ margin: "0.1rem 0" }}>
                         Bank: <strong>FNB</strong>
                       </p>
@@ -584,18 +579,15 @@ export function RSVPModal({ identity, onClose, event }) {
                         value={popNote}
                         onChange={(e) => setPopNote(e.target.value)}
                       />
-                      </>}
                     </div>
                   )}
                 </section>
 
+                )}
+
                 {/* Action buttons while editing */}
                 <section style={{ marginBottom: "0.6rem" }}>
-                  {event ? (
-                    <button className="primary-btn" onClick={handleJoin} disabled={busy||isFullForNew} style={primaryBtnStyle}>
-                      {busy?"Opening…":pending?"Resume Yoco payment":yourAmount?"Pay with Yoco":"Confirm RSVP"}
-                    </button>
-                  ) : existing ? (
+                  {!event && (existing ? (
                     <>
                       <p style={{ marginTop: 0, fontSize: "0.83rem" }}>
                         You are currently on the list with{" "}
@@ -637,7 +629,7 @@ export function RSVPModal({ identity, onClose, event }) {
                         </p>
                       )}
                     </>
-                  )}
+                  ))}
 
                   {!event && error && (
                     <p style={{ color: "red", marginTop: "0.45rem" }}>
@@ -701,6 +693,9 @@ export function RSVPModal({ identity, onClose, event }) {
               }}
             />
 
+            {dietaryRequests.length>0&&<details className="year-end-rsvp-dietary"><summary>Dietary requests for organisers</summary>
+              {dietaryRequests.map((row,index)=><p key={index}><strong>{row.name}</strong> · {[row.dietary,row.notes].filter(Boolean).join(" · ")}</p>)}
+            </details>}
             {/* ATTENDEES LIST */}
             <section>
               <h3 style={{ margin: "0 0 0.4rem" }}>Attendees</h3>
@@ -711,7 +706,7 @@ export function RSVPModal({ identity, onClose, event }) {
                   opacity: 0.8,
                 }}
               >
-                {event ? "Scroll to see the full list. Payment status is confirmed by Yoco." :
+                {event ? "Confirmed bookings appear here." :
                   "Scroll to see the full list. Green tick shows who has marked themselves as paid. Players shown in red/grey have pulled out."}
               </p>
 
@@ -726,7 +721,7 @@ export function RSVPModal({ identity, onClose, event }) {
                 {attendees.length === 0 ? (
                   <li style={{ listStyle: "none" }}>
                     <span className="muted small">
-                      No one has RSVPed yet.
+                      No RSVPs yet.
                     </span>
                   </li>
                 ) : (

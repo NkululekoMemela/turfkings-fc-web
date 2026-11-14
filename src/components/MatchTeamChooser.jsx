@@ -38,7 +38,7 @@ function TeamBadge({ team, ringColour }) {
 
 export default function MatchTeamChooser({
   label, value, teams = [], renderLabel, onChange, disabled, side, roundCrest = false,
-  compactFixture = false, hideReadOnlyHint = false, ringColour,
+  compactFixture = false, hideReadOnlyHint = false, dayPairingRole, ringColour,
 }) {
   const selected = teams.find(team => String(team.id) === String(value));
   const nameOf = team => renderLabel
@@ -50,7 +50,7 @@ export default function MatchTeamChooser({
       <span className="match-team-chooser__identity">
         {!compactFixture && <small>{label}</small>}
         <strong>{selected ? nameOf(selected) : "Choose team"}</strong>
-        {!compactFixture && !(disabled && hideReadOnlyHint) && <span>{disabled ? "Match pairing" : "Tap to choose"}</span>}
+        {!compactFixture && (dayPairingRole === undefined ? !(disabled && hideReadOnlyHint) : dayPairingRole) && <span>{dayPairingRole || disabled ? "Match pairing" : "Tap to choose"}</span>}
       </span>
       {!disabled && <span className="match-team-chooser__arrow" aria-hidden="true">⌄</span>}
     </>

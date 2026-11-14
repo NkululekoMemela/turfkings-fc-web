@@ -106,3 +106,11 @@ body .hire-stock-note{display:block;margin-top:10px;color:#aebfd2;font-size:12px
 .bib-return-teams button{flex:0 0 auto;border:1px solid #6ba5b544;border-radius:14px;padding:7px 10px;background:#102e3d;color:#c7dce3;font-size:11px;cursor:pointer;}
 .bib-return-teams button.is-selected{border-color:#55d5d1;background:#15454b;color:#f3ffff;}
 .bib-return-teams small{display:block;font-size:9px;}
+
+.bib-inventory-scroll { border:1px solid #557e8c; border-radius:12px; }
+.bib-inventory-table { border-collapse:separate; border-spacing:0; font-variant-numeric:tabular-nums; }
+.bib-inventory-table :is(th,td) { padding:.6rem .5rem; }
+.bib-inventory-table thead th { color:#ecfbff; }
+.bib-inventory-table tfoot :is(th,td) { position:static; border-top:1px solid #668d98; color:#ffffff; }
+.bib-inventory-table tfoot th:first-child { position:sticky; left:0; z-index:3; background:#15333d; }
+.bib-inventory-table tfoot .bib-total-column { position:sticky; right:0; z-index:3; }

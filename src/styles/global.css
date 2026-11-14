@@ -21442,3 +21442,52 @@ footer.club-marketing-footer > section {
 @media (max-width: 768px) {
   .club-match-mode-toggle { display: grid; width: 100%; box-sizing: border-box; }
 }
+
+.fanm-club-chrome-wand {
+  position: fixed;
+  z-index: 1001;
+  right: 7px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 15px;
+  border: 1px solid #7294af;
+  background: #142a3d;
+  color: white;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.fanm-club-chrome-wand:focus-visible {
+  outline: 2px solid #9ff5de;
+  outline-offset: 2px;
+}
+.app-root--club-chrome-hidden .fanm-club-chrome-wand {
+  background: #49321d;
+  border-color: #dc9c48;
+  color: #ffd17c;
+}
+
+.year-end-overlay-panel h2 { color:#eff6ff; }
+
+.match-setup-row .vs-label.match-team-versus { font-size:1.4rem !important; font-weight:900; color:#eef7ff; }
+.landing-actions--viewer > .primary-btn { position:relative; }
+.fixture-follow-label { position:absolute; inset: .65rem .4rem auto; font-size:.72rem; font-weight:600; }
+.exhibition-landing-team small { color:#c4d4e6; font-size:.69rem; }
+.exhibition-chat-header-pair { display:flex; align-items:center; justify-content:center; gap:.7rem; margin:.45rem 0; }
+.exhibition-chat-header-pair img { width:42px; height:42px; object-fit:contain; border-radius:50%; background:#e9f2ff; }
+
+.fanm-booking-terms-dialog {
+  box-sizing: border-box;
+  width: min(36rem, calc(100% - 2rem));
+  max-height: 80dvh;
+  padding: 1.1rem;
+  color: #eef5ff;
+  background: #101c2e;
+  border: 1px solid #49647f;
+  border-radius: 1rem;
+  line-height: 1.55;
+}
+.fanm-booking-terms-dialog::backdrop { background: #050b17ba; }
+.fanm-booking-terms-close { position: sticky; top: 0; text-align: right; background: inherit; }

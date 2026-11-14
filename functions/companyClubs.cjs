@@ -27,6 +27,8 @@ async function seasonContext({db,tx,clubId}){
 async function handle({db,user,body,uploadLogo=async()=>{throw Error('Company logo upload is unavailable.');}}){
  signed(user);const action=body.action;
  if(body.environment==='practice'||body.isPracticeMode)throw Error('Company administration is available in Official only.');
+ if(['weeklyView','weeklyBooking','weeklyInvoiceView','weeklyInvoicePreview','weeklyInvoiceIssue','weeklyInvoicePaid'].includes(action))
+  return require('./companyWeeklyBookings.cjs').handle({db,user,body,operator});
  if(action==='view'){
   const index=(await db.doc(`companyUserAccounts/${user.uid}`).get()).data();
   const own=operator(user)?(await db.collection('companyOrganizations').limit(30).get()).docs:await Promise.all((index?.companyIds||[]).slice(0,30).map(id=>db.doc(`companyOrganizations/${id}`).get()));

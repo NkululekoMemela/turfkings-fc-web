@@ -3374,13 +3374,8 @@ export default function VenueEntryPage({
     setVerifyError("");
     setVerifyStatus("");
 
-    setSigninProgress(8);
-    setSigninStatus("Preparing your football profile...");
-    setShowSigninLoading(true);
-
-
     if (!selectedMember) {
-      setVerifyError(`Please select your name on the ${activeClubName} list.`);
+      await fieldAlert(`Choose your name in the ${activeClubName} player list above, then continue with the Google account linked to that profile.`);
       return;
     }
 
@@ -3397,6 +3392,10 @@ export default function VenueEntryPage({
       );
       return;
     }
+
+    setSigninProgress(8);
+    setSigninStatus("Preparing your football profile...");
+    setShowSigninLoading(true);
 
     let u = auth.currentUser;
     if (!u) {

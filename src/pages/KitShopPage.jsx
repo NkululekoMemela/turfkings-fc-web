@@ -16,7 +16,7 @@ export default function KitShopPage({onBack,preferredColor="",isPracticeMode=fal
   return <main className="page kit-shop-page shop-preview-page">
     <ClubPageRibbon title={<>FANM Shop</>} onHome={onBack} meta={<><div className="shop-header-context">Kit &amp; merchandise</div></>}/>
     <div className="shop-opening-corner" role="status"><strong>Club bulk orders</strong></div>
-    {!ordersOpen&&<div id="club-bib-order-panel"><ClubBibOrders preferredColor={orderColour} clubId={clubId} isPracticeMode={isPracticeMode} onOpenSetup={()=>{setWorkspaceTab("setup");setOrdersOpen(true);window.scrollTo(0,0);}} onOrderPlaced={order=>{setInitialOrder(order);setWorkspaceTab("orders");setOrdersOpen(true);window.scrollTo(0,0);}}/></div>}
+    {!ordersOpen&&<div id="club-bib-order-panel"><ClubBibOrders preferredColor={orderColour} clubId={clubId} isPracticeMode={isPracticeMode} onOrderPlaced={order=>{setInitialOrder(order);setWorkspaceTab("orders");setOrdersOpen(true);window.scrollTo(0,0);}}/></div>}
     {ordersOpen?<ShopOrderWorkspace initialOrder={initialOrder} initialTab={workspaceTab} onBack={()=>{setOrdersOpen(false);window.scrollTo(0,0);}} preferredColor={preferredColor} isPracticeMode={isPracticeMode}/>:<ShopShowcase canCreatePoll={canCreatePoll} onCreatePoll={onCreatePoll} club={club} preferredColor={preferredColor} onViewOrders={intent=>{if(intent?.kind==="bibs"){setOrderColour(intent.color||"");document.getElementById("club-bib-order-panel")?.scrollIntoView({behavior:"smooth",block:"start"});}else{setWorkspaceTab("orders");setOrdersOpen(true);window.scrollTo(0,0);}}}/>}
   </main>;
 }

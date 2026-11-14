@@ -6015,3 +6015,7 @@ exports.notifyClubChallengeInvitation = clubChallengeLifecycle.notifyClubChallen
 exports.onFieldSeasonCelebration = require("./fieldSeasonCelebration.cjs").buildHandler({
   db, region: REGION, auth: admin.auth(), messaging: admin.messaging(),
 });
+
+exports.yearEndShare = onRequest({region: REGION, invoker: "public"}, async (req, res) => {
+  await require("./yearEndShare.cjs").respond(req, res, db);
+});

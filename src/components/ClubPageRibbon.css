@@ -126,3 +126,12 @@
     padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+.app-root.app-root--club-chrome-hidden :is(.club-page-ribbon, .tk-bottom-nav-flat),
+.app-root.app-root--club-chrome-hidden.app-root--landing > .landing-page > .landing-header-sticky {
+  display: none !important;
+}
+
+.app-root.app-root--club-chrome-hidden.app-root--landing > .landing-page {
+  padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+}

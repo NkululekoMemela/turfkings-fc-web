@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {clubBrowseMode,exhibitionInClubBrowse} from '../src/core/clubBrowseMode.mjs';
+import {clubBrowseMode,exhibitionInClubBrowse,latestClubMode} from '../src/core/clubBrowseMode.mjs';
 import {groupHighlightFixtures,highlightFixtureOptions,highlightMatchesMode} from '../src/core/highlightFixtures.mjs';
 import {bibStockRows,nextBibAssignments} from '../src/core/fieldBibStock.mjs';
 import {fieldOpenMatchDays} from '../src/core/fieldRouteSafety.mjs';
@@ -26,10 +26,16 @@ test('signed-out spectators can browse either tab without changing the published
  assert.equal(clubBrowseMode({...defaults,choice,uid:'player'}),'FRIENDLY');
  assert.equal(clubBrowseMode({...defaults,choice,clubId:'different'}),'FRIENDLY');
 });
-test('an exhibition stays in the published view and does not mask the other tab',()=>{
+test('Club vs Club exhibitions appear only under Friendly',()=>{
  const exhibition={fixtureId:'cup'};
- for(const [published,alternate] of [['FRIENDLY','LEAGUE'],['LEAGUE','FRIENDLY']]){
-  assert.equal(exhibitionInClubBrowse({exhibition,published,browsing:published}),exhibition);
-  assert.equal(exhibitionInClubBrowse({exhibition,published,browsing:alternate}),null);
+ for(const published of ['FRIENDLY','LEAGUE']){
+  assert.equal(exhibitionInClubBrowse({exhibition,published,browsing:'FRIENDLY'}),exhibition);
+  assert.equal(exhibitionInClubBrowse({exhibition,published,browsing:'LEAGUE'}),null);
  }
+});
+test('Last played uses completed history rather than the upcoming setting',()=>{
+ const day=(createdAt,results=[{}])=>({createdAt,results});
+ assert.equal(latestClubMode([day('2026-11-12',[])],[day('2026-11-11')]),'FRIENDLY');
+ assert.equal(latestClubMode([day('2026-11-13')],[day('2026-11-11')]),'LEAGUE');
+ assert.equal(latestClubMode([],[]),null);
 });

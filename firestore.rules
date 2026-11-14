@@ -299,14 +299,17 @@ service cloud.firestore {
       allow list: if signupKind in ["pendingSignups", "matchSignups"] && clubAdministrator(clubId);
       // Server transactions handle capacity and keep contact fields out of public views.
       allow create: if signupKind in ["pendingSignups", "matchSignups"]
+        && get(/databases/$(database)/documents/clubs/$(clubId)).data.get("clubType", "") != "company"
         && (clubAdministrator(clubId) || (isSignedIn() && !isCameraSession()
           && request.auth.token.get("email_verified", false) == true
           && request.resource.data.get("profileOwnerUid", "") == request.auth.uid));
       allow update: if signupKind in ["pendingSignups", "matchSignups"]
+        && get(/databases/$(database)/documents/clubs/$(clubId)).data.get("clubType", "") != "company"
         && (clubAdministrator(clubId) || (ownsSignup(clubId,resource.data)
           && request.resource.data.get("payerUserId", "") == resource.data.get("payerUserId", "")
           && request.resource.data.get("profileOwnerUid", "") in [resource.data.get("profileOwnerUid", ""),request.auth.uid]));
-      allow delete: if signupKind in ["pendingSignups", "matchSignups"] && clubAdministrator(clubId);
+      allow delete: if signupKind in ["pendingSignups", "matchSignups"] && clubAdministrator(clubId)
+        && get(/databases/$(database)/documents/clubs/$(clubId)).data.get("clubType", "") != "company";
     }
     match /matchNumberSheets/{sheetId} {
       allow read: if true;

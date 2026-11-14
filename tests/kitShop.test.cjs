@@ -81,3 +81,16 @@ test('outstanding unpaid order limit and private pagination are enforced',async(
  for(let n=0;n<33;n++)f.records.set(`kitShopCustomers/buyer/orders/order-${String(n).padStart(2,'0')}`,{createdAtMs:n,status:'delivered'});
  const first=await f.call({action:'orders'}),next=await f.call({action:'orders',cursor:first.nextCursor});assert.equal(first.orders.length,30);assert.equal(next.orders.length,6);assert.equal(new Set([...first.orders,...next.orders].map(o=>o.id)).size,36);
 });
+
+test('price editing preserves the existing colour, stock and variant details',async()=>{
+ const original={...bib,color:'#ffff00',madeToOrder:true};
+ const f=setup({'kitShopProducts/blue':original});
+ const body={action:'updatePrice',productId:'blue',priceMinor:6500,expectedRevision:1};
+ await assert.rejects(f.call(body),/operator/);
+ await f.call(body,staff);
+ const {updatedAtMs,updatedByUid,...saved}=f.records.get('kitShopProducts/blue');
+ assert.deepEqual(saved,{...original,priceMinor:6500,revision:2});
+ assert.equal(updatedByUid,staff.uid);
+ assert.ok(updatedAtMs);
+ await assert.rejects(f.call(body,staff),/changed/);
+});

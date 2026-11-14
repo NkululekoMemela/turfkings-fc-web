@@ -2,27 +2,29 @@
   position: fixed;
   z-index: 11000;
   transform: translate(-50%, -100%);
-  padding: 6px 10px;
+  padding: 5px 8px;
   border-radius: 12px;
   background: #e9b94b;
   color: #17212c;
   box-shadow: 0 4px 14px #0006;
   pointer-events: none;
   white-space: nowrap;
-  font-size: 18px;
+  font-size: .8rem;
+  font-weight: 800;
+  text-align: center;
   animation: club-nav-peek-rise 2.2s both;
 }
 .club-nav-peek--rate {
-  width: 118px;
+  width: max-content;
   box-sizing: border-box;
   text-align: center;
   font-size: .8rem;
   font-weight: 800;
 }
-.club-nav-peek--rate::after {
+.club-nav-peek::after {
   content: "";
   position: absolute;
-  top: 100%;
+  top: calc(100% - 1px);
   left: calc(50% + var(--peek-anchor, 0px));
   transform: translateX(-50%);
   border: 5px solid transparent;

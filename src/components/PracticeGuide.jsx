@@ -116,8 +116,12 @@ function Guide({sessionKey, preferenceScope, controlledIndex, steps, page, onNav
               {(page !== step.page || variant) && <button type="button" onClick={go}>
                 {page !== step.page ? (step.openLabel || "Open this step") : "Show me"}
               </button>}
-              {step.nextLabel && page === step.page && !contextual?.hideNext &&
-                <button type="button" disabled={step.nextDisabled} onClick={() => update({index: index + 1})}>{step.nextLabel}</button>}
+              {controlledIndex == null && (
+                <button type="button" onClick={() => update({index: index + 1})}>
+                  {page === step.page && !contextual?.hideNext && !step.nextDisabled && step.nextLabel
+                    ? step.nextLabel : "Skip this step"}
+                </button>
+              )}
             </>}
           </div>
         </aside>

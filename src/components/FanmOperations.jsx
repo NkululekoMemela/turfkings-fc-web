@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import OrganizationArchiveControls, {confirmOrganizationArchive} from "./OrganizationArchiveControls.jsx";
 import {fieldLogoStudioRequest} from "../storage/fieldLogoStudioGateway.js";
+import ShopOrderWorkspace from "../pages/ShopOrderWorkspace.jsx";
 import FieldBibInventory from "./FieldBibInventory.jsx";
 import "./FieldBibHire.css";
 import "./FanmOperations.css";
@@ -8,6 +9,13 @@ import "./FanmOperations.css";
 const roles = {operations_manager:"Operations manager",referee:"Referee",camera_operator:"Camera operator",support_staff:"Support staff"};
 
 export default function FanmOperations({user,director,onClose,onChallenge,onOrganizationsChanged}) {
+  const sections = director ? [
+    ["Challenges","Create Club vs Club fixtures"],
+    ["Bib stock","Count and reserve by city"],
+    ["Staff","Manage match officials"],
+    ["Clubs & Fields","Archive and restore"],
+    ["Store","Prices, products and orders"],
+  ] : [["Clubs & Fields","Archive and restore"]];
   const [tab,setTab] = useState(director?"Challenges":"Clubs & Fields");
   const [data,setData] = useState(null);
   const [city,setCity]=useState("");
@@ -45,15 +53,20 @@ export default function FanmOperations({user,director,onClose,onChallenge,onOrga
     <header className="fanm-operations-header">
       <button type="button" className="secondary-btn" onClick={onClose}>‹ Club Hub</button>
       <span className="hub-challenge-modal__kicker">Platform management</span>
-      <h1>FANM Operations</h1>
+      <h1>FANM Operations</h1><p>Manage fixtures, equipment and the FANM store.</p>
     </header>
       <nav className="fanm-operations-tabs" aria-label="Operations sections">
-        {(director?["Challenges","Bib stock","Staff","Clubs & Fields"]:["Clubs & Fields"]).map(name=><button key={name} type="button"
+        {sections.map(([name,description])=><button key={name} type="button"
           aria-pressed={tab===name} className={tab===name?"is-selected":""} disabled={busy}
-          onClick={()=>{setTab(name);setMessage("");if(!data&&["Bib stock","Staff"].includes(name))void run(refresh);}}>{name}</button>)}
+          onClick={()=>{setTab(name);setMessage("");if(!data&&["Bib stock","Staff"].includes(name))void run(refresh);}}><strong>{name}</strong><small>{description}</small></button>)}
       </nav>
-      {tab==="Challenges" && <p><button type="button" className="primary-btn" onClick={onChallenge} disabled={!onChallenge}>Create FANM Challenge</button></p>}
+      {tab==="Store" && director && <ShopOrderWorkspace management initialTab="setup"/>}
+      {tab==="Challenges" && <section className="fanm-operations-panel"><h2>Club vs Club</h2><p>Invite two clubs to a FANM fixture.</p><button type="button" className="primary-btn" onClick={onChallenge} disabled={!onChallenge}>Create FANM Challenge</button></section>}
       {tab==="Bib stock" && data && <section className="fanm-operations-panel">
+        <h2>City bib stock</h2><p>Open a city to see what FANM owns and what is reserved for fixtures.</p>
+        <div className="fanm-city-options" aria-label="Cities with clubs or stock">{data.cities.map(name=>
+          <button key={name} type="button" className="secondary-btn" aria-pressed={city===name} disabled={busy}
+            onClick={()=>void run(async()=>{await refresh(name);setCity(name);setCityInput(name);setReservationFixture("");setReserveCounts({});})}>{name}</button>)}</div>
         <form className="fanm-stock-city" onSubmit={event=>{
           event.preventDefault();
           const next=cityInput.trim();if(!next)return;
@@ -122,15 +135,17 @@ export default function FanmOperations({user,director,onClose,onChallenge,onOrga
           </form>}
         </>}
       </section>}
-      {tab==="Staff" && <>
+      {tab==="Staff" && <section className="fanm-operations-panel"><h2>Staff and match officials</h2>
         <p><strong>Director:</strong> {user.displayName || user.email}</p>
         <form className="hub-challenge-form-grid" onSubmit={submit("operationsStaff")}>
-          <label>Staff account<input name="email" type="email" required/></label>
+          <label>Staff member’s Google sign-in email<input name="email" type="email" autoComplete="off" placeholder="name@example.com" aria-describedby="fanm-staff-email-help" required/><small id="fanm-staff-email-help">Enter the email they use to sign in to FANM. They need to sign in once before you can add them.</small></label>
           <label>Role<select name="role">{Object.entries(roles).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+          <label>Work city (required for referees and camera operators)<input name="city" list="fanm-staff-cities" maxLength={60} placeholder="Choose or enter a city"/></label>
+          <datalist id="fanm-staff-cities">{data?.cities.map(name=><option key={name} value={name}/>)}</datalist>
           <label>Status<select name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
           <button className="primary-btn" disabled={busy}>Save staff member</button>
         </form>
-        {data && <ul>{data.staff.map(person=><li key={person.uid}>{person.name} · {roles[person.role]} · {person.status}</li>)}</ul>}
+        {data && <ul>{data.staff.map(person=><li key={person.uid}>{person.name} · {roles[person.role]} · {person.city||"No city set"} · {person.status}</li>)}</ul>}
         {data?.staff.some(person=>person.status==="active"&&["referee","camera_operator"].includes(person.role)) &&
           <form className="hub-challenge-form-grid" onSubmit={submit("operationsAssignOfficial",v=>{
             const [role,uid]=v.official.split(":");return {role,uid,fixtureId:v.fixtureId.trim()};
@@ -141,8 +156,8 @@ export default function FanmOperations({user,director,onClose,onChallenge,onOrga
             <button className="primary-btn" disabled={busy}>Assign to fixture</button>
           </form>}
 
-      </>}
-      {tab==="Clubs & Fields" && <>
+      </section>}
+      {tab==="Clubs & Fields" && <section className="fanm-operations-panel"><h2>Clubs and Fields</h2>
         <form className="hub-challenge-form-grid" onSubmit={event=>{
           event.preventDefault();const {id}=Object.fromEntries(new FormData(event.currentTarget));
           void run(async()=>{const result=await confirmOrganizationArchive({kind,id:id.trim()});
@@ -154,7 +169,7 @@ export default function FanmOperations({user,director,onClose,onChallenge,onOrga
         </form>
         <OrganizationArchiveControls kind="field" user={user} operationsManager={!director} onRestored={onOrganizationsChanged} onDeleted={onOrganizationsChanged}/>
         <OrganizationArchiveControls kind="club" user={user} operationsManager={!director} onRestored={onOrganizationsChanged}/>
-      </>}
+      </section>}
       {message && <p role="status">{message}</p>}
       {busy && <p role="status">Working…</p>}
   </main>;

@@ -2811,6 +2811,9 @@ export function SquadsPage({
     savingSquadsRef.current = true;
     setSavingSquads(true);
     try {
+      if (!isFiveVFive && candidateTeams.filter(team => (team.players || []).some(Boolean)).length === 2) {
+        throw new Error("Two squads have players. Add players to the third squad for Mini-league, or switch to Friendly before saving a two-team setup.");
+      }
       validateKitTeams(buildKitRoster(candidateTeams.filter(team=>(team.players || []).length>0),allPlayers));
       const validAdmin = isAdmin;
       const validCaptain = canEdit && !isAdmin;

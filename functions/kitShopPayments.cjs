@@ -15,7 +15,7 @@ async function checkout({db,user,body,secret,request=fetch}){
   const row=(await tx.get(ref)).data();
   if(!row||row.ownerUid!==user.uid)throw Error('This order does not belong to your account.');
   if(confirmed(row))return {...row,paid:true};
-  if(row.status!=='awaiting_payment'||row.cancellationRequested)throw Error('This order is not available for payment.');
+  if(row.status!=='awaiting_payment'||row.cancellationRequested||row.changeRequest)throw Error('This order is not available for payment.');
   if(!Number.isSafeInteger(row.totalMinor)||row.totalMinor<=0||row.currency!=='ZAR')throw Error('This order needs a valid rand total.');
   const old=row.yoco||{};
   if(old.mode&&old.mode!==mode)throw Error('This order belongs to a different payment environment.');

@@ -1702,7 +1702,9 @@ This will remove it from live news and archives for everyone.`
   const [yearEnd,setYearEnd]=useState(null);
   const [yearEndEditing,setYearEndEditing]=useState(false);
   const [yearEndError,setYearEndError]=useState("");
-  const event=yearEnd||ORIGINAL_YEAR_END;
+  const savedEvent=yearEnd||ORIGINAL_YEAR_END;
+  const event=savedEvent.date.startsWith("2026-") && /^suits\s*(?:&|and)\s*smart fits$/i.test(savedEvent.dress.trim())
+    ? {...savedEvent,dress:"Formal and smart fits"} : savedEvent;
   const refreshYearEnd=useCallback(async()=>{
     if(!isTurfKingsClub||!auth.currentUser)return;
     const result=await fieldLogoStudioRequest({action:"yearEndView"});
@@ -1714,91 +1716,36 @@ This will remove it from live news and archives for everyone.`
     function refresh(){refreshYearEnd().catch(()=>{});}
     return ()=>window.removeEventListener("focus",refresh);
   },[refreshYearEnd,identity?.uid,identity?.memberId]);
-  const eventDate = new Date(event.date+"T12:00:00+02:00").toLocaleDateString("en-ZA",{weekday:"long",day:"numeric",month:"long",timeZone:"Africa/Johannesburg"});
+  const eventDate = new Date(event.date+"T12:00:00+02:00").toLocaleDateString("en-ZA",{weekday:"short",day:"numeric",month:"short",year:"numeric",timeZone:"Africa/Johannesburg"});
   const eventPrice = key => "R"+(event[key]/100).toLocaleString("en-ZA",{maximumFractionDigits:2});
   useEffect(()=>{
     if(!yearEnd||yearEnd.archived||!isTurfKingsClub)return;
     const params=new URLSearchParams(window.location.search);
-    if(!params.has("yearEndPayment"))return;
-    setShowRSVP(true);params.delete("yearEndPayment");
+    if(!params.has("yearEndPayment")&&!params.has("yearEndRsvp"))return;
+    setShowRSVP(true);params.delete("yearEndPayment");params.delete("yearEndRsvp");
     window.history.replaceState(null,"",window.location.pathname+(params.size?"?"+params.toString():"")+window.location.hash);
   },[yearEnd,isTurfKingsClub]);
   const handleOpenRSVP = () => setShowRSVP(true);
 
   // Year-end program modal state
   const [showProgramModal, setShowProgramModal] = useState(false);
+  const [legacyProgrammeVisible, setLegacyProgrammeVisible] = useState(false);
+  useEffect(()=>{
+    if(!isTurfKingsClub || yearEnd || isPracticeMode) return;
+    return onSnapshot(doc(db,"yearEndConfig","2025"),
+      snapshot=>setLegacyProgrammeVisible(snapshot.data()?.programPublished===true),
+      ()=>setLegacyProgrammeVisible(false));
+  },[isTurfKingsClub,yearEnd,isPracticeMode]);
   useEffect(() => {
-    if (initialProgramOpen) setShowProgramModal(true);
-  }, [initialProgramOpen]);
+    if (initialProgramOpen && (canManageCustomStories || (yearEnd ? yearEnd.programPublished : legacyProgrammeVisible))) setShowProgramModal(true);
+  }, [initialProgramOpen,canManageCustomStories,yearEnd,legacyProgrammeVisible]);
 
   // ---------- STYLE OBJECTS ----------
-  const yearEndCardStyle = {
-    display: isNarrow ? "flex" : "grid",
-    flexDirection: isNarrow ? "column" : undefined,
-    gridTemplateColumns: isNarrow ? undefined : "minmax(0, 3fr) minmax(0, 2fr)",
-    gap: isNarrow ? "1rem" : "1.5rem",
-    padding: isNarrow ? "1.2rem" : "1.8rem",
-    borderRadius: "1.5rem",
-    background:
-      "radial-gradient(circle at top left, rgba(248,250,252,0.22), transparent 55%)," +
-      "radial-gradient(circle at bottom right, rgba(248,250,252,0.18), transparent 60%)," +
-      "linear-gradient(135deg, #020617, #111827 45%, #0b1120 100%)",
-    boxShadow:
-      "0 18px 45px rgba(15,23,42,0.85), 0 0 0 1px rgba(148,163,184,0.18)",
-    color: "#e5e7eb",
-    alignItems: "stretch",
-    marginBottom: "1.75rem",
-  };
-
-  const yearEndPillStyle = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "0.5rem",
-    padding: "0.22rem 0.8rem",
-    borderRadius: "999px",
-    background: "rgba(15,23,42,0.9)",
-    border: "1px solid rgba(148,163,184,0.45)",
-    fontSize: "0.8rem",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    color: "#e5e7eb",
-  };
-
-  const yearEndHeadingStyle = {
-    fontSize: isNarrow ? "1.3rem" : "1.5rem",
-    fontWeight: 700,
-    margin: "0.6rem 0 0.25rem",
-    color: "#f9fafb",
-  };
-
-  const yearEndSubStyle = {
-    fontSize: "0.92rem",
-    color: "#cbd5f5",
-    marginBottom: "0.7rem",
-  };
-
-  const yearEndMetaRowStyle = {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "0.55rem",
-    margin: "0.5rem 0 0.9rem",
-    fontSize: "0.85rem",
-    color: "#e5e7eb",
-  };
-
   const metaChipStyle = {
     padding: "0.28rem 0.75rem",
     borderRadius: "999px",
     background: "rgba(15,23,42,0.85)",
     border: "1px solid rgba(148,163,184,0.4)",
-  };
-
-  const bulletListStyle = {
-    listStyle: "none",
-    paddingLeft: 0,
-    margin: "0.4rem 0 0",
-    fontSize: "0.88rem",
-    color: "#e5e7eb",
   };
 
   const artContainerStyle = {
@@ -1809,11 +1756,11 @@ This will remove it from live news and archives for everyone.`
       "radial-gradient(circle at 20% 0%, rgba(251,191,36,0.27), transparent 55%)," +
       "radial-gradient(circle at 90% 80%, rgba(251,113,133,0.32), transparent 60%)," +
       "linear-gradient(145deg, #020617, #111827)",
-    minHeight: isNarrow ? "170px" : "210px",
+    minHeight: isNarrow ? "124px" : "160px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: isNarrow ? "0.4rem" : 0,
+    marginTop: 0,
   };
 
   const artGlassHaloStyle = {
@@ -1886,52 +1833,6 @@ This will remove it from live news and archives for everyone.`
     opacity: 0.9,
   };
 
-  const artCornerBadgeStyle = {
-    position: "absolute",
-    right: "0.9rem",
-    top: "0.9rem",
-    padding: "0.3rem 0.7rem",
-    borderRadius: "999px",
-    border: "1px solid rgba(248,250,252,0.65)",
-    background: "rgba(15,23,42,0.9)",
-    fontSize: "0.7rem",
-    textTransform: "uppercase",
-    letterSpacing: "0.12em",
-    color: "#f9fafb",
-  };
-
-  const artBottomRibbonStyle = {
-    position: "absolute",
-    left: "-12%",
-    bottom: "14%",
-    width: "140%",
-    height: "40px",
-    background:
-      "linear-gradient(90deg, rgba(251,191,36,0.95), rgba(251,113,133,0.95))",
-    transform: "rotate(-4deg)",
-    opacity: 0.85,
-  };
-
-  const artBottomRibbonInnerStyle = {
-    position: "absolute",
-    inset: "6px 10px",
-    borderRadius: "999px",
-    border: "1px solid rgba(248,250,252,0.6)",
-  };
-
-  const artBottomTextStyle = {
-    position: "absolute",
-    left: "14%",
-    bottom: "21%",
-    fontSize: "0.78rem",
-    fontWeight: 600,
-    letterSpacing: "0.18em",
-    textTransform: "uppercase",
-    padding: "0.0rem 0.2rem",
-    color: "#f9fafb",
-    zIndex: 2,
-  };
-
   const newsInputStyle = {
     width: "100%",
     borderRadius: "0.9rem",
@@ -1966,73 +1867,7 @@ This will remove it from live news and archives for everyone.`
 
 
   const renderYearEndPoster = () => (
-          <section className="card year-end-premium-card year-end-in-canvas" style={yearEndCardStyle}>
-            <div style={{ minWidth: 0 }}>
-              <div style={yearEndPillStyle}>
-                <span>✨ Special Event</span>
-                <span style={{ fontSize: "0.9rem" }}>• Year-End Function</span>
-              </div>
-
-              <h2 style={yearEndHeadingStyle}>{event.title || YEAR_END_COPY.title}</h2>
-              <p style={yearEndSubStyle}>
-                {event.intro || YEAR_END_COPY.intro}
-              </p>
-
-              <div style={yearEndMetaRowStyle}>
-                <span style={metaChipStyle}>📅 {eventDate}</span>
-                <span style={metaChipStyle}>⏰ {event.arrival} arrival · {event.program} programme</span>
-                {renderVenueChip()}
-              </div>
-
-              <ul style={bulletListStyle}>
-                <li>• Dress code: {event.dress}</li>
-              </ul>
-
-              <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
-                🧊 <strong>Coolerboxes &amp; bottles:</strong> {event.drinksCopy || YEAR_END_COPY.drinksCopy}
-                (<strong>{eventPrice("cooler")}</strong> per coolerbox) and (
-                <strong>{eventPrice("bottle")}</strong> per whisky/brandy/gin bottle).
-              </p>
-
-              <p style={{ marginTop: "0.7rem", fontSize: "0.85rem", opacity: 0.95 }}>
-                💰 <strong>Cover charge:</strong> <strong>{eventPrice("player")}</strong> per player +{" "}
-                <strong>{eventPrice("guest")}</strong> per friend (max {event.maxGuests}). {event.coverCopy || YEAR_END_COPY.coverCopy}
-              </p>
-
-              <div
-                style={{
-                  marginTop: "1rem",
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "0.6rem",
-                }}
-              >
-                {(!event.archived || !yearEnd) && <button
-                  type="button"
-                  className="primary-btn"
-                  onClick={handleOpenRSVP}
-                  style={{ padding: "0.65rem 1.2rem", fontSize: "0.9rem" }}
-                >
-                  🎟️ Manage RSVP
-                </button>}
-
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() => setShowProgramModal(true)}
-                  style={{ padding: "0.65rem 1.1rem", fontSize: "0.9rem" }}
-                >
-                  📋 {canManageCustomStories && yearEnd ? "View / edit programme" : "View programme"}
-                </button>
-              </div>
-
-              {!identity && (
-                <p style={{ fontSize: "0.8rem", marginTop: "0.35rem", opacity: 0.8 }}>
-                  Please sign in on the main page to RSVP and see who&apos;s in.
-                </p>
-              )}
-            </div>
-
+    <section className="card year-end-premium-card year-end-in-canvas">
             <div style={artContainerStyle} aria-hidden="true">
               <div style={artGlassHaloStyle} />
               <div style={artInnerOrbStyle} />
@@ -2056,34 +1891,46 @@ This will remove it from live news and archives for everyone.`
 
                 <div style={sparkleRowStyle}>
                   <span>✦ Photos</span>
-                  <span>✦ Stories</span>
+                  <span>✦ Networking</span>
                   <span>✦ Drinks</span>
                 </div>
               </div>
 
-              <div style={artCornerBadgeStyle}>Year-End {event.date.slice(0,4)}</div>
-
-              {!isNarrow && (
-                <>
-                  <div style={artBottomRibbonStyle}>
-                    <div style={artBottomRibbonInnerStyle} />
-                  </div>
-                  <div style={artBottomTextStyle}>{eventDate.toUpperCase()} · {event.arrival} · {event.venue.toUpperCase()}</div>
-                </>
-              )}
             </div>
-            {canManageCustomStories && <div className="actions-row">
+      <div className="year-end-poster-copy">
+        <h2>{event.title || YEAR_END_COPY.title}</h2>
+        <p>{event.intro || YEAR_END_COPY.intro}</p>
+        <p className="year-end-poster-date">📅 {eventDate} · {event.arrival} arrival</p>
+        {renderVenueChip()}
+        <p>• Dress code: {event.dress}</p>
+        <p>🧊 <strong>Coolerboxes &amp; bottles:</strong> {event.drinksCopy || YEAR_END_COPY.drinksCopy} Pay corkage at the entrance: <strong>{eventPrice("cooler")}</strong> per coolerbox and <strong>{eventPrice("bottle")}</strong> per bottle.</p>
+        <p>💰 <strong>Cover charge:</strong> <strong>{eventPrice("player")}</strong> per player + <strong>{eventPrice("guest")}</strong> per friend (max {event.maxGuests}). {event.coverCopy || YEAR_END_COPY.coverCopy}</p>
+        <div className="year-end-poster-actions">
+          {(!event.archived || !yearEnd) && <button type="button" className="primary-btn" onClick={handleOpenRSVP}>🎟️ Manage RSVP</button>}
+          {yearEnd && !event.archived && <button type="button" className="secondary-btn" onClick={async()=>{
+            const url=window.location.origin+"/year-end";
+            try{
+              if(navigator.share && /^https?:$/.test(window.location.protocol) && window.location.hostname!=="localhost") await navigator.share({title:event.title||YEAR_END_COPY.title,url});
+              else window.open("https://wa.me/?text="+encodeURIComponent("https://5asidenearme.com/year-end"),"_blank","noopener,noreferrer");
+            }catch(e){if(e.name!=="AbortError")setYearEndError("Could not open sharing.");}
+          }}>Share invite</button>}
+          {(yearEnd ? event.programPublished === true : legacyProgrammeVisible) &&
+            <button type="button" className="secondary-btn" onClick={()=>setShowProgramModal(true)}>View programme</button>}
+        </div>
+            {canManageCustomStories && <details className="year-end-admin"><summary>Event settings</summary><div className="actions-row">
               <button className="secondary-btn" type="button" onClick={()=>setYearEndEditing(!yearEndEditing)}>{yearEndEditing?"Close editor":"Edit event"}</button>
               {!event.archived&&<button className="secondary-btn" type="button" onClick={async()=>{
                 try{await fieldLogoStudioRequest({action:"yearEndArchive"});await refreshYearEnd();}
                 catch(e){setYearEndError(e.message);}
               }}>Move to Old stories</button>}
-            </div>}
+              <button className="secondary-btn" type="button" onClick={()=>setShowProgramModal(true)}>Manage programme</button>
+            </div></details>}
             {yearEndEditing&&canManageCustomStories&&<YearEndEditor event={event} onSave={async values=>{
               await fieldLogoStudioRequest({action:"yearEndPublish",event:values});await refreshYearEnd();setYearEndEditing(false);
             }}/>}
-            {yearEndError&&<p role="alert">{yearEndError}</p>}
-          </section>
+        {yearEndError&&<p role="alert">{yearEndError}</p>}
+      </div>
+    </section>
   );
 
   const renderStoryDateBadges = (dateValue = Date.now(), archived = false) => {

@@ -32,7 +32,7 @@ function requestData(body){
 async function handle({db,user,body}){
  signed(user);const action=body.action;
  if(["hireView","saveHireStock","placeHire","returnHire","recordBibHandout","recordBibReturn","bibReturnsView","saveBibReturnPolicy","reviewBibReturn","confirmBibReturn","disputeBibReturn","recordBibReimbursement","ackBibReimbursement"].includes(action))return require("./fieldBibHire.cjs").handle({db,user,body});
- if(["requestBib","confirmBibContribution"].includes(action))return require("./kitBulk.cjs").handle({db,user,body});
+ if(["requestBib","cancelBib","confirmBibContribution"].includes(action))return require("./kitBulk.cjs").handle({db,user,body});
  const configRef=db.doc("kitShopConfig/store"),accessRef=db.doc("kitShopConfig/operators");
  const access=(await accessRef.get()).data(),isOperator=operator(user,access);
  if(action==="activateLaunchShop")return require("./kitShopLaunchProfile.cjs").activateLaunchShop({db,user,isOperator});
@@ -49,6 +49,19 @@ async function handle({db,user,body}){
   const root=db.collection(body.manage?"kitShopOrders":`kitShopCustomers/${user.uid}/orders`);let query=root.orderBy("createdAtMs","desc").limit(30);
   if(body.cursor){const cursor=await root.doc(id(body.cursor)).get();if(!cursor.exists)throw new Error("Order page expired. Refresh your orders.");query=query.startAfter(cursor);}
   const snap=await query.get();return {orders:snap.docs.map(d=>({...d.data(),id:d.id})),nextCursor:snap.docs.length===30?snap.docs.at(-1).id:""};
+ }
+ if(action==="updatePrice"){
+  if(!isOperator)throw new Error("Shop operator access is required.");
+  const priceMinor=body.priceMinor;
+  if(!Number.isSafeInteger(priceMinor)||priceMinor<1||priceMinor>10000000)throw new Error("Enter a valid price.");
+  const ref=db.doc(`kitShopProducts/${id(body.productId)}`);
+  return db.runTransaction(async tx=>{
+   if(!operator(user,(await tx.get(accessRef)).data()))throw new Error("Shop operator access changed.");
+   const current=(await tx.get(ref)).data();
+   if(!current||current.revision!==body.expectedRevision)throw new Error("This bib changed. Refresh before saving.");
+   tx.update(ref,{priceMinor,revision:current.revision+1,updatedAtMs:Date.now(),updatedByUid:user.uid});
+   return {ok:true};
+  });
  }
  if(action==="saveSettings"||action==="saveProduct"){
   if(!isOperator)throw new Error("Shop operator access is required.");
@@ -89,6 +102,16 @@ async function handle({db,user,body}){
   if(!owns&&!staff)throw new Error("This order does not belong to your account.");
   if(order.revision!==body.expectedRevision)throw new Error("This order changed. Refresh it before updating.");
   const decision=body.decision,note=text(body.note,400);let status=order.status,paymentStatus=order.paymentStatus;
+  if(decision==="requestChange"){
+   if(!owns||order.orderType==="bib_hire"||!["awaiting_payment","processing"].includes(status)||!note||order.cancellationRequested)throw new Error("This order cannot request a change.");
+   const updated={...order,changeRequest:note,revision:order.revision+1,updatedAtMs:Date.now()};
+   tx.set(orderRef,updated);tx.set(db.doc(`kitShopCustomers/${order.ownerUid}/orders/${orderId}`),updated);return {ok:true};
+  }
+  if(decision==="resolveChange"){
+   if(!staff||!order.changeRequest||!note)throw new Error("A shop operator must record the response.");
+   const updated={...order,changeRequest:"",changeResponse:note,revision:order.revision+1,updatedAtMs:Date.now()};
+   tx.set(orderRef,updated);tx.set(db.doc(`kitShopCustomers/${order.ownerUid}/orders/${orderId}`),updated);return {ok:true};
+  }
   if(decision==="requestCancellation"){
    if(!owns||["cancelled","delivered","collected"].includes(status))throw new Error("This order cannot request cancellation.");
    const updated={...order,cancellationRequested:true,revision:order.revision+1,updatedAtMs:Date.now()};tx.set(orderRef,updated);tx.set(db.doc(`kitShopCustomers/${order.ownerUid}/orders/${orderId}`),updated);return {ok:true};
