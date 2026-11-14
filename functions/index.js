@@ -56,12 +56,12 @@ let legacyTwilioConfig = {};
 let legacyYocoConfig = {};
 try {
   legacyTwilioConfig = functions.config().twilio || {};
-} catch (error) {
+} catch {
   legacyTwilioConfig = {};
 }
 try {
   legacyYocoConfig = functions.config().yoco || {};
-} catch (error) {
+} catch {
   legacyYocoConfig = {};
 }
 
@@ -337,7 +337,7 @@ function isLocalUrl(value = "") {
       host === "127.0.0.1" ||
       host === "0.0.0.0"
     );
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -733,7 +733,7 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
     let data = {};
     try {
       data = text ? JSON.parse(text) : {};
-    } catch (error) {
+    } catch {
       data = {raw: text};
     }
 
@@ -815,7 +815,7 @@ function verifyPaystackWebhookSignature(req) {
       Buffer.from(expected),
       Buffer.from(signature)
     );
-  } catch (error) {
+  } catch {
     return false;
   }
 }
