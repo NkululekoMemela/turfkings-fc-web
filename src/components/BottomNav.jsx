@@ -59,7 +59,7 @@ export default function BottomNav({
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    if(persistent || currentPage === "landing"){setIsHidden(false);return undefined;}
+    if(persistent){setIsHidden(false);return undefined;}
 
     let hideTimer = null;
 

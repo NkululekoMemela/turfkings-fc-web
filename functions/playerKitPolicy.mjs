@@ -37,7 +37,7 @@ export function buildKitRoster(teams = [], profiles = [], snapshots = {}) {
       const value = team.usePlayerNumbers===false?null:hasSaved ? (typeof saved === "object" ? saved?.number : saved) : profile?.jerseyNumber;
       let number = null;
       try {number = jerseyNumber(value);} catch { number=hasSaved?value:null; }
-      rows.set(key,{key,name,aliases,number,noNumberReason:"",source:hasSaved?"captain":number===null?"unassigned":"profile"});
+      rows.set(key,{key,name,aliases,number,noNumberReason:team.usePlayerNumbers===false?"not_used":"",source:hasSaved?"captain":number===null?"unassigned":"profile"});
     }
     const clubProfile=profiles.find(profile=>!team.clubId||profile.clubId===team.clubId)||{};
     return {id,label:team.label || team.name || id,clubId:team.clubId || "",homeColor:team.homeColor||clubProfile.clubHomeColor||"",awayColor:team.awayColor||clubProfile.clubAwayColor||"",kitChoice:team.kitChoice||"",kitColor:team.kitColor||"",players:[...rows.values()]};
