@@ -51,3 +51,35 @@ test("sign-in binding uses the verified member record, preserves existing IDs an
  assert.equal(result.playerId,"ace");assert.equal(f.records.get("clubs/club/players/ace").roles.admin,false);
  await assert.rejects(privacy.handle({db:f.db,user:{...user,uid:"other"},body:{action:"bind",clubId:"club",memberId:"member"}}),/does not belong/);
 });
+
+
+test("shared database portrait is used by own profile loads",async()=>{
+ const f=fixture({...initial,
+  "clubs/club/playerPhotos/ace":{photoUrl:"https://example.test/shared.jpg",sourceMemberId:"member"}
+ });
+ const result=await privacy.handle({db:f.db,user,body:{action:"load",clubId:"club",memberId:"member"}});
+ assert.equal(result.member.displayPhoto,"https://example.test/shared.jpg");
+});
+test("linked player photo is used when the photo document is missing",async()=>{
+ const f=fixture({...initial,
+  "clubs/club/players/ace":{...initial["clubs/club/players/ace"],photoUrl:"https://example.test/player.jpg"}
+ });
+ const result=await privacy.handle({db:f.db,user,body:{action:"load",clubId:"club",memberId:"member"}});
+ assert.equal(result.member.displayPhoto,"https://example.test/player.jpg");
+});
+test("legacy derived player IDs require a verified membership link",async()=>{
+ const legacy={...member};delete legacy.playerId;
+ const records={...initial,"clubs/club/members/member":legacy,
+  "clubs/club/players/ace":{sourceMemberId:"member"},
+  "clubs/club/playerPhotos/ace":{photoData:"saved-portrait",sourceMemberId:"member"}
+ };
+ const f=fixture(records);
+ const result=await privacy.handle({db:f.db,user,body:{action:"load",clubId:"club",memberId:"member"}});
+ assert.equal(result.member.displayPhoto,"saved-portrait");
+ const foreign=fixture({...records,
+  "clubs/club/players/ace":{sourceMemberId:"someone-else"},
+  "clubs/club/playerPhotos/ace":{photoData:"foreign-portrait",sourceMemberId:"someone-else"}
+ });
+ const rejected=await privacy.handle({db:foreign.db,user,body:{action:"load",clubId:"club",memberId:"member"}});
+ assert.equal(rejected.member.displayPhoto,"");
+});

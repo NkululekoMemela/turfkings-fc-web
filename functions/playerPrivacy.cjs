@@ -123,8 +123,35 @@ async function handle({db, user, body}) {
   if (action === "load") {
     const snapshot = await memberRef.get(), member = snapshot.data();
     if (!owns(member, user)) throw new Error("This profile does not belong to your signed-in account.");
-    const portrait = member.playerId ? await db.doc(`clubs/${clubId}/playerPhotos/${id(member.playerId)}`).get() : null;
-    return {member:{...member,id:memberId,displayPhoto:portrait?.data()?.photoData || member.photoData || member.photoUrl || ""}};
+    const photoOf = record => {
+      for(const field of ["photoData","photoUrl","photoURL","profilePhotoUrl","photo","image","imageUrl"]){
+        if(typeof record?.[field]==="string" && record[field].trim())return record[field];
+      }
+      return "";
+    };
+    const candidateId = member.playerId ||
+      String(member.shortName || member.fullName || "").trim()
+        .toLowerCase().replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+    let sharedPhoto = "";
+    if(candidateId){
+      const playerId = id(candidateId);
+      const [playerSnap,portraitSnap] = await Promise.all([
+        db.doc(`clubs/${clubId}/players/${playerId}`).get(),
+        db.doc(`clubs/${clubId}/playerPhotos/${playerId}`).get()
+      ]);
+      const player = playerSnap.data() || {};
+      const portrait = portraitSnap.data() || {};
+      const email = value => String(value || "").trim().toLowerCase();
+      const linked = Boolean(member.playerId) ||
+        player.sourceMemberId===memberId ||
+        Boolean(user.email && email(player.email)===email(user.email));
+      const playerMatches = !player.sourceMemberId || player.sourceMemberId===memberId;
+      const portraitMatches = !portrait.sourceMemberId || portrait.sourceMemberId===memberId;
+      if(linked && playerMatches && portraitMatches){
+        sharedPhoto = photoOf(portrait) || photoOf(player);
+      }
+    }
+    return {member:{...member,id:memberId,displayPhoto:sharedPhoto || photoOf(member)}};
   }
   if (action !== "save") throw new Error("Unknown profile operation.");
   const draft = body.draft || {};

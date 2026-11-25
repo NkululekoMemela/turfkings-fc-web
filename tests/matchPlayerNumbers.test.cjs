@@ -27,7 +27,7 @@ test("duplicate visible numbers and unapproved blank shirts cannot be verified",
 });
 test("Field club representatives cannot act as staff, and a staff member must control the match",async()=>{
  const fieldScope={environment:"official",venueId:"field",seasonId:"S1"};
- const f=fixture({"leagueVenues/field":{ownerUid:"field-admin",league:{activeSeason:{id:"S1"}}},"leagueVenues/field/seasons/S1/matches/current":{currentMatch:{teamAId:"A",teamBId:"B"},liveMatchController:{uid:"ref"}}});
+ const f=fixture({"leagueVenues/field":{ownerUid:"field-admin",league:{activeSeason:{id:"S1"}}},"leagueVenues/field/seasons/S1/matches/current":{fixtureId:"match-1",status:"live",currentMatch:{teamAId:"A",teamBId:"B"},liveMatchController:{uid:"ref"}}});
  await assert.rejects(service.save({db:f.db,user,body:{...body,scope:fieldScope}}),/active Field staff/);
  f.records.set("leagueVenues/field/staff/ref",{status:"active",role:"referee"});
  assert.equal((await service.save({db:f.db,user,body:{...body,scope:fieldScope}})).revision,1);
