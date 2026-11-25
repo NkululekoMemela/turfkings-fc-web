@@ -1709,6 +1709,36 @@ export function LandingPage({
                   border: "1px solid rgba(148,163,184,0.14)",
                 }}
               >
+                    {isThreeTeamLeague && fixturedMode && (
+          <section className="fixture-premium-summary fixture-settings-compact">
+            <div className="fixture-premium-summary-icon">
+              ◫
+            </div>
+
+            <div className="fixture-premium-summary-copy">
+              <span>FIXTURED SEASON</span>
+              <strong>
+                {scheduledTarget ?? smartTarget ?? "—"} match target
+              </strong>
+              <small>
+                {(scheduledFixtures || []).length} scheduled fixtures
+              </small>
+            </div>
+
+            <button
+              type="button"
+              className="fixture-premium-view-button"
+              onClick={() => setShowFixturesModal(true)}
+              disabled={
+                !scheduledFixtures ||
+                scheduledFixtures.length === 0
+              }
+            >
+              View fixtures
+              <span aria-hidden="true">›</span>
+            </button>
+          </section>
+        )}
             <div>
               <div
                 className="muted small"
@@ -1961,41 +1991,13 @@ export function LandingPage({
             </button>
 
 
+
               </div>
             )}
           </div>
         )}
 
-        {isThreeTeamLeague && fixturedMode && (
-          <section className="fixture-premium-summary">
-            <div className="fixture-premium-summary-icon">
-              ◫
-            </div>
 
-            <div className="fixture-premium-summary-copy">
-              <span>FIXTURED SEASON</span>
-              <strong>
-                {scheduledTarget ?? smartTarget ?? "—"} match target
-              </strong>
-              <small>
-                {(scheduledFixtures || []).length} scheduled fixtures
-              </small>
-            </div>
-
-            <button
-              type="button"
-              className="fixture-premium-view-button"
-              onClick={() => setShowFixturesModal(true)}
-              disabled={
-                !scheduledFixtures ||
-                scheduledFixtures.length === 0
-              }
-            >
-              View fixtures
-              <span aria-hidden="true">›</span>
-            </button>
-          </section>
-        )}
 
         <header className="match-preview-heading">
           <div className="match-preview-heading__title">
@@ -2035,11 +2037,7 @@ export function LandingPage({
 
         {!nextExhibition && (isThreeTeamLeague || (teamAId && teamBId)) && (
           <div
-            className={`match-setup-row ${
-              fixturedMode
-                ? "fixture-premium-pairing"
-                : ""
-            }`}
+            className="match-setup-row"
           >
             <MatchTeamChooser
               label="On-field Team 1"
