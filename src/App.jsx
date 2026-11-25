@@ -4374,12 +4374,35 @@ function MainApp() {
     [identity, captainRoleTeams]
   );
 
+  const [navPlayerPortrait, setNavPlayerPortrait] = useState(null);
+  const navPortraitKey = JSON.stringify([activeClubId, authUser?.uid, identity?.memberId]);
   const canAccessPlayerFeatures=canUsePlayerFeatures({user:authUser,identity,clubId:activeClubId,activeRole});
   useEffect(()=>{
-    if(!authUser){cachedOwnPlayerProfile(activeClubId);return;}
-    if(canAccessPlayerFeatures && !isPracticeMode)
-      preloadOwnPlayerProfile(activeClubId,identity.memberId).catch(()=>{});
-  },[activeClubId,identity?.memberId,authUser,isPracticeMode,canAccessPlayerFeatures]);
+    let active = true;
+    if(!authUser){
+      cachedOwnPlayerProfile(activeClubId);
+      setNavPlayerPortrait(null);
+      return;
+    }
+    if(!canAccessPlayerFeatures){
+      setNavPlayerPortrait(null);
+      return;
+    }
+    const update = () => {
+      if(!active)return;
+      const profile = cachedOwnPlayerProfile(activeClubId,identity?.memberId);
+      setNavPlayerPortrait({
+        key:navPortraitKey,
+        photo:profile?.displayPhoto || profile?.photoData ||
+          profile?.photoUrl || authUser.photoURL || ""
+      });
+    };
+    update();
+    if(!isPracticeMode)
+      preloadOwnPlayerProfile(activeClubId,identity.memberId)
+        .then(update).catch(()=>{});
+    return()=>{active=false;};
+  },[navPortraitKey,authUser,isPracticeMode,canAccessPlayerFeatures]);
 
   const realRole = useMemo(() => getRealStoredRole(identity), [identity]);
   const isAdminPreviewingAnotherRole = realRole === "admin" && activeRole !== "admin";
@@ -10532,11 +10555,14 @@ function MainApp() {
           isPracticeMode={isPracticeMode}
           onBack={handleBackToLanding}
           onOpenShop={color=>{setShopPreference(color||"");setPage(PAGE_SHOP);}}
-          onProfileUpdated={patch => setIdentity(previous =>
-            previous?.memberId === patch.memberId
-              ? {...previous, ...patch}
-              : previous
-          )}
+          onProfileUpdated={patch => {
+            if(patch.photoUrl)setNavPlayerPortrait({key:navPortraitKey,photo:patch.photoUrl});
+            setIdentity(previous =>
+              previous?.memberId === patch.memberId
+                ? {...previous, ...patch}
+                : previous
+            );
+          }}
         />
       )}
 
@@ -11920,6 +11946,11 @@ function MainApp() {
 
       {showBottomNav && !showBackupModal && !showSessionSelector ? (
         <BottomNav
+          key={navPortraitKey}
+          playerPhotoUrl={canAccessPlayerFeatures
+            ? (navPlayerPortrait?.key === navPortraitKey
+              ? navPlayerPortrait.photo : authUser?.photoURL || "")
+            : ""}
           exhibitionSignupHint={exhibitionSignupHint}
           exhibitionSquadsHint={exhibitionSquadsHint}
           ticketClubId={activeClubId}

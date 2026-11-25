@@ -31,6 +31,7 @@ export default function BottomNav({
   onNavigate,
   activeClub = null,
   activeClubName = "Club",
+  playerPhotoUrl = "",
   canAccessProfile = false,
   canAccessPayments = true,
   companyBookings = false,
@@ -41,6 +42,8 @@ export default function BottomNav({
   lockedMessage = "Return to the live match first.",
 }) {
   const [isHidden, setIsHidden] = useState(false);
+  const [failedPortrait, setFailedPortrait] = useState("");
+  const showPortrait = Boolean(playerPhotoUrl && failedPortrait !== playerPhotoUrl);
   const navScroller = useRef(null);
   const payButtonRef=useRef(null);
   const squadsButtonRef=useRef(null);
@@ -138,7 +141,16 @@ export default function BottomNav({
                   aria-current={isCurrent ? "page" : undefined}
                 >
                   <span className="nav-icon-wrap">
-                    {item.image ? (
+                    {item.key === "player-profile" && showPortrait ? (
+                      <img
+                        key={playerPhotoUrl}
+                        src={playerPhotoUrl}
+                        alt=""
+                        className="nav-player-portrait"
+                        draggable="false"
+                        onError={() => setFailedPortrait(playerPhotoUrl)}
+                      />
+                    ) : item.image ? (
                       <img
                         src={item.image}
                         alt=""
@@ -324,6 +336,23 @@ export default function BottomNav({
           user-select: none;
           pointer-events: none;
           filter: drop-shadow(0 1px 2px rgba(0,0,0,.30));
+        }
+
+        .tk-bottom-nav-flat .nav-icon-wrap .nav-player-portrait {
+          display: block;
+          width: 30px;
+          height: 30px;
+          max-width: none;
+          flex-shrink: 0;
+          box-sizing: border-box;
+          object-fit: cover;
+          object-position: center;
+          border-radius: 7px;
+          border: 1px solid rgba(203,213,225,.45);
+          box-shadow: 0 2px 6px rgba(0,0,0,.25);
+        }
+        .tk-bottom-nav-flat .is-current .nav-player-portrait {
+          border-color: #86efac;
         }
 
         .nav-label {
