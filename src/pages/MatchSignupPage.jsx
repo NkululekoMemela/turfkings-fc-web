@@ -531,6 +531,17 @@ function getMonthWednesdays({ visibleOnly = true, settings = DEFAULT_MATCH_SIGNU
     });
   }
 
+  const override=String(settings.signupMonthOverride || "");
+  if(/^\d{4}-(0[1-9]|1[0-2])$/.test(override)){
+    const [year,month]=override.split("-").map(Number);
+    const target=new Date(year,month-1,1);
+    if(target>=new Date(now.getFullYear(),now.getMonth(),1)){
+      monthTargets.splice(0,monthTargets.length,{
+        year,month:month-1,includeOnlyFuture:visibleOnly
+      });
+    }
+  }
+
   const byId = new Map();
 
   monthTargets.forEach(({ year, month, includeOnlyFuture }) => {
@@ -899,6 +910,7 @@ export default function MatchSignupPage({
   const effectiveMatchSignupSettings = useMemo(
     () => ({
       ...matchSignupSettings,
+      signupMonthOverride: isPracticeMode ? "" : clubBookingSettings.signupMonthOverride,
       maxPlayers: clubBookingSettings.maxPlayers || MAX_PLAYERS,
       weeklyDay:
         clubWeeklySchedule?.day ??
@@ -908,7 +920,7 @@ export default function MatchSignupPage({
         matchSignupSettings.weeklyStartTime ||
         DEFAULT_MATCH_SIGNUP_SETTINGS.weeklyStartTime,
     }),
-    [clubBookingSettings, matchSignupSettings, clubWeeklySchedule]
+    [clubBookingSettings, matchSignupSettings, clubWeeklySchedule, isPracticeMode]
   );
 
   const [sharedChallengeFixtures, setSharedChallengeFixtures] = useState([]);
@@ -1094,13 +1106,14 @@ export default function MatchSignupPage({
     const today = new Date();
 
     return allMonthWeeks.filter((week) => {
+      if(!isPracticeMode && !week?.isChallenge && (clubBookingSettings.blockedSignupDates || []).includes(week.id))return false;
       return week?.date instanceof Date && week.date >= new Date(
         today.getFullYear(),
         today.getMonth(),
         today.getDate()
       );
     });
-  }, [allMonthWeeks]);
+  }, [allMonthWeeks, clubBookingSettings, isPracticeMode]);
 
   /*
     Visible/payable cycle:
@@ -1210,7 +1223,16 @@ export default function MatchSignupPage({
     );
   }, [calendarMonthsData.length]);
 
-  const calendarMonthKey = useMemo(() => getPrimarySignupScopeMonth(), [weeks]);
+  const calendarMonthKey = useMemo(() => {
+    const override=String(effectiveMatchSignupSettings.signupMonthOverride || "");
+    if(/^\d{4}-(0[1-9]|1[0-2])$/.test(override)){
+      const [year,month]=override.split("-").map(Number);
+      const target=new Date(year,month-1,1),now=new Date();
+      if(target>=new Date(now.getFullYear(),now.getMonth(),1))
+        return target.toLocaleDateString("en-ZA",{year:"numeric",month:"2-digit"});
+    }
+    return getPrimarySignupScopeMonth();
+  }, [weeks,effectiveMatchSignupSettings.signupMonthOverride]);
 
   const phoneNumber = getPhoneFromIdentity(identity, currentUser);
   const effectiveWhatsappNumber = normalizeWhatsAppNumber(
@@ -7192,7 +7214,8 @@ const getSpecialColumnStyle = (week, base = {}, edge = "middle") => {
 
       {!isPracticeMode && canManageSignupsAsAdmin && (
         <ClubBookingSettings clubId={activeClubId}
-          settings={clubBookingSettings} defaultLimit={MAX_PLAYERS} />
+          settings={clubBookingSettings} defaultLimit={MAX_PLAYERS}
+          weeklyDay={effectiveMatchSignupSettings.weeklyDay} />
       )}
 
       {isFullyPaidSelection ? (
