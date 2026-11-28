@@ -29,7 +29,7 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
   const [session,setSession]=useState(()=>auth.currentUser);
   const playerAccess=canUsePlayerFeatures({user:session,identity,clubId,activeRole});
   const [initialProfile]=useState(()=>playerAccess?cachedOwnPlayerProfile(clubId,identity?.memberId):null);
-  const [member,setMember]=useState(initialProfile),[draft,setDraft]=useState(()=>toDraft(initialProfile,auth.currentUser)),[photo,setPhoto]=useState(()=>initialProfile?.displayPhoto || initialProfile?.photoData || initialProfile?.photoUrl || auth.currentUser?.photoURL || "");
+  const [member,setMember]=useState(initialProfile),[draft,setDraft]=useState(()=>toDraft(initialProfile,auth.currentUser)),[photo,setPhoto]=useState(()=>initialProfile?.displayPhoto || initialProfile?.photoData || initialProfile?.photoUrl || "");
   const [newPhoto,setNewPhoto]=useState(""),[editing,setEditing]=useState(false),[loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false),[preparing,setPreparing]=useState(false),[error,setError]=useState("");
   const [message,setMessage]=useState(""),[refresh,setRefresh]=useState(0),[headerScrolled,setHeaderScrolled]=useState(false);
@@ -51,12 +51,12 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
     if(!playerAccess){setMember(null);setPhoto("");setEditing(false);setGoogleChange(null);setLoading(false);dirty.current=false;return;}
     let active=true;const cached=cachedOwnPlayerProfile(clubId,identity?.memberId);setLoading(true);setMember(cached);setEditing(false);setError("");dirty.current=false;
     const fallback={fullName:identity?.fullName || user?.fullName || session?.displayName || "",shortName:identity?.shortName || user?.shortName || "",email:session?.email || ""};
-    setDraft(cached?toDraft(cached,session):{...emptyDraft,...fallback});setPhoto(cached?.displayPhoto || cached?.photoData || cached?.photoUrl || session?.photoURL || "");setNewPhoto("");
+    setDraft(cached?toDraft(cached,session):{...emptyDraft,...fallback});setPhoto(cached?.displayPhoto || cached?.photoData || cached?.photoUrl || "");setNewPhoto("");
     if (!session?.uid || !session.emailVerified) {setLoading(false);return;}
     loadOwnPlayerProfile(clubId,identity?.memberId).then(result=>{
       if (!active) return;
       if (!result) throw new Error("We could not link this profile to your signed-in account. Sign in again with your registered Google account.");
-      setMember(result);setDraft(toDraft(result,session));setPhoto(result.displayPhoto || result.photoData || result.photoUrl || session.photoURL || "");
+      setMember(result);setDraft(toDraft(result,session));setPhoto(result.displayPhoto || result.photoData || result.photoUrl || "");
     }).catch(reason=>{if(active)setError(reason.message);}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;photoRequest.current++;};
   },[clubId,session?.uid,session?.email,session?.emailVerified,identity?.memberId,refresh,playerAccess]);
@@ -83,7 +83,7 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
     catch(reason){if(request===photoRequest.current)setError(reason.message || "The photo could not be prepared.");}
     finally{if(request===photoRequest.current)setPreparing(false);}
   };
-  const cancelEdit=()=>{if(saving||preparing)return;setDraft(toDraft(member,session));setPhoto(member?.displayPhoto || member?.photoData || member?.photoUrl || session?.photoURL || "");setNewPhoto("");setEditing(false);dirty.current=false;setError("");};
+  const cancelEdit=()=>{if(saving||preparing)return;setDraft(toDraft(member,session));setPhoto(member?.displayPhoto || member?.photoData || member?.photoUrl || "");setNewPhoto("");setEditing(false);dirty.current=false;setError("");};
   const publish=details=>onProfileUpdated?.({memberId:member.id,uid:session.uid,...details});
   const save=async event=>{
     event.preventDefault();if(saving||preparing||!editing||!member||isPracticeMode)return;
