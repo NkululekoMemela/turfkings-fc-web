@@ -4394,7 +4394,7 @@ function MainApp() {
       setNavPlayerPortrait({
         key:navPortraitKey,
         photo:profile?.displayPhoto || profile?.photoData ||
-          profile?.photoUrl || authUser.photoURL || ""
+          profile?.photoUrl || ""
       });
     };
     update();

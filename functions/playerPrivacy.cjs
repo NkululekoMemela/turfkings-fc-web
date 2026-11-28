@@ -151,6 +151,45 @@ async function handle({db, user, body}) {
         sharedPhoto = photoOf(portrait) || photoOf(player);
       }
     }
+    // Resolve older portraits without guessing between players.
+    if(!sharedPhoto){
+      const normal=value=>String(value || "").trim().toLowerCase().replace(/\s+/g," ");
+      const namesOf=record=>[
+        record.fullName,record.shortName,record.name,record.playerName,
+        ...(Array.isArray(record.profileNameAliases)?record.profileNameAliases:[])
+      ].map(normal).filter(Boolean);
+      const names=new Set(namesOf(member));
+      const [membersSnap,playersSnap,photosSnap]=await Promise.all([
+        db.collection(`clubs/${clubId}/members`).get(),
+        db.collection(`clubs/${clubId}/players`).get(),
+        db.collection(`clubs/${clubId}/playerPhotos`).get()
+      ]);
+      const uniqueNames=new Set([...names].filter(name=>
+        !membersSnap.docs.some(doc=>doc.id!==memberId && namesOf(doc.data()).includes(name))
+      ));
+      const slug=value=>normal(value).replace(/\s+/g,"_").replace(/[^a-z0-9_]/g,"");
+      const uniqueIds=new Set([...uniqueNames].map(slug).filter(Boolean));
+      const candidates=[];
+      for(const snapshot of [photosSnap,playersSnap]){
+        for(const doc of snapshot.docs){
+          const record=doc.data(),photo=photoOf(record);
+          if(!photo)continue;
+          if(record.sourceMemberId && record.sourceMemberId!==memberId)continue;
+          const linked=record.sourceMemberId===memberId;
+          const explicit=Boolean(member.playerId && doc.id===String(member.playerId));
+          const legacy=namesOf(record).some(name=>uniqueNames.has(name)) ||
+            uniqueIds.has(doc.id);
+          if(linked || explicit || legacy){
+            candidates.push({photo,priority:linked?0:explicit?1:2});
+          }
+        }
+      }
+      if(candidates.length){
+        const priority=Math.min(...candidates.map(item=>item.priority));
+        const photos=[...new Set(candidates.filter(item=>item.priority===priority).map(item=>item.photo))];
+        if(photos.length===1)sharedPhoto=photos[0];
+      }
+    }
     return {member:{...member,id:memberId,displayPhoto:sharedPhoto || photoOf(member)}};
   }
   if (action !== "save") throw new Error("Unknown profile operation.");
