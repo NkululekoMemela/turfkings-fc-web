@@ -2,6 +2,12 @@ const {test}=require("node:test");
 const assert=require("node:assert/strict");
 const {settings}=require("../functions/yearEndEvent.cjs");
 const draft={date:"2099-12-05",arrival:"18:00",program:"19:30",venue:"Haveva",dress:"Smart",player:10000,guest:7500,cooler:18000,bottle:8000,maxGuests:3,capacity:60};
+test("poster dates can be edited independently of the checkout cutoff",()=>{
+  const event=settings({...draft,date:"2026-11-28"});
+  assert.equal(event.date,"2026-11-28");
+  assert.equal(new Date(event.startsAt).toISOString(),"2026-11-28T16:00:00.000Z");
+  assert.equal(settings({...draft,date:"2025-12-05"}).date,"2025-12-05");
+});
 test("event validation retains exact prices, capacity and SAST start time",()=>{
  const event=settings(draft);
  assert.equal(event.player,10000);

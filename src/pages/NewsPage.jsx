@@ -1703,12 +1703,12 @@ This will remove it from live news and archives for everyone.`
   const [yearEndEditing,setYearEndEditing]=useState(false);
   const [yearEndError,setYearEndError]=useState("");
   const savedEvent=yearEnd||ORIGINAL_YEAR_END;
-  const event=savedEvent.date.startsWith("2026-") && /^suits\s*(?:&|and)\s*smart fits$/i.test(savedEvent.dress.trim())
-    ? {...savedEvent,dress:"Formal and smart fits"} : savedEvent;
+  const event=savedEvent;
   const refreshYearEnd=useCallback(async()=>{
     if(!isTurfKingsClub||!auth.currentUser)return;
     const result=await fieldLogoStudioRequest({action:"yearEndView"});
     setYearEnd(result.event);
+    return result.event;
   },[isTurfKingsClub]);
   useEffect(()=>{
     refreshYearEnd().catch(()=>{});
@@ -1906,6 +1906,23 @@ This will remove it from live news and archives for everyone.`
         <p>🧊 <strong>Coolerboxes &amp; bottles:</strong> {event.drinksCopy || YEAR_END_COPY.drinksCopy} Pay corkage at the entrance: <strong>{eventPrice("cooler")}</strong> per coolerbox and <strong>{eventPrice("bottle")}</strong> per bottle.</p>
         <p>💰 <strong>Cover charge:</strong> <strong>{eventPrice("player")}</strong> per player + <strong>{eventPrice("guest")}</strong> per friend (max {event.maxGuests}). {event.coverCopy || YEAR_END_COPY.coverCopy}</p>
         <div className="year-end-poster-actions">
+          {canManageCustomStories && event.archived && <button
+            type="button" className="primary-btn" onClick={async e=>{
+              const button=e.currentTarget;
+              button.disabled=true;setYearEndError("");
+              try{
+                if(yearEnd){
+                  await fieldLogoStudioRequest({action:"yearEndRestore",eventId:event.id});
+                }else{
+                  await fieldLogoStudioRequest({
+                    action:"yearEndPublish",event:{...event,slotKey:"top"}
+                  });
+                }
+                await refreshYearEnd();
+                window.scrollTo({top:0,behavior:"smooth"});
+              }catch(error){setYearEndError(error.message);}
+              finally{button.disabled=false;}
+            }}>Restore to top of stories</button>}
           {(!event.archived || !yearEnd) && <button type="button" className="primary-btn" onClick={handleOpenRSVP}>🎟️ Manage RSVP</button>}
           {yearEnd && !event.archived && <button type="button" className="secondary-btn" onClick={async()=>{
             const url=window.location.origin+"/year-end";
@@ -1923,17 +1940,24 @@ This will remove it from live news and archives for everyone.`
                 try{await fieldLogoStudioRequest({action:"yearEndArchive"});await refreshYearEnd();}
                 catch(e){setYearEndError(e.message);}
               }}>Move to Old stories</button>}
-              {yearEnd&&event.archived&&<button className="primary-btn" type="button" onClick={async()=>{
-                setYearEndError("");
+
+              <button className="secondary-btn" type="button" onClick={async e=>{
+                const button=e.currentTarget;
+                button.disabled=true;setYearEndError("");
                 try{
-                  await fieldLogoStudioRequest({action:"yearEndRestore",eventId:event.id});
-                  await refreshYearEnd();
-                }catch(e){setYearEndError(e.message);}
-              }}>Restore to active stories</button>}
-              <button className="secondary-btn" type="button" onClick={()=>setShowProgramModal(true)}>Manage programme</button>
+                  if(!yearEnd){
+                    await fieldLogoStudioRequest({
+                      action:"yearEndPublish",event:{...event,slotKey:"top"}
+                    });
+                    await refreshYearEnd();
+                  }
+                  setShowProgramModal(true);
+                }catch(error){setYearEndError(error.message);}
+                finally{button.disabled=false;}
+              }}>Manage programme</button>
             </div></details>}
             {yearEndEditing&&canManageCustomStories&&<YearEndEditor event={event} onSave={async values=>{
-              await fieldLogoStudioRequest({action:"yearEndPublish",event:values});await refreshYearEnd();setYearEndEditing(false);
+              setYearEndError("");await fieldLogoStudioRequest({action:"yearEndPublish",event:{...values,slotKey:event.archived?"top":values.slotKey}});await refreshYearEnd();setYearEndEditing(false);
             }}/>}
         {yearEndError&&<p role="alert">{yearEndError}</p>}
       </div>
