@@ -1923,6 +1923,13 @@ This will remove it from live news and archives for everyone.`
                 try{await fieldLogoStudioRequest({action:"yearEndArchive"});await refreshYearEnd();}
                 catch(e){setYearEndError(e.message);}
               }}>Move to Old stories</button>}
+              {yearEnd&&event.archived&&<button className="primary-btn" type="button" onClick={async()=>{
+                setYearEndError("");
+                try{
+                  await fieldLogoStudioRequest({action:"yearEndRestore",eventId:event.id});
+                  await refreshYearEnd();
+                }catch(e){setYearEndError(e.message);}
+              }}>Restore to active stories</button>}
               <button className="secondary-btn" type="button" onClick={()=>setShowProgramModal(true)}>Manage programme</button>
             </div></details>}
             {yearEndEditing&&canManageCustomStories&&<YearEndEditor event={event} onSave={async values=>{
