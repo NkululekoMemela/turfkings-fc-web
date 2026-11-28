@@ -22,8 +22,8 @@ function settings(input={}){
   invalid("choose a valid calendar date.");
  if(![arrival,program].every(x=>typeof x==="string"&&/^([01]\d|2[0-3]):[0-5]\d$/.test(x)))
   invalid("arrival and programme times must use HH:MM.");
- if(!Number.isFinite(startsAt)||startsAt<=Date.now())
-  invalid("choose a future event date and arrival time.");
+ if(!Number.isFinite(startsAt))
+  invalid("choose a valid event date and arrival time.");
  if(!venue)invalid("enter the venue, using no more than 180 characters.");
  if(!dress)invalid("enter the dress code, using no more than 120 characters.");
  for(const [label,value] of Object.entries({player,guest,cooler,bottle}))
@@ -79,7 +79,7 @@ async function eventAction({db,user,body}){
   }
   if(body.action==="yearEndRestore"){
    if(!current || body.eventId!==current.id)throw eventError("The event changed. Reopen it before restoring.");
-   tx.update(ref,{archived:false,updatedBy:user.uid,updatedAtMs:Date.now()});
+   tx.update(ref,{archived:false,slotKey:"top",updatedBy:user.uid,updatedAtMs:Date.now()});
    return {};
   }
   if(body.action==="yearEndArchive"){
