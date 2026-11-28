@@ -1,5 +1,10 @@
 const {randomUUID}=require("node:crypto");
 const {context}=require("./kitBulk.cjs");
+function eventError(message){
+ const error=new Error(message);
+ error.status=400;
+ return error;
+}
 const ROOT="yearEndEvents/turf-kings";
 const PAYMENT="yearEndPayments";
 const originSet=new Set(["https://five-asides-near-me-staging.web.app","https://five-asides-near-me-development.web.app","https://five-asides-near-me-testing.web.app","https://five-asides-near-me.web.app","https://5asidenearme.com","https://www.5asidenearme.com"]);
@@ -12,10 +17,19 @@ function settings(input={}){
  const venue=text(input.venue,180),dress=text(input.dress,120);
  const startsAt=Date.parse(`${date}T${arrival}:00+02:00`);
  const calendar=new Date(`${date}T00:00:00Z`);
- if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(+calendar)||calendar.toISOString().slice(0,10)!==date||
-    ![arrival,program].every(x=>typeof x==="string"&&/^([01]\d|2[0-3]):[0-5]\d$/.test(x))||
-    startsAt<=Date.now()||!venue||!dress||![player,guest,cooler,bottle].every(x=>integer(x,0,10000000))||
-    !integer(maxGuests,0,20)||!integer(capacity,1,500))throw Error("Check the event date, time, venue, prices and capacity.");
+ const invalid=message=>{throw eventError("Check the event: "+message);};
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(+calendar)||calendar.toISOString().slice(0,10)!==date)
+  invalid("choose a valid calendar date.");
+ if(![arrival,program].every(x=>typeof x==="string"&&/^([01]\d|2[0-3]):[0-5]\d$/.test(x)))
+  invalid("arrival and programme times must use HH:MM.");
+ if(!Number.isFinite(startsAt)||startsAt<=Date.now())
+  invalid("choose a future event date and arrival time.");
+ if(!venue)invalid("enter the venue, using no more than 180 characters.");
+ if(!dress)invalid("enter the dress code, using no more than 120 characters.");
+ for(const [label,value] of Object.entries({player,guest,cooler,bottle}))
+  if(!integer(value,0,10000000))invalid(label+" price is missing or invalid.");
+ if(!integer(maxGuests,0,20))invalid("guests per player must be a whole number from 0 to 20.");
+ if(!integer(capacity,1,500))invalid("capacity must be a whole number from 1 to 500.");
  return {date,arrival,program,venue,dress,player,guest,cooler,bottle,maxGuests,capacity,startsAt,
   slotKey:slots.has(input.slotKey)?input.slotKey:"before-old-stories",
   title:text(input.title,120),intro:text(input.intro,1000),drinksCopy:text(input.drinksCopy,1000),coverCopy:text(input.coverCopy,1000)};
@@ -49,28 +63,33 @@ async function eventAction({db,user,body}){
  }
  return db.runTransaction(async tx=>{
   const ctx=await context(db,user,"turf-kings",tx);
-  if(!ctx.captain)throw Error("Only a Turf Kings administrator or captain can edit the event.");
+  if(!ctx.captain)throw eventError("Only a Turf Kings administrator or captain can edit the event.");
   const current=(await tx.get(ref)).data();
   if(body.action==="yearEndProgramme"){
-   if(!current || body.eventId!==current.id)throw Error("Reopen the current event.");
+   if(!current || body.eventId!==current.id)throw eventError("Reopen the current event.");
    const items=body.items;
    if(!Array.isArray(items)||!items.length||items.length>30||items.some(item=>!item||
      !text(item.title,100)||!integer(item.offsetStart,0,720)||!integer(item.offsetEnd,item.offsetStart+1,720)))
-     throw Error("Each programme item needs a title and valid start and end minutes.");
+     throw eventError("Each programme item needs a title and valid start and end minutes.");
    tx.update(ref,{programPublished:body.published===true,programItems:items.map(item=>({
      title:text(item.title,100),speaker:text(item.speaker,100),desc:text(item.desc,2000),icon:text(item.icon,16)||"🎤",
      offsetStart:item.offsetStart,offsetEnd:item.offsetEnd,
    })).sort((a,b)=>a.offsetStart-b.offsetStart)});
    return {};
   }
+  if(body.action==="yearEndRestore"){
+   if(!current || body.eventId!==current.id)throw eventError("The event changed. Reopen it before restoring.");
+   tx.update(ref,{archived:false,updatedBy:user.uid,updatedAtMs:Date.now()});
+   return {};
+  }
   if(body.action==="yearEndArchive"){
    if(!current||current.archived)return {};
    tx.update(ref,{archived:true});return {};
   }
-  if(body.action!=="yearEndPublish")throw Error("Choose an event action.");
+  if(body.action!=="yearEndPublish")throw eventError("Choose an event action.");
   const values=settings(body.event);
-  if(current&&current.date===values.date&&current.reserved>0&&values.capacity<current.reserved)throw Error("Capacity cannot be below reserved seats.");
-  if(current&&!current.archived&&current.reserved>0&&values.date!==current.date)throw Error("Archive this edition before starting a different date.");
+  if(current&&current.date===values.date&&current.reserved>0&&values.capacity<current.reserved)throw eventError("Capacity cannot be below reserved seats.");
+  if(current&&!current.archived&&current.reserved>0&&values.date!==current.date)throw eventError("Archive this edition before starting a different date.");
   const newEdition=!current||current.archived&&current.date!==values.date;
   tx.set(ref,{...values,id:newEdition?randomUUID():current.id,reserved:newEdition?0:current.reserved||0,
     programPublished:newEdition?false:current?.programPublished===true,programItems:current?.programItems||[],

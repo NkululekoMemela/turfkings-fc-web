@@ -14,6 +14,7 @@ import {cachedOwnPlayerProfile, loadOwnPlayerProfile, saveOwnPlayerProfile} from
 import {confirmCurrentGoogleAccount, selectReplacementGoogleToken, replacePlayerGoogleAccount} from "../storage/playerGoogleAccountGateway.js";
 import {usePlayerProfileReport} from "../hooks/usePlayerProfileReport.js";
 import {usePlayerAttendanceSummary} from "../hooks/usePlayerAttendanceSummary.js";
+import ClubYearStats from "../components/ClubYearStats.jsx";
 import "./PlayerProfilePage.css";
 const emptyDraft={fullName:"",shortName:"",email:"",whatsappNumber:"",jerseyNumber:"",ownsNumberedBib:"",bibColor:""};
 function toDraft(member,session) {
@@ -185,6 +186,8 @@ export default function PlayerProfilePage({clubId,clubName="Your club",identity,
         </dl>
       </section>
     )}
+    {member&&playerAccess&&!isPracticeMode&&["admin","captain"].includes(activeRole)&&
+      <ClubYearStats key={clubId+":"+session.uid} clubId={clubId} userId={session.uid}/>}
     {member&&<PendingBibNotice clubId={clubId} isPracticeMode={isPracticeMode}/>}
     {member&&canEditProfile&&!isPracticeMode&&<ProfileNumberStudio clubId={clubId} member={member} club={club} onChanged={()=>{if(!dirty.current)setRefresh(value=>value+1);}}/>}
     {!report.loading&&!report.error&&(story.highlights.length>0||story.honours.length>0)&&<section className="card profile-football-story" aria-labelledby="profile-story-heading">
