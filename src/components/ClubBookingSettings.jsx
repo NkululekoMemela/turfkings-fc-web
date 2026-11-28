@@ -1,10 +1,11 @@
 import "./ClubBookingSettings.css";
+import ClubBookingAvailability from "./ClubBookingAvailability.jsx";
 import React, { useEffect, useState } from "react";
 import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { normalizeLateBookingPolicy } from "../../functions/lateBookingPolicy.mjs";
 
-export default function ClubBookingSettings({ clubId, settings, defaultLimit }) {
+export default function ClubBookingSettings({ clubId, settings, defaultLimit, weeklyDay=3 }) {
   const [limit, setLimit] = useState(defaultLimit);
   const [enabled, setEnabled] = useState(false);
   const [fee, setFee] = useState(7);
@@ -76,6 +77,8 @@ export default function ClubBookingSettings({ clubId, settings, defaultLimit }) 
         </span>
         <span className="club-booking-settings__chevron" aria-hidden="true">⌄</span>
       </summary>
+
+      <ClubBookingAvailability clubId={clubId} settings={settings} weeklyDay={weeklyDay} />
 
       <form onSubmit={save} className="club-booking-settings__form">
         <div className="club-booking-settings__grid">

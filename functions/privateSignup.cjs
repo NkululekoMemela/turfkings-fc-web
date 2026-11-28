@@ -31,6 +31,10 @@ async function save({db,user,body}) {
     if(!Number.isInteger(limit) || limit<1 || limit>100)throw new Error("The club's booking limit is invalid.");
     const requested=booked(next),previous=booked(current),key=participant(next,docId);
     for(const week of requested){
+      if(!previous.includes(week) &&
+          (club.bookingSettings?.blockedSignupDates || []).includes(week)){
+        throw new Error("Bookings are closed for "+week+". Choose an available game.");
+      }
       const occupants=new Set([...pending.docs,...matches.docs].filter(item=>item.ref.path!==ref.path && booked(item.data()).includes(week)).map(item=>participant(item.data(),item.id)));
       const already=previous.includes(week) || occupants.has(key);occupants.delete(key);
       const fixture=(club.acceptedClubChallenges || []).find(item=>String(item.fixtureId || item.id)===week);
